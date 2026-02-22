@@ -1,11 +1,15 @@
 /**
- * EVA API routes – chat, conversations, drafts, audit logs, settings, data sources, documents, stats.
+ * EVA API routes – chat, conversations, drafts, audit logs, settings, data sources, documents, gmail, stats.
  */
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const path = require('path');
 const fs = require('fs');
+
+// Gmail services
+const googleOAuth = require('../services/googleOAuth');
+const gmailSync = require('../services/gmailSync');
 
 const API_KEY = process.env.EVA_API_KEY;
 
@@ -39,7 +43,6 @@ async function ensureOwner(req, res, next) {
 }
 
 router.use(ensureOwner);
-
 // ════════════════════════════════════════════════════════════════
 // CHAT: Talk to EVA (with conversation persistence)
 // ════════════════════════════════════════════════════════════════
@@ -129,7 +132,7 @@ router.post('/chat', async (req, res, next) => {
       chatHistory = histResult.rows;
     }
 
-    const result = await evaChat.reply(message.trim(), chatHistory);
+    const result = await evaChat.reply(message.trim(), chatHistory, req.ownerId);
 
     // Persist messages if we have a conversation
     if (convId) {
@@ -428,16 +431,215 @@ router.post('/feedback', async (req, res, next) => {
 });
 
 // ════════════════════════════════════════════════════════════════
+// GMAIL OAUTH2 & EMAIL INTEGRATION (Phase 2)
+// ════════════════════════════════════════════════════════════════
+
+// Start OAuth flow — returns Google consent URL
+router.get('/oauth/gmail/start', async (req, res, next) => {
+  try {
+    const authUrl = googleOAuth.getAuthUrl(String(req.ownerId));
+    res.json({ auth_url: authUrl });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// OAuth callback — exchanges code for tokens, stores account
+router.get('/oauth/gmail/callback', async (req, res, next) => {
+  try {
+    const { code, state } = req.query;
+    if (!code) return res.status(400).json({ error: 'Authorization code missing' });
+
+    // Exchange code for tokens
+    const tokens = googleOAuth.exchangeCode ? await googleOAuth.exchangeCode(code) : null;
+    if (!tokens || !tokens.access_token) {
+      return res.status(400).json({ error: 'Token exchange failed' });
+    }
+
+    // Get user email
+    const gmailAddress = await googleOAuth.getUserEmail(tokens.access_token, tokens.refresh_token);
+
+    // Store in gmail_accounts (upsert)
+    await db.query(
+      `INSERT INTO eva.gmail_accounts (owner_id, gmail_address, access_token, refresh_token, token_scope, expires_at, sync_status)
+       VALUES ($1, $2, $3, $4, $5, $6, 'pending')
+       ON CONFLICT (owner_id, gmail_address) DO UPDATE SET
+         access_token = $3, refresh_token = COALESCE($4, eva.gmail_accounts.refresh_token),
+         token_scope = $5, expires_at = $6, sync_status = 'pending',
+         token_updated_at = now(), error_message = NULL`,
+      [
+        req.ownerId, gmailAddress, tokens.access_token,
+        tokens.refresh_token || null, tokens.scope || null,
+        tokens.expiry_date ? new Date(tokens.expiry_date) : null,
+      ]
+    );
+
+    // Also register in data_sources (upsert)
+    await db.query(
+      `INSERT INTO eva.data_sources (owner_id, source_type, external_id, config, status)
+       VALUES ($1, 'gmail', $2, $3, 'active')
+       ON CONFLICT ON CONSTRAINT data_sources_owner_id_source_type_external_id_key DO UPDATE SET
+         config = $3, status = 'active'`,
+      [req.ownerId, gmailAddress, JSON.stringify({ connected_at: new Date().toISOString() })]
+    ).catch(async () => {
+      // If unique constraint doesn't exist, try simple insert
+      await db.query(
+        `INSERT INTO eva.data_sources (owner_id, source_type, external_id, config, status)
+         VALUES ($1, 'gmail', $2, $3, 'active')
+         ON CONFLICT DO NOTHING`,
+        [req.ownerId, gmailAddress, JSON.stringify({ connected_at: new Date().toISOString() })]
+      );
+    });
+
+    // Audit log
+    await db.query(
+      `INSERT INTO eva.audit_logs (owner_id, action_type, channel, details)
+       VALUES ($1, 'gmail_connected', 'gmail', $2)`,
+      [req.ownerId, JSON.stringify({ gmail_address: gmailAddress })]
+    );
+
+    // Redirect to frontend data sources page
+    res.redirect('/sources?connected=gmail');
+  } catch (e) {
+    console.error('[EVA] Gmail OAuth callback error:', e);
+    res.redirect('/sources?error=' + encodeURIComponent(e.message));
+  }
+});
+
+// List connected Gmail accounts
+router.get('/gmail/accounts', async (req, res, next) => {
+  try {
+    const r = await db.query(
+      `SELECT id, gmail_address, sync_status, full_sync_complete, last_sync_at, error_message, created_at
+       FROM eva.gmail_accounts WHERE owner_id = $1 ORDER BY created_at DESC`,
+      [req.ownerId]
+    );
+    res.json({ accounts: r.rows });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// Trigger manual sync for a Gmail account
+router.post('/gmail/sync/:id', async (req, res, next) => {
+  try {
+    const accountId = Number(req.params.id);
+    // Run sync (async — don't block response for too long)
+    const result = await gmailSync.syncEmails(req.ownerId, accountId);
+    res.json({ status: 'synced', ...result });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// Disconnect a Gmail account
+router.delete('/gmail/accounts/:id', async (req, res, next) => {
+  try {
+    const accountId = Number(req.params.id);
+    // Get token to revoke
+    const acct = await db.query(
+      'SELECT access_token, gmail_address FROM eva.gmail_accounts WHERE id = $1 AND owner_id = $2',
+      [accountId, req.ownerId]
+    );
+    if (acct.rows[0]) {
+      await googleOAuth.revokeToken(acct.rows[0].access_token);
+      // Delete account (cascades to emails via FK)
+      await db.query('DELETE FROM eva.gmail_accounts WHERE id = $1 AND owner_id = $2', [accountId, req.ownerId]);
+      // Update data_sources
+      await db.query(
+        `UPDATE eva.data_sources SET status = 'disconnected' WHERE owner_id = $1 AND source_type = 'gmail' AND external_id = $2`,
+        [req.ownerId, acct.rows[0].gmail_address]
+      );
+      // Audit
+      await db.query(
+        `INSERT INTO eva.audit_logs (owner_id, action_type, channel, details) VALUES ($1, 'gmail_disconnected', 'gmail', $2)`,
+        [req.ownerId, JSON.stringify({ gmail_address: acct.rows[0].gmail_address })]
+      );
+    }
+    res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// List/search synced emails
+router.get('/gmail/emails', async (req, res, next) => {
+  try {
+    const { q, limit = 50, offset = 0, from, after, before } = req.query;
+
+    // Full-text search
+    if (q && q.trim().length > 0) {
+      const emails = await gmailSync.searchEmails(req.ownerId, q, Math.min(Number(limit), 100));
+      return res.json({ emails, total: emails.length });
+    }
+
+    // Default: list recent emails with optional filters
+    let query = `SELECT id, from_email, from_name, subject, snippet, received_at, labels, is_read, is_starred, has_attachments
+                 FROM eva.emails WHERE owner_id = $1`;
+    const params = [req.ownerId];
+    let paramIdx = 2;
+
+    if (from) {
+      query += ` AND from_email ILIKE $${paramIdx}`;
+      params.push(`%${from}%`);
+      paramIdx++;
+    }
+    if (after) {
+      query += ` AND received_at >= $${paramIdx}`;
+      params.push(after);
+      paramIdx++;
+    }
+    if (before) {
+      query += ` AND received_at <= $${paramIdx}`;
+      params.push(before);
+      paramIdx++;
+    }
+
+    query += ` ORDER BY received_at DESC LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`;
+    params.push(Math.min(Number(limit) || 50, 100), Number(offset) || 0);
+
+    const r = await db.query(query, params);
+
+    // Get total count
+    const countResult = await db.query('SELECT count(*) as cnt FROM eva.emails WHERE owner_id = $1', [req.ownerId]);
+
+    res.json({ emails: r.rows, total: Number(countResult.rows[0].cnt) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// Get single email detail
+router.get('/gmail/emails/:id', async (req, res, next) => {
+  try {
+    const r = await db.query(
+      `SELECT e.*, array_agg(json_build_object('filename', a.filename, 'mime_type', a.mime_type, 'size_bytes', a.size_bytes))
+              FILTER (WHERE a.id IS NOT NULL) as attachments
+       FROM eva.emails e
+       LEFT JOIN eva.email_attachments a ON a.email_id = e.id
+       WHERE e.id = $1 AND e.owner_id = $2
+       GROUP BY e.id`,
+      [req.params.id, req.ownerId]
+    );
+    if (!r.rows[0]) return res.status(404).json({ error: 'Email not found' });
+    res.json(r.rows[0]);
+  } catch (e) {
+    next(e);
+  }
+});
+
+// ════════════════════════════════════════════════════════════════
 // STATS (dashboard metrics)
 // ════════════════════════════════════════════════════════════════
 router.get('/stats', async (req, res, next) => {
   try {
-    const [convos, msgs, draftsR, logsR, docsR] = await Promise.all([
+    const [convos, msgs, draftsR, logsR, docsR, emailsR] = await Promise.all([
       db.query('SELECT COUNT(*) AS count FROM eva.conversations WHERE owner_id = $1', [req.ownerId]),
       db.query('SELECT COUNT(*) AS count FROM eva.messages WHERE owner_id = $1', [req.ownerId]),
       db.query(`SELECT status, COUNT(*) AS count FROM eva.drafts WHERE owner_id = $1 GROUP BY status`, [req.ownerId]),
       db.query(`SELECT COUNT(*) AS count FROM eva.audit_logs WHERE owner_id = $1 AND created_at > now() - interval '7 days'`, [req.ownerId]),
       db.query('SELECT COUNT(*) AS count, COALESCE(SUM(file_size), 0) AS total_size FROM eva.documents WHERE owner_id = $1', [req.ownerId]),
+      db.query('SELECT COUNT(*) AS count FROM eva.emails WHERE owner_id = $1', [req.ownerId]).catch(() => ({ rows: [{ count: 0 }] })),
     ]);
 
     const draftsByStatus = {};
@@ -450,6 +652,7 @@ router.get('/stats', async (req, res, next) => {
       audit_logs_7d: Number(logsR.rows[0]?.count || 0),
       documents: Number(docsR.rows[0]?.count || 0),
       documents_size: Number(docsR.rows[0]?.total_size || 0),
+      emails: Number(emailsR.rows[0]?.count || 0),
     });
   } catch (e) {
     next(e);

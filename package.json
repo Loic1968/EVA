@@ -9,7 +9,7 @@
     "client": "cd web && npm run dev",
     "dev": "concurrently \"npm run dev:server\" \"npm run client\"",
     "build": "npm run build:web",
-    "build:web": "cd web && npm install && npm run build",
+    "build:web": "cd web && npm install --include=dev && npm run build",
     "start": "node server/index.js",
     "test:smoke": "node scripts/smoke-test.js"
   },

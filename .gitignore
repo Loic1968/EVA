@@ -9,6 +9,7 @@ web/node_modules/
 
 # Build
 web/dist/
+web/vite.config.js.timestamp-*.mjs
 
 # Uploads (user data — never commit)
 uploads/

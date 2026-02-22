@@ -60,6 +60,15 @@ export const api = {
     return res.json();
   },
 
+  // Gmail OAuth & Emails
+  getGmailAuthUrl: () => request('/oauth/gmail/start'),
+  getGmailAccounts: () => request('/gmail/accounts'),
+  syncGmail: (accountId) => request(`/gmail/sync/${accountId}`, { method: 'POST' }),
+  disconnectGmail: (accountId) => request(`/gmail/accounts/${accountId}`, { method: 'DELETE' }),
+  getEmails: (params) => request('/gmail/emails?' + new URLSearchParams(params || {})),
+  getEmail: (id) => request(`/gmail/emails/${id}`),
+  searchEmails: (q, limit = 20) => request(`/gmail/emails?q=${encodeURIComponent(q)}&limit=${limit}`),
+
   // Confidence summary
   getConfidenceSummary: () => request('/confidence-summary'),
 

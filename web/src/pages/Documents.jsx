@@ -1,0 +1,145 @@
+import { useEffect, useState, useRef } from 'react';
+import { api } from '../api';
+
+export default function Documents() {
+  const [documents, setDocuments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState(null);
+  const [dragOver, setDragOver] = useState(false);
+  const fileRef = useRef(null);
+
+  const load = () =>
+    api.getDocuments({ limit: 100 })
+      .then((r) => setDocuments(r.documents || []))
+      .catch((e) => setError(e.message));
+
+  useEffect(() => {
+    load().finally(() => setLoading(false));
+  }, []);
+
+  const handleUpload = async (files) => {
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    setError(null);
+    try {
+      for (const file of files) {
+        await api.uploadDocument(file);
+      }
+      await load();
+    } catch (e) {
+      setError(e.message || 'Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const onDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    handleUpload(e.dataTransfer.files);
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="flex gap-1">
+          <div className="w-2 h-2 rounded-full bg-eva-accent eva-dot" />
+          <div className="w-2 h-2 rounded-full bg-eva-accent eva-dot" />
+          <div className="w-2 h-2 rounded-full bg-eva-accent eva-dot" />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-white">Documents</h1>
+          <p className="text-eva-muted text-sm mt-1">Upload files for EVA's Memory Vault. Contracts, emails, reports — everything feeds the brain.</p>
+        </div>
+        <button
+          onClick={() => fileRef.current?.click()}
+          disabled={uploading}
+          className="px-4 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-medium rounded-lg hover:from-cyan-400 hover:to-blue-500 disabled:opacity-50 transition-all"
+        >
+          {uploading ? 'Uploading...' : 'Upload Files'}
+        </button>
+        <input
+          ref={fileRef}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={(e) => handleUpload(e.target.files)}
+        />
+      </div>
+
+      {error && <div className="text-red-400 text-sm bg-red-500/10 rounded-lg px-4 py-2">{error}</div>}
+
+      {/* Drop zone */}
+      <div
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={onDrop}
+        className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${
+          dragOver ? 'border-eva-accent bg-eva-accent/5' : 'border-slate-700/40 hover:border-slate-600'
+        }`}
+      >
+        <div className="text-eva-muted">
+          <p className="text-lg mb-1">{dragOver ? 'Drop files here' : 'Drag & drop files here'}</p>
+          <p className="text-xs">PDF, DOCX, TXT, CSV, email archives — up to 50MB per file</p>
+        </div>
+      </div>
+
+      {/* File list */}
+      <div className="bg-eva-panel rounded-xl border border-slate-700/40 overflow-hidden">
+        <div className="px-5 py-3 border-b border-slate-700/40">
+          <span className="text-sm font-medium text-white">{documents.length} documents</span>
+        </div>
+        {documents.length === 0 ? (
+          <div className="p-8 text-center text-eva-muted text-sm">
+            No documents uploaded yet. Start feeding EVA's memory.
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-700/30">
+            {documents.map((doc) => (
+              <div key={doc.id} className="px-5 py-3 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${
+                    doc.file_type === 'pdf' ? 'bg-red-500/20 text-red-400' :
+                    doc.file_type === 'docx' ? 'bg-blue-500/20 text-blue-400' :
+                    doc.file_type === 'csv' ? 'bg-green-500/20 text-green-400' :
+                    'bg-slate-700 text-slate-400'
+                  }`}>
+                    {(doc.file_type || '?').toUpperCase().slice(0, 3)}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm text-white truncate">{doc.filename}</div>
+                    <div className="text-xs text-eva-muted">{formatBytes(doc.file_size)} — {new Date(doc.created_at).toLocaleDateString()}</div>
+                  </div>
+                </div>
+                <span className={`text-xs px-2 py-1 rounded-full ${
+                  doc.status === 'indexed' ? 'bg-emerald-500/20 text-emerald-400' :
+                  doc.status === 'processing' ? 'bg-amber-500/20 text-amber-400' :
+                  doc.status === 'error' ? 'bg-red-500/20 text-red-400' :
+                  'bg-slate-700 text-slate-400'
+                }`}>
+                  {doc.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function formatBytes(bytes) {
+  if (!bytes) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}

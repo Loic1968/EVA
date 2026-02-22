@@ -1,39 +1,67 @@
 import { NavLink } from 'react-router-dom';
+import { useState } from 'react';
 
 const nav = [
-  { to: '/', label: 'Dashboard' },
-  { to: '/chat', label: 'Parler à EVA' },
-  { to: '/drafts', label: 'Drafts' },
-  { to: '/audit', label: 'Audit log' },
-  { to: '/sources', label: 'Data sources' },
-  { to: '/settings', label: 'Settings' },
+  { to: '/', label: 'Dashboard', icon: '◉' },
+  { to: '/chat', label: 'Parler à EVA', icon: '◈' },
+  { to: '/drafts', label: 'Drafts', icon: '◇' },
+  { to: '/documents', label: 'Documents', icon: '◆' },
+  { to: '/audit', label: 'Audit Log', icon: '◎' },
+  { to: '/sources', label: 'Data Sources', icon: '◐' },
+  { to: '/settings', label: 'Settings', icon: '◑' },
 ];
 
 export default function Layout({ children }) {
+  const [collapsed, setCollapsed] = useState(false);
+
   return (
-    <div className="min-h-screen flex">
-      <aside className="w-56 bg-eva-panel border-r border-slate-700/50 flex flex-col">
-        <div className="p-4 border-b border-slate-700/50">
-          <h1 className="text-lg font-semibold text-eva-accent">EVA</h1>
-          <p className="text-xs text-eva-muted mt-0.5">Command Center</p>
+    <div className="min-h-screen flex bg-eva-dark">
+      <aside className={`${collapsed ? 'w-16' : 'w-60'} bg-eva-panel border-r border-slate-700/40 flex flex-col transition-all duration-200 shrink-0`}>
+        <div className="p-4 border-b border-slate-700/40 flex items-center justify-between">
+          <div className={`flex items-center gap-3 ${collapsed ? 'justify-center w-full' : ''}`}>
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center text-white font-bold text-sm shrink-0">E</div>
+            {!collapsed && (
+              <div>
+                <h1 className="text-base font-semibold text-white leading-tight">EVA</h1>
+                <p className="text-[10px] text-eva-muted leading-tight">Digital Twin</p>
+              </div>
+            )}
+          </div>
+          {!collapsed && (
+            <button onClick={() => setCollapsed(true)} className="text-eva-muted hover:text-white text-xs">‹‹</button>
+          )}
         </div>
-        <nav className="p-2 flex-1">
-          {nav.map(({ to, label }) => (
+        <nav className="p-2 flex-1 space-y-0.5">
+          {nav.map(({ to, label, icon }) => (
             <NavLink
               key={to}
               to={to}
+              title={collapsed ? label : undefined}
               className={({ isActive }) =>
-                `block px-3 py-2 rounded-md text-sm transition-colors ${
-                  isActive ? 'bg-eva-accent/20 text-eva-accent' : 'text-slate-300 hover:bg-slate-700/50'
-                }`
+                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${
+                  isActive ? 'bg-eva-accent/15 text-eva-accent font-medium' : 'text-slate-400 hover:bg-slate-700/40 hover:text-slate-200'
+                } ${collapsed ? 'justify-center' : ''}`
               }
             >
-              {label}
+              <span className="text-base shrink-0">{icon}</span>
+              {!collapsed && <span>{label}</span>}
             </NavLink>
           ))}
         </nav>
+        <div className="p-3 border-t border-slate-700/40">
+          {collapsed ? (
+            <button onClick={() => setCollapsed(false)} className="w-full text-eva-muted hover:text-white text-xs text-center">››</button>
+          ) : (
+            <div className="flex items-center gap-2 px-2">
+              <div className="w-6 h-6 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-[10px] text-white font-medium">L</div>
+              <div className="text-xs text-eva-muted truncate">loic@halisoft.biz</div>
+            </div>
+          )}
+        </div>
       </aside>
-      <main className="flex-1 p-6 overflow-auto">{children}</main>
+      <main className="flex-1 overflow-auto">
+        <div className="max-w-7xl mx-auto p-6">{children}</div>
+      </main>
     </div>
   );
 }

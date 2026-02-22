@@ -7,44 +7,88 @@ export default function AuditLog() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    api
-      .getAuditLogs({ limit: 100 })
+    api.getAuditLogs({ limit: 200 })
       .then((r) => setLogs(r.logs || []))
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <div className="text-eva-muted">Loading...</div>;
-  if (error) return <div className="text-red-400">Error: {error}</div>;
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="flex gap-1">
+          <div className="w-2 h-2 rounded-full bg-eva-accent eva-dot" />
+          <div className="w-2 h-2 rounded-full bg-eva-accent eva-dot" />
+          <div className="w-2 h-2 rounded-full bg-eva-accent eva-dot" />
+        </div>
+      </div>
+    );
+  }
+
+  if (error) return <div className="text-red-400 p-4">Error: {error}</div>;
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold text-white">Audit log</h1>
-      <div className="bg-eva-panel rounded-lg border border-slate-700/50 overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-slate-700/50 text-left text-eva-muted">
-              <th className="p-3">Time</th>
-              <th className="p-3">Action</th>
-              <th className="p-3">Channel</th>
-              <th className="p-3">Confidence</th>
-              <th className="p-3">Details</th>
-            </tr>
-          </thead>
-          <tbody>
-            {logs.map((log) => (
-              <tr key={log.id} className="border-b border-slate-700/30">
-                <td className="p-3 text-slate-400">{new Date(log.created_at).toLocaleString()}</td>
-                <td className="p-3 text-white">{log.action_type}</td>
-                <td className="p-3 text-slate-300">{log.channel || '—'}</td>
-                <td className="p-3">{log.confidence_score != null ? `${(log.confidence_score * 100).toFixed(0)}%` : '—'}</td>
-                <td className="p-3 text-slate-400 max-w-xs truncate">{Object.keys(log.details || {}).length ? JSON.stringify(log.details) : '—'}</td>
+      <div>
+        <h1 className="text-2xl font-semibold text-white">Audit Log</h1>
+        <p className="text-eva-muted text-sm mt-1">Every action EVA takes is logged with full explainability. {logs.length} entries.</p>
+      </div>
+
+      <div className="bg-eva-panel rounded-xl border border-slate-700/40 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-700/40 text-left">
+                <th className="px-5 py-3 text-eva-muted font-medium text-xs uppercase tracking-wider">Time</th>
+                <th className="px-5 py-3 text-eva-muted font-medium text-xs uppercase tracking-wider">Action</th>
+                <th className="px-5 py-3 text-eva-muted font-medium text-xs uppercase tracking-wider">Channel</th>
+                <th className="px-5 py-3 text-eva-muted font-medium text-xs uppercase tracking-wider">Confidence</th>
+                <th className="px-5 py-3 text-eva-muted font-medium text-xs uppercase tracking-wider">Details</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-        {logs.length === 0 && <div className="p-8 text-center text-eva-muted">No audit logs yet</div>}
+            </thead>
+            <tbody>
+              {logs.map((log) => (
+                <tr key={log.id} className="border-b border-slate-700/20 hover:bg-slate-800/30 transition-colors">
+                  <td className="px-5 py-3 text-slate-400 whitespace-nowrap">{new Date(log.created_at).toLocaleString()}</td>
+                  <td className="px-5 py-3">
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${
+                      log.action_type === 'query' ? 'bg-cyan-500/20 text-cyan-400' :
+                      log.action_type === 'file_uploaded' ? 'bg-purple-500/20 text-purple-400' :
+                      log.action_type === 'draft_created' ? 'bg-amber-500/20 text-amber-400' :
+                      log.action_type === 'setting_changed' ? 'bg-slate-600 text-slate-300' :
+                      'bg-slate-700 text-slate-400'
+                    }`}>{log.action_type}</span>
+                  </td>
+                  <td className="px-5 py-3 text-slate-300">{log.channel || '—'}</td>
+                  <td className="px-5 py-3">
+                    {log.confidence_score != null ? (
+                      <span className={`text-xs font-medium ${
+                        log.confidence_score >= 0.8 ? 'text-emerald-400' :
+                        log.confidence_score >= 0.5 ? 'text-amber-400' : 'text-red-400'
+                      }`}>{(log.confidence_score * 100).toFixed(0)}%</span>
+                    ) : <span className="text-slate-600">—</span>}
+                  </td>
+                  <td className="px-5 py-3 text-slate-400 max-w-xs">
+                    <span className="truncate block text-xs">
+                      {formatDetails(log.details)}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {logs.length === 0 && (
+          <div className="p-12 text-center text-eva-muted">No audit logs yet. Every EVA action will be recorded here.</div>
+        )}
       </div>
     </div>
   );
+}
+
+function formatDetails(details) {
+  if (!details || Object.keys(details).length === 0) return '—';
+  if (details.message) return `"${details.message.slice(0, 80)}"`;
+  if (details.filename) return details.filename;
+  return JSON.stringify(details).slice(0, 100);
 }

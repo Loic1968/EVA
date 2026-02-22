@@ -7,7 +7,10 @@ export default function Drafts() {
   const [error, setError] = useState(null);
   const [filter, setFilter] = useState('');
 
-  const load = () => api.getDrafts({ limit: 50, ...(filter && { status: filter }) }).then((r) => setDrafts(r.drafts || [])).catch((e) => setError(e.message));
+  const load = () =>
+    api.getDrafts({ limit: 50, ...(filter && { status: filter }) })
+      .then((r) => setDrafts(r.drafts || []))
+      .catch((e) => setError(e.message));
 
   useEffect(() => {
     load().finally(() => setLoading(false));
@@ -22,54 +25,96 @@ export default function Drafts() {
     }
   };
 
-  if (loading) return <div className="text-eva-muted">Loading...</div>;
-  if (error) return <div className="text-red-400">Error: {error}</div>;
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="flex gap-1">
+          <div className="w-2 h-2 rounded-full bg-eva-accent eva-dot" />
+          <div className="w-2 h-2 rounded-full bg-eva-accent eva-dot" />
+          <div className="w-2 h-2 rounded-full bg-eva-accent eva-dot" />
+        </div>
+      </div>
+    );
+  }
+
+  const pending = drafts.filter((d) => d.status === 'pending').length;
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-semibold text-white">Drafts</h1>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-white">Drafts</h1>
+          <p className="text-eva-muted text-sm mt-1">
+            {pending > 0 ? `${pending} draft${pending > 1 ? 's' : ''} awaiting your approval` : 'Review and approve EVA\'s draft responses'}
+          </p>
+        </div>
         <select
           value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          className="bg-eva-panel border border-slate-600 rounded px-3 py-1.5 text-sm text-white"
+          onChange={(e) => { setFilter(e.target.value); setLoading(true); }}
+          className="bg-eva-panel border border-slate-600/50 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-eva-accent/50"
         >
-          <option value="">All</option>
+          <option value="">All statuses</option>
           <option value="pending">Pending</option>
           <option value="approved">Approved</option>
           <option value="rejected">Rejected</option>
           <option value="sent">Sent</option>
         </select>
       </div>
-      <div className="bg-eva-panel rounded-lg border border-slate-700/50 overflow-hidden">
-        <ul className="divide-y divide-slate-700/50">
-          {drafts.map((d) => (
-            <li key={d.id} className="p-4">
-              <div className="flex justify-between items-start gap-4">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 text-sm text-eva-muted">
-                    <span>{d.channel}</span>
-                    {d.thread_id && <span>· {d.thread_id}</span>}
-                    {d.confidence_score != null && <span>· {(d.confidence_score * 100).toFixed(0)}% confidence</span>}
-                  </div>
-                  {d.subject_or_preview && <div className="font-medium text-white mt-1">{d.subject_or_preview}</div>}
-                  <p className="text-slate-300 text-sm mt-1 whitespace-pre-wrap">{d.body}</p>
-                  <div className="text-xs text-eva-muted mt-2">{new Date(d.created_at).toLocaleString()}</div>
-                </div>
-                <div className="flex gap-2 shrink-0">
-                  {d.status === 'pending' && (
-                    <>
-                      <button onClick={() => updateStatus(d.id, 'approved')} className="px-3 py-1.5 rounded bg-emerald-600 text-white text-sm hover:bg-emerald-500">Approve</button>
-                      <button onClick={() => updateStatus(d.id, 'rejected')} className="px-3 py-1.5 rounded bg-slate-600 text-white text-sm hover:bg-slate-500">Reject</button>
-                    </>
+
+      {error && <div className="text-red-400 text-sm bg-red-500/10 rounded-lg px-4 py-2">{error}</div>}
+
+      <div className="space-y-3">
+        {drafts.map((d) => (
+          <div key={d.id} className="bg-eva-panel rounded-xl border border-slate-700/40 p-5 hover:border-slate-600/60 transition-colors">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                    d.channel === 'email' ? 'bg-blue-500/20 text-blue-400' :
+                    d.channel === 'whatsapp' ? 'bg-green-500/20 text-green-400' :
+                    d.channel === 'linkedin' ? 'bg-indigo-500/20 text-indigo-400' :
+                    'bg-slate-700 text-slate-400'
+                  }`}>
+                    {d.channel}
+                  </span>
+                  {d.confidence_score != null && (
+                    <span className="text-xs text-eva-muted">{(d.confidence_score * 100).toFixed(0)}% confidence</span>
                   )}
-                  <span className={`px-2 py-1 rounded text-xs ${d.status === 'pending' ? 'bg-amber-500/20 text-amber-400' : d.status === 'sent' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-600 text-slate-400'}`}>{d.status}</span>
+                  <span className="text-xs text-eva-muted">{new Date(d.created_at).toLocaleString()}</span>
                 </div>
+                {d.subject_or_preview && <div className="font-medium text-white mb-1">{d.subject_or_preview}</div>}
+                <p className="text-slate-300 text-sm whitespace-pre-wrap leading-relaxed">{d.body}</p>
               </div>
-            </li>
-          ))}
-          {drafts.length === 0 && <li className="p-8 text-center text-eva-muted">No drafts</li>}
-        </ul>
+              <div className="flex items-center gap-2 shrink-0">
+                {d.status === 'pending' ? (
+                  <>
+                    <button
+                      onClick={() => updateStatus(d.id, 'approved')}
+                      className="px-3 py-1.5 rounded-lg bg-emerald-600/80 text-white text-sm hover:bg-emerald-500 transition-colors"
+                    >Approve</button>
+                    <button
+                      onClick={() => updateStatus(d.id, 'rejected')}
+                      className="px-3 py-1.5 rounded-lg bg-slate-600/80 text-white text-sm hover:bg-slate-500 transition-colors"
+                    >Reject</button>
+                  </>
+                ) : (
+                  <span className={`text-xs px-2.5 py-1 rounded-full ${
+                    d.status === 'sent' ? 'bg-emerald-500/20 text-emerald-400' :
+                    d.status === 'approved' ? 'bg-blue-500/20 text-blue-400' :
+                    d.status === 'rejected' ? 'bg-red-500/20 text-red-400' :
+                    'bg-slate-700 text-slate-400'
+                  }`}>{d.status}</span>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+        {drafts.length === 0 && (
+          <div className="bg-eva-panel rounded-xl border border-slate-700/40 p-12 text-center text-eva-muted">
+            <p className="text-lg mb-1">No drafts{filter ? ` with status "${filter}"` : ''}</p>
+            <p className="text-sm">When EVA drafts responses, they'll appear here for your review.</p>
+          </div>
+        )}
       </div>
     </div>
   );

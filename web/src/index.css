@@ -4,7 +4,59 @@
 
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
   background: #0f172a;
   color: #e2e8f0;
+  -webkit-font-smoothing: antialiased;
 }
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+/* Chat message markdown-like rendering */
+.eva-message p { margin-bottom: 0.5rem; }
+.eva-message p:last-child { margin-bottom: 0; }
+.eva-message ul, .eva-message ol { margin: 0.5rem 0; padding-left: 1.5rem; }
+.eva-message li { margin-bottom: 0.25rem; }
+.eva-message code {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  font-size: 0.85em;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+.eva-message pre {
+  background: rgba(0, 0, 0, 0.4);
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  overflow-x: auto;
+  margin: 0.5rem 0;
+}
+.eva-message pre code {
+  background: transparent;
+  padding: 0;
+}
+.eva-message strong { color: #f1f5f9; }
+.eva-message a { color: #22d3ee; text-decoration: underline; }
+
+/* Pulse animation for loading */
+@keyframes eva-pulse {
+  0%, 80%, 100% { opacity: 0.3; }
+  40% { opacity: 1; }
+}
+.eva-dot { animation: eva-pulse 1.4s ease-in-out infinite; }
+.eva-dot:nth-child(2) { animation-delay: 0.2s; }
+.eva-dot:nth-child(3) { animation-delay: 0.4s; }

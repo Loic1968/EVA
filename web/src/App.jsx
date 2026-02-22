@@ -5,6 +5,7 @@ import Drafts from './pages/Drafts';
 import AuditLog from './pages/AuditLog';
 import Settings from './pages/Settings';
 import DataSources from './pages/DataSources';
+import Documents from './pages/Documents';
 import Chat from './pages/Chat';
 
 export default function App() {
@@ -15,6 +16,7 @@ export default function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/chat" element={<Chat />} />
           <Route path="/drafts" element={<Drafts />} />
+          <Route path="/documents" element={<Documents />} />
           <Route path="/audit" element={<AuditLog />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/sources" element={<DataSources />} />

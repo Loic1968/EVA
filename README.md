@@ -1,47 +1,45 @@
 # Project EVA – Personal AI Digital Twin
 
-Independent application using **the same database (PostgreSQL) and same stack (Node.js, Express, React)** as the Halisoft platform. EVA runs as a separate process and can share the same `DATABASE_URL`; its data lives in the `eva` schema.
+**EVA** is a Personal AI Digital Twin for Loic Hennocq, Founder & CEO of HaliSoft L.L.C-FZ (Dubai, UAE). It mirrors, learns from, and ultimately represents its creator in digital and professional interactions.
 
-## What is EVA?
+This repo contains the **web application**: backend API + frontend command center. The Python RAG pipeline (LangChain, Qdrant, embeddings) and Flutter mobile app are separate projects.
 
-EVA is a Personal AI Digital Twin: a behavioral proxy that mirrors, learns from, and can represent you in digital interactions. This repo contains:
+## Architecture
 
-- **Backend (Node + Express)** – API for drafts, audit logs, settings, data sources. Port **5002**.
-- **Web portal (React + Vite)** – Command center: dashboard, **chat (Parler à EVA)**, drafts queue, audit log, kill switch, data sources. Port **3001**.
-
-Phases 1–2 (Memory Vault, Voice, Shadow Mode) are supported by this app; the Python pipeline (LangChain, Qdrant, embeddings) and Flutter mobile app are separate.
-
-## Same DB, same stack
-
-| Layer     | Halisoft        | EVA (this app)     |
-|----------|------------------|---------------------|
-| Database | PostgreSQL (RLS) | Same PostgreSQL, schema `eva` |
+| Layer     | Halisoft Platform | EVA (this app)        |
+|----------|-------------------|-----------------------|
+| Database | PostgreSQL (RLS)  | Same PostgreSQL, schema `eva` |
 | Backend  | Node.js + Express (5001) | Node.js + Express (5002) |
-| Frontend | React (CRA)      | React + Vite (3001) |
+| Frontend | React (CRA)       | React + Vite + Tailwind (3001) |
+| AI       | —                  | Claude (Anthropic SDK) |
 
-## Production URL
+## Features
 
-**https://eva.halisoft.biz** — Use this domain when you deploy EVA (frontend + API behind same host or via `api.eva.halisoft.biz` for the API).
+- **Chat with EVA** — AI-powered conversation with persistent history, behavioral context, and feedback loop
+- **Conversation persistence** — All chats saved to PostgreSQL, resumable across sessions
+- **Drafts queue** — Approve-before-send workflow for emails, WhatsApp, LinkedIn (Phase 2-3)
+- **Document upload** — Drag & drop files for Memory Vault ingestion
+- **Audit log** — Every EVA action logged with full explainability
+- **Kill switch** — Instantly pause all autonomous operations
+- **Data sources** — Register and track ingestion from Gmail, WhatsApp, Drive, etc.
+- **Dashboard** — Real-time stats, phase progress, recent activity
+- **Feedback system** — Thumbs up/down and corrections to train EVA's behavioral model
 
 ## Quick start
 
 ### 1. Database migration
 
-Run the EVA schema migration on the **same** PostgreSQL instance used by Halisoft:
+Run the EVA schema on the **same** PostgreSQL instance as Halisoft:
 
 ```bash
-# From repo root
-psql "$DATABASE_URL" -f migrations/2026_02_20_create_eva_schema.sql
+psql "$DATABASE_URL" -f migrations/001_create_eva_schema.sql
 ```
-
-Or use your existing migration runner if you have one.
 
 ### 2. Backend
 
 ```bash
-cd eva
 cp .env.example .env
-# Set DATABASE_URL (same as Halisoft) or EVA_DATABASE_URL
+# Set DATABASE_URL and ANTHROPIC_API_KEY
 npm install
 npm run server
 ```
@@ -51,16 +49,14 @@ API runs at **http://localhost:5002**. Health: `GET /health`.
 ### 3. Web portal
 
 ```bash
-cd eva/web
+cd web
 npm install
 npm run dev
 ```
 
-Portal runs at **http://localhost:3001**. It proxies `/api` to the EVA backend (see `vite.config.js`).
+Portal runs at **http://localhost:3001** (proxies `/api` to backend).
 
-### 4. Run both (backend + frontend)
-
-From `eva/`:
+### 4. Run both
 
 ```bash
 npm run dev
@@ -70,79 +66,103 @@ npm run dev
 
 | Variable           | Description |
 |-------------------|-------------|
-| `DATABASE_URL`    | Same as Halisoft PostgreSQL connection string. EVA uses schema `eva`. |
-| `EVA_DATABASE_URL` | Optional; overrides `DATABASE_URL` for EVA. |
-| `PORT`            | EVA API port (default **5002**). |
-| `EVA_API_KEY`     | Optional. If set, requests must send `X-Api-Key` or `?api_key=`. |
-| `EVA_OWNER_EMAIL` | Default owner email (default `loic@halisoft.biz`). |
+| `DATABASE_URL`    | PostgreSQL connection string (same as Halisoft) |
+| `ANTHROPIC_API_KEY` | Claude API key for EVA chat |
+| `EVA_PORT` / `PORT` | API port (default 5002) |
+| `EVA_API_KEY`     | Optional API key for production |
+| `EVA_OWNER_EMAIL` | Default owner (default `loic@halisoft.biz`) |
+| `VITE_EVA_API_URL` | Build-time: external API URL for frontend |
 
-## API overview
+## API endpoints
 
-- `POST /api/chat` – **Talk to EVA**: send `{ "message": "…", "history": [] }`, get `{ "reply": "…" }` (Claude).
-- `GET/POST /api/drafts` – List or create drafts (approve-before-send).
-- `PATCH /api/drafts/:id` – Update draft (e.g. status: approved, rejected, sent).
-- `GET/POST /api/audit-logs` – List or append audit log.
-- `GET /api/settings`, `PUT /api/settings/:key` – Settings (e.g. kill switch).
-- `GET /api/data-sources` – Registered ingestion sources (Phase 1).
-- `GET /api/confidence-summary` – Confidence scores by category (dashboard).
+### Chat & Conversations
+- `POST /api/chat` — Send a message (with optional `conversation_id`)
+- `GET /api/conversations` — List conversations
+- `POST /api/conversations` — Create a conversation
+- `GET /api/conversations/:id/messages` — Get messages
+- `DELETE /api/conversations/:id` — Delete a conversation
+
+### Drafts
+- `GET /api/drafts` — List drafts
+- `POST /api/drafts` — Create a draft
+- `PATCH /api/drafts/:id` — Update draft status
+
+### Documents & Data
+- `GET /api/documents` — List uploaded documents
+- `POST /api/documents/upload` — Upload a file (raw body + X-Filename header)
+- `GET /api/data-sources` — List registered data sources
+- `POST /api/data-sources` — Register a new source
+
+### Monitoring
+- `GET /api/audit-logs` — Audit trail
+- `GET /api/settings` — Read settings
+- `PUT /api/settings/:key` — Update a setting
+- `GET /api/confidence-summary` — Confidence scores by category
+- `GET /api/stats` — Dashboard statistics
+- `POST /api/feedback` — Submit behavioral feedback
 
 ## Project layout
 
 ```
 eva/
-├── package.json
-├── .env.example
-├── README.md
+├── migrations/
+│   └── 001_create_eva_schema.sql
 ├── server/
-│   ├── index.js      # Express app, port 5002
-│   ├── db.js         # PostgreSQL, eva schema
+│   ├── index.js          # Express app (port 5002, serves web/dist in prod)
+│   ├── db.js             # PostgreSQL client (eva schema)
+│   ├── evaChat.js        # Claude AI agent with behavioral prompt
 │   └── routes/
-│       └── eva.js    # Drafts, audit, settings, data sources
-└── web/              # React + Vite portal
-    ├── package.json
-    ├── vite.config.js
-    ├── index.html
-    └── src/
-        ├── main.jsx
-        ├── App.jsx
-        ├── api.js
-        ├── components/
-        │   └── Layout.jsx
-        └── pages/
-            ├── Dashboard.jsx
-            ├── Drafts.jsx
-            ├── AuditLog.jsx
-            ├── Settings.jsx
-            └── DataSources.jsx
+│       └── eva.js        # All API routes
+├── web/
+│   ├── vite.config.js
+│   ├── tailwind.config.js
+│   └── src/
+│       ├── App.jsx
+│       ├── api.js        # API client
+│       ├── components/
+│       │   └── Layout.jsx
+│       └── pages/
+│           ├── Dashboard.jsx
+│           ├── Chat.jsx
+│           ├── Drafts.jsx
+│           ├── Documents.jsx
+│           ├── AuditLog.jsx
+│           ├── Settings.jsx
+│           └── DataSources.jsx
+├── uploads/              # Document uploads (gitignored)
+├── package.json
+├── render.yaml
+└── .env.example
 ```
 
-## Phases (from EVA docs)
+## Deployment (Render)
 
-- **Phase 1** – Archive & Memory Vault: Python pipeline + Qdrant + embeddings. This app stores metadata and audit; the RAG pipeline is separate.
-- **Phase 2** – Voice + Shadow Mode: OpenAI Realtime API, Flutter app. This app: drafts queue, audit log.
-- **Phase 3** – Limited proxy: approve-before-send. This app: draft approve/reject/send.
-- **Phase 4–5** – Fine-tuned model, autonomous proxy. This app: settings (kill switch), confidence summary, audit.
+One Render Web Service serves both API and frontend at **https://eva.halisoft.biz**.
 
-## Production URL / Deployment
+```bash
+npm install && npm run build   # Build
+npm start                       # Start
+```
 
-**https://eva.halisoft.biz** — One Render Web Service serves both API and frontend. Build: `npm install && npm run build`. Start: `npm start`.
+Set env vars: `DATABASE_URL`, `ANTHROPIC_API_KEY`, `EVA_API_KEY`, `NODE_ENV=production`.
 
-To get a URL in production to test EVA:
+## EVA Phases
 
-1. **Deploy the backend** (Node API) to a host that runs Node and has access to your PostgreSQL (e.g. **Render** “Web Service”, **Railway**, **Fly.io”). Set `DATABASE_URL`, `ANTHROPIC_API_KEY`, and optionally `EVA_API_KEY`. The service will get a URL like `https://eva-api-xxxx.onrender.com`.
-2. **Deploy the frontend** (Vite build):
-   - Build: `cd web && npm run build` → output in `web/dist`.
-   - Host `web/dist` as a static site (e.g. **Render** “Static Site”, **Vercel**, **Cloudflare Pages**).
-   - If the API is on another host, build with `VITE_EVA_API_URL=https://api.eva.halisoft.biz npm run build` so the frontend calls that API.
-3. Point your domain **https://eva.halisoft.biz** to the frontend (static site), and either serve the API on the same host (e.g. reverse-proxy `/api` to the Node service) or at **https://api.eva.halisoft.biz**.
-
-After deployment, your **prod URL to test EVA** is **https://eva.halisoft.biz**.
+| Phase | Name | Status |
+|-------|------|--------|
+| 1 | Archive & Memory Vault | Building |
+| 2 | Voice + Shadow Mode | Building |
+| 3 | Limited Proxy (approve-before-send) | Planned |
+| 4 | Fine-Tuned Model | Planned |
+| 5 | Autonomous Proxy | Planned |
 
 ## Security
 
-- Use `EVA_API_KEY` in production for API access.
-- Kill switch in Settings pauses autonomous operations (stored in `eva.settings`).
-- All EVA tables are in schema `eva`; no FK to Halisoft `users` so EVA stays independent.
+- `EVA_API_KEY` required in production
+- Kill switch pauses all autonomous operations
+- All data in isolated `eva` schema
+- Full audit trail for every action
+- AES-256 encryption recommended for production VPS
 
 ---
 

@@ -28,7 +28,13 @@ async function ensureOwner(req, res, next) {
     req.ownerId = owner.id;
     next();
   } catch (e) {
-    next(e);
+    console.error('[EVA] ensureOwner failed:', e.message);
+    const isDb = /DATABASE_URL|connection|ECONNREFUSED|timeout|relation "eva\./i.test(String(e.message || ''));
+    res.status(isDb ? 503 : 500).json({
+      error: isDb
+        ? 'Database unavailable. On Render: set DATABASE_URL and run eva schema migration.'
+        : (e.message || 'Server error'),
+    });
   }
 }
 

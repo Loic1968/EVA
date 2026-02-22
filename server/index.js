@@ -44,4 +44,16 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, () => {
   console.log(`[EVA] listening on port ${PORT}${fs.existsSync(distPath) ? ' (frontend served from web/dist)' : ''}`);
+
+  // Start Gmail background sync worker (Phase 2)
+  if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+    try {
+      const gmailWorker = require('./workers/gmailSyncWorker');
+      gmailWorker.start();
+    } catch (err) {
+      console.warn('[EVA] Gmail sync worker failed to start:', err.message);
+    }
+  } else {
+    console.log('[EVA] Gmail sync worker skipped (GOOGLE_CLIENT_ID not set)');
+  }
 });

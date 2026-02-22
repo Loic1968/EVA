@@ -1,0 +1,16 @@
+# Render: single Web Service for EVA (API + frontend at eva.halisoft.biz)
+services:
+  - type: web
+    name: EVA
+    runtime: node
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: EVA_API_KEY
+        sync: false

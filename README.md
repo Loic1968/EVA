@@ -125,7 +125,7 @@ eva/
 
 ## Production URL / Deployment
 
-**There is no production URL for EVA yet.** The app runs locally (backend **5002**, portal **3001**) and the code lives in **https://github.com/Loic1968/EVA**.
+**https://eva.halisoft.biz** — One Render Web Service serves both API and frontend. Build: `npm install && npm run build`. Start: `npm start`.
 
 To get a URL in production to test EVA:
 

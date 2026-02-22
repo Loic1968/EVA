@@ -1,9 +1,10 @@
 /**
  * Project EVA – API server (independent app, same stack as Halisoft: Node + Express).
- * Port 5002 by default so it does not conflict with Halisoft backend (5001).
+ * Serves API on /api and, in production, the React frontend from web/dist (SPA fallback).
  */
 require('dotenv').config();
 const path = require('path');
+const fs = require('fs');
 
 const baseEnvPath = path.resolve(__dirname, '../../.env');
 require('dotenv').config({ path: baseEnvPath });
@@ -15,7 +16,6 @@ const cors = require('cors');
 const evaRoutes = require('./routes/eva');
 
 const app = express();
-// EVA runs on 5002 by default so it does not conflict with Halisoft (5001)
 const PORT = process.env.EVA_PORT || process.env.PORT || 5002;
 
 app.use(cors({ origin: true }));
@@ -27,11 +27,21 @@ app.get('/health', (req, res) => {
 
 app.use('/api', evaRoutes);
 
+// Serve frontend (web/dist) when built (e.g. on Render: single service for eva.halisoft.biz)
+const distPath = path.join(__dirname, '../web/dist');
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api')) return next();
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
+}
+
 app.use((err, req, res, next) => {
   console.error('[EVA]', err);
   res.status(500).json({ error: err.message || 'Internal server error' });
 });
 
 app.listen(PORT, () => {
-  console.log(`[EVA] API listening on http://localhost:${PORT}`);
+  console.log(`[EVA] listening on port ${PORT}${fs.existsSync(distPath) ? ' (frontend served from web/dist)' : ''}`);
 });

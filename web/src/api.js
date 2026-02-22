@@ -1,4 +1,7 @@
-const API_BASE = '/api';
+// In production, set VITE_EVA_API_URL (e.g. https://api.eva.halisoft.biz) at build time if API is on another host
+const API_BASE = import.meta.env.VITE_EVA_API_URL
+  ? `${import.meta.env.VITE_EVA_API_URL.replace(/\/$/, '')}/api`
+  : '/api';
 
 async function request(path, options = {}) {
   const url = path.startsWith('http') ? path : `${API_BASE}${path}`;

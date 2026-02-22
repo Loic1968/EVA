@@ -19,6 +19,10 @@ Phases 1–2 (Memory Vault, Voice, Shadow Mode) are supported by this app; the P
 | Backend  | Node.js + Express (5001) | Node.js + Express (5002) |
 | Frontend | React (CRA)      | React + Vite (3001) |
 
+## Production URL
+
+**https://eva.halisoft.biz** — Use this domain when you deploy EVA (frontend + API behind same host or via `api.eva.halisoft.biz` for the API).
+
 ## Quick start
 
 ### 1. Database migration
@@ -118,6 +122,21 @@ eva/
 - **Phase 2** – Voice + Shadow Mode: OpenAI Realtime API, Flutter app. This app: drafts queue, audit log.
 - **Phase 3** – Limited proxy: approve-before-send. This app: draft approve/reject/send.
 - **Phase 4–5** – Fine-tuned model, autonomous proxy. This app: settings (kill switch), confidence summary, audit.
+
+## Production URL / Deployment
+
+**There is no production URL for EVA yet.** The app runs locally (backend **5002**, portal **3001**) and the code lives in **https://github.com/Loic1968/EVA**.
+
+To get a URL in production to test EVA:
+
+1. **Deploy the backend** (Node API) to a host that runs Node and has access to your PostgreSQL (e.g. **Render** “Web Service”, **Railway**, **Fly.io”). Set `DATABASE_URL`, `ANTHROPIC_API_KEY`, and optionally `EVA_API_KEY`. The service will get a URL like `https://eva-api-xxxx.onrender.com`.
+2. **Deploy the frontend** (Vite build):
+   - Build: `cd web && npm run build` → output in `web/dist`.
+   - Host `web/dist` as a static site (e.g. **Render** “Static Site”, **Vercel**, **Cloudflare Pages**).
+   - If the API is on another host, build with `VITE_EVA_API_URL=https://api.eva.halisoft.biz npm run build` so the frontend calls that API.
+3. Point your domain **https://eva.halisoft.biz** to the frontend (static site), and either serve the API on the same host (e.g. reverse-proxy `/api` to the Node service) or at **https://api.eva.halisoft.biz**.
+
+After deployment, your **prod URL to test EVA** is **https://eva.halisoft.biz**.
 
 ## Security
 

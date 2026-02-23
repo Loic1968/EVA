@@ -632,7 +632,7 @@ router.get('/oauth/gmail/callback', async (req, res, next) => {
       ]
     );
 
-    // Register in data_sources (schema: no status column). Upsert by delete+insert if row exists.
+    // Register in data_sources (upsert)
     const configJson = JSON.stringify({ connected_at: new Date().toISOString() });
     const existing = await db.query(
       `SELECT id FROM eva.data_sources WHERE owner_id = $1 AND source_type = 'gmail' AND external_id = $2`,
@@ -705,7 +705,7 @@ router.delete('/gmail/accounts/:id', async (req, res, next) => {
       await googleOAuth.revokeToken(acct.rows[0].access_token);
       // Delete account (cascades to emails via FK)
       await db.query('DELETE FROM eva.gmail_accounts WHERE id = $1 AND owner_id = $2', [accountId, req.ownerId]);
-      // Remove from data_sources (schema has no status column)
+      // Remove from data_sources
       await db.query(
         `DELETE FROM eva.data_sources WHERE owner_id = $1 AND source_type = 'gmail' AND external_id = $2`,
         [req.ownerId, acct.rows[0].gmail_address]
@@ -766,6 +766,7 @@ router.get('/gmail/emails', async (req, res, next) => {
     params.push(Math.min(Number(limit) || 50, 100), Number(offset) || 0);
 
     const r = await db.query(query, params);
+
     const countResult = await db.query('SELECT count(*) as cnt FROM eva.emails WHERE owner_id = $1', [req.ownerId]);
 
     res.json({ emails: r.rows, total: Number(countResult.rows[0].cnt) });

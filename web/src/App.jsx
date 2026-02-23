@@ -8,6 +8,7 @@ import DataSources from './pages/DataSources';
 import Documents from './pages/Documents';
 import Chat from './pages/Chat';
 import ChatRealtime from './pages/ChatRealtime';
+
 import Emails from './pages/Emails';
 
 export default function App() {
@@ -18,6 +19,7 @@ export default function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/chat" element={<Chat />} />
           <Route path="/chat/realtime" element={<ChatRealtime />} />
+
           <Route path="/emails" element={<Emails />} />
           <Route path="/drafts" element={<Drafts />} />
           <Route path="/documents" element={<Documents />} />

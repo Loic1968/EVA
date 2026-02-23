@@ -22,10 +22,9 @@ const PORT = process.env.EVA_PORT || process.env.PORT || 5002;
 const isProd = process.env.NODE_ENV === 'production';
 const API_KEY = process.env.EVA_API_KEY;
 
-// Production: EVA_API_KEY required (exit if missing)
+// Production: EVA_API_KEY strongly recommended (warn if missing, app still starts)
 if (isProd && !process.env.EVA_API_KEY) {
-  console.error('[EVA] Production requires EVA_API_KEY. Set it in Render → Environment.');
-  process.exit(1);
+  console.warn('[EVA] WARNING: EVA_API_KEY not set. Add it in Render → Environment for API protection.');
 }
 
 // Helmet – security headers

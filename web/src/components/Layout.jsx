@@ -3,7 +3,9 @@ import { useState } from 'react';
 
 const nav = [
   { to: '/', label: 'Dashboard', icon: '◉' },
-  { to: '/chat', label: 'Parler à EVA', icon: '◈' },
+  { to: '/chat/realtime', label: '🎤 Real Time (voix)', icon: '🎤', highlight: true },
+  { to: '/chat', label: 'Chat EVA', icon: '◈' },
+  { to: '/emails', label: 'Emails', icon: '✉' },
   { to: '/drafts', label: 'Drafts', icon: '◇' },
   { to: '/documents', label: 'Documents', icon: '◆' },
   { to: '/audit', label: 'Audit Log', icon: '◎' },
@@ -32,14 +34,16 @@ export default function Layout({ children }) {
           )}
         </div>
         <nav className="p-2 flex-1 space-y-0.5">
-          {nav.map(({ to, label, icon }) => (
+          {nav.map(({ to, label, icon, highlight }) => (
             <NavLink
               key={to}
               to={to}
               title={collapsed ? label : undefined}
               className={({ isActive }) =>
                 `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${
-                  isActive ? 'bg-eva-accent/15 text-eva-accent font-medium' : 'text-slate-400 hover:bg-slate-700/40 hover:text-slate-200'
+                  isActive ? 'bg-eva-accent/15 text-eva-accent font-medium' :
+                  highlight ? 'text-cyan-400 hover:bg-cyan-500/20 hover:text-cyan-300 font-medium' :
+                  'text-slate-400 hover:bg-slate-700/40 hover:text-slate-200'
                 } ${collapsed ? 'justify-center' : ''}`
               }
             >

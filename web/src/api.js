@@ -1,8 +1,20 @@
 // EVA API client
 // In production, set VITE_EVA_API_URL (e.g. https://api.eva.halisoft.biz) at build time
-const API_BASE = import.meta.env.VITE_EVA_API_URL
-  ? `${import.meta.env.VITE_EVA_API_URL.replace(/\/$/, '')}/api`
-  : '/api';
+// In dev: use /api (proxied) when on network (iPhone), else localhost:5002 for direct
+function getApiBase() {
+  if (import.meta.env.VITE_EVA_API_URL) {
+    return `${import.meta.env.VITE_EVA_API_URL.replace(/\/$/, '')}/api`;
+  }
+  if (import.meta.env.DEV) {
+    // On iPhone/remote: use same host (proxied by Vite)
+    if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+      return `${window.location.origin}/api`;
+    }
+    return 'http://localhost:5002/api';
+  }
+  return '/api';
+}
+const API_BASE = getApiBase();
 
 async function request(path, options = {}) {
   const url = path.startsWith('http') ? path : `${API_BASE}${path}`;
@@ -20,9 +32,49 @@ async function request(path, options = {}) {
 }
 
 export const api = {
-  // Chat
+  // Chat (non-streaming)
   chat: (message, history, conversation_id) =>
     request('/chat', { method: 'POST', body: JSON.stringify({ message, history, conversation_id }) }),
+
+  // Chat stream (SSE) — returns async iterable of { type, text?, reply?, ... }
+  chatStream: async function* (message, history, conversation_id) {
+    const url = `${API_BASE.replace(/\/$/, '')}/chat/stream`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, history, conversation_id }),
+    });
+    if (!res.ok) {
+      const err = new Error(res.statusText || 'Stream failed');
+      err.status = res.status;
+      try { err.body = await res.json(); } catch (_) {}
+      throw err;
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split(/\n\n/);
+      buf = lines.pop() || '';
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            yield JSON.parse(line.slice(6));
+          } catch (_) {}
+        }
+      }
+    }
+    if (buf.startsWith('data: ')) {
+      try {
+        yield JSON.parse(buf.slice(6));
+      } catch (_) {}
+    }
+  },
+
+  status: () => request('/status'),
 
   // Conversations
   getConversations: (params) => request('/conversations?' + new URLSearchParams(params || {})),
@@ -60,6 +112,15 @@ export const api = {
     return res.json();
   },
 
+  // Gmail OAuth & Emails
+  getGmailAuthUrl: () => request('/oauth/gmail/start'),
+  getGmailAccounts: () => request('/gmail/accounts'),
+  syncGmail: (accountId) => request(`/gmail/sync/${accountId}`, { method: 'POST' }),
+  disconnectGmail: (accountId) => request(`/gmail/accounts/${accountId}`, { method: 'DELETE' }),
+  getEmails: (params) => request('/gmail/emails?' + new URLSearchParams(params || {})),
+  getEmail: (id) => request(`/gmail/emails/${id}`),
+  searchEmails: (q, limit = 20) => request(`/gmail/emails?q=${encodeURIComponent(q)}&limit=${limit}`),
+
   // Confidence summary
   getConfidenceSummary: () => request('/confidence-summary'),
 
@@ -68,4 +129,44 @@ export const api = {
 
   // Stats
   getStats: () => request('/stats'),
+
+  // Voice (OpenAI Whisper + TTS) — ChatGPT-level oral
+  voiceStatus: () => request('/voice/status'),
+  voiceStt: async (audioBlob) => {
+    const url = `${API_BASE.replace(/\/$/, '')}/voice/stt`;
+    const base64 = await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result.split(',')[1] || '');
+      r.onerror = reject;
+      r.readAsDataURL(audioBlob);
+    });
+    const t = (audioBlob.type || '').toLowerCase();
+    const format = /mp4|m4a|x-m4a/.test(t) ? 'm4a' : /ogg|opus/.test(t) ? 'ogg' : /mpeg|mp3/.test(t) ? 'mp3' : 'webm';
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ audio: base64, format }),
+    });
+    if (!res.ok) {
+      const err = new Error(res.statusText || 'STT failed');
+      err.status = res.status;
+      try { err.body = await res.json(); } catch (_) {}
+      throw err;
+    }
+    return res.json();
+  },
+  voiceTts: async (text) => {
+    const url = `${API_BASE.replace(/\/$/, '')}/voice/tts`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: (text || '').slice(0, 4096), lang: 'auto' }),
+    });
+    if (!res.ok) {
+      const err = new Error(res.statusText || 'TTS failed');
+      err.status = res.status;
+      throw err;
+    }
+    return res.blob();
+  },
 };

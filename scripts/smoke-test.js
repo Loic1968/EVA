@@ -59,6 +59,20 @@ async function run() {
   }
 
   try {
+    const st = await get('/api/status');
+    if (st.status === 200 && typeof st.data?.eva_enabled === 'boolean') {
+      console.log('  GET /api/status OK (eva_enabled:', st.data.eva_enabled + ')');
+      ok++;
+    } else {
+      console.log('  GET /api/status FAIL', st.status);
+      fail++;
+    }
+  } catch (e) {
+    console.log('  GET /api/status ERROR', e.message);
+    fail++;
+  }
+
+  try {
     const s = await get('/api/settings');
     if (s.status === 200 && typeof s.data === 'object') {
       console.log('  GET /api/settings OK');

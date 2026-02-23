@@ -10,11 +10,12 @@ Dans **Render** → service **EVA** → **Environment** :
 |----------|-------------|-------------|
 | **DATABASE_URL** | Oui | URL PostgreSQL (même DB que Halisoft si tu veux). Ex. `postgresql://user:pass@host:5432/dbname` |
 | **ANTHROPIC_API_KEY** ou **CLAUDE_API_KEY** | Oui (pour le chat) | Clé API Anthropic pour que EVA réponde dans le chat |
+| **EVA_API_KEY** | Oui (prod) | Obligatoire en prod. Same-origin (eva.halisoft.biz) autorisé sans clé. |
 
 Optionnel :
 
 - **EVA_OWNER_EMAIL** : `loic@halisoft.biz` (défaut)
-- **EVA_API_KEY** : si tu veux protéger l’API par clé
+- **EVA_ALLOWED_ORIGINS** : CORS restrictif (défaut: eva.halisoft.biz)
 
 ## 2. Schéma EVA dans la base
 

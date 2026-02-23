@@ -13,13 +13,24 @@ const gmailSync = require('../services/gmailSync');
 
 const API_KEY = process.env.EVA_API_KEY;
 const EVA_ENABLED = process.env.EVA_ENABLED !== 'false';
+const isProd = process.env.NODE_ENV === 'production';
+
+// Same-origin: no Origin header (browser omits it for same-origin). Cross-origin sends Origin.
+const allowedOrigins = (process.env.EVA_ALLOWED_ORIGINS || 'https://eva.halisoft.biz,https://www.eva.halisoft.biz')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
 
 function optionalAuth(req, res, next) {
   const key = req.headers['x-api-key'] || req.query.api_key;
-  if (API_KEY && key !== API_KEY) {
-    return res.status(401).json({ error: 'Invalid or missing API key' });
+  if (!API_KEY) return next();
+  if (key === API_KEY) return next();
+  // Prod: allow same-origin (no Origin = same-origin) or allowed origins
+  if (isProd) {
+    const origin = req.get('origin');
+    if (!origin || allowedOrigins.includes(origin)) return next();
   }
-  next();
+  return res.status(401).json({ error: 'Invalid or missing API key' });
 }
 
 router.use(optionalAuth);

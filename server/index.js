@@ -28,8 +28,19 @@ if (isProd && !process.env.EVA_API_KEY) {
   console.warn('[EVA] WARNING: EVA_API_KEY not set. Add it in Render → Environment for API protection.');
 }
 
-// Helmet – security headers
-app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+// Helmet – security headers (CSP allows OpenAI Realtime for voice)
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      connectSrc: ["'self'", "https://api.openai.com", "wss://api.openai.com"],
+      mediaSrc: ["'self'", "blob:", "https://api.openai.com"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+    },
+  },
+}));
 
 // CORS – restrictive in prod: only eva.halisoft.biz and configured origins
 const allowedOrigins = (process.env.EVA_ALLOWED_ORIGINS || 'https://eva.halisoft.biz,https://www.eva.halisoft.biz')

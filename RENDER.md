@@ -40,3 +40,10 @@ Si EVA est dans un repo séparé, le SQL de la migration est dans la doc du repo
 - **Start Command :** `npm start`
 
 Pas besoin de changer le **Root Directory** si le repo déployé est bien le repo EVA (racine = dossier avec `server/` et `web/`).
+
+## 5. Debug : le déploiement échoue
+
+1. **Logs** : Render → EVA → Logs. Regarde l’erreur précise (build ou runtime).
+2. **Build échoue** : Vérifie que le repo est bien `Loic1968/EVA` (pas Halisoft). Si monorepo Halisoft, mets **Root Directory** = `eva`.
+3. **Runtime crash** : Vérifie `DATABASE_URL` et `ANTHROPIC_API_KEY`. Sans DB, l’app peut planter au premier appel API.
+4. **EVA_API_KEY** : optionnel au démarrage. Si absent, un simple warning est logué.

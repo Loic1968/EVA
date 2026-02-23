@@ -6,10 +6,11 @@ require('dotenv').config();
 const path = require('path');
 const fs = require('fs');
 
-const baseEnvPath = path.resolve(__dirname, '../../.env');
-require('dotenv').config({ path: baseEnvPath });
+// Load .env from eva/ and optionally parent (monorepo)
 const localEnvPath = path.resolve(__dirname, '../.env');
-require('dotenv').config({ path: localEnvPath });
+const baseEnvPath = path.resolve(__dirname, '../../.env');
+if (fs.existsSync(localEnvPath)) require('dotenv').config({ path: localEnvPath });
+if (fs.existsSync(baseEnvPath)) require('dotenv').config({ path: baseEnvPath });
 
 const express = require('express');
 const cors = require('cors');

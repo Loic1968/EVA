@@ -30,7 +30,7 @@ export default function Login() {
         <div className="text-center mb-8">
           <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center text-white font-bold text-xl mx-auto mb-3">E</div>
           <h1 className="text-2xl font-semibold text-white">EVA</h1>
-          <p className="text-eva-muted text-sm">Digital Twin — Connecte-toi</p>
+          <p className="text-eva-muted text-sm">Digital Twin — Sign in</p>
         </div>
         <div className="bg-eva-panel rounded-xl border border-slate-700/40 p-6">
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -47,7 +47,7 @@ export default function Login() {
               />
             </div>
             <div>
-              <label className="block text-sm text-slate-400 mb-1">Mot de passe</label>
+              <label className="block text-sm text-slate-400 mb-1">Password</label>
               <input
                 type="password"
                 value={password}
@@ -61,15 +61,15 @@ export default function Login() {
               disabled={loading}
               className="w-full py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-medium rounded-lg hover:from-cyan-400 hover:to-blue-500 disabled:opacity-50 transition-all"
             >
-              {loading ? 'Connexion...' : 'Se connecter'}
+              {loading ? 'Signing in...' : 'Sign in'}
             </button>
           </form>
           <div className="mt-4 text-center">
-            <Link to="/forgot-password" className="text-sm text-cyan-400 hover:text-cyan-300">Mot de passe oublié ?</Link>
+            <Link to="/forgot-password" className="text-sm text-cyan-400 hover:text-cyan-300">Forgot password?</Link>
           </div>
         </div>
         <p className="text-center text-eva-muted text-sm mt-6">
-          Pas de compte ? <Link to="/signup" className="text-cyan-400 hover:text-cyan-300">S'inscrire</Link>
+          No account? <Link to="/signup" className="text-cyan-400 hover:text-cyan-300">Sign up</Link>
         </p>
       </div>
     </div>

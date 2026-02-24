@@ -4,7 +4,7 @@ import EvaTopBar from './EvaTopBar';
 import { useAuth } from '../context/AuthContext';
 
 const nav = [
-  { to: '/voice', label: '🎤 Real Time (voix)', icon: '🎤', highlight: true },
+  { to: '/voice', label: 'Real-Time (Voice)', icon: '🎤', highlight: true },
   { to: '/dashboard', label: 'Dashboard', icon: '◉' },
   { to: '/chat', label: 'Chat EVA', icon: '◈' },
   { to: '/emails', label: 'Emails', icon: '✉' },
@@ -69,7 +69,7 @@ export default function Layout({ children }) {
               <div className="flex-1 min-w-0">
                 <div className="text-xs text-eva-muted truncate">{user?.email || (user?.skipAuth ? 'Guest' : '')}</div>
                 {requireAuth && (
-                  <button onClick={() => { logout(); navigate('/login'); }} className="text-[10px] text-slate-500 hover:text-red-400">Déconnexion</button>
+                  <button onClick={() => { logout(); navigate('/login'); }} className="text-[10px] text-slate-500 hover:text-red-400">Log out</button>
                 )}
               </div>
             </div>

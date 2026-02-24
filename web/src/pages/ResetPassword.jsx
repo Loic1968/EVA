@@ -21,7 +21,7 @@ export default function ResetPassword() {
       await resetPassword(token, email.trim(), password);
       navigate('/voice', { replace: true });
     } catch (err) {
-      setError(err.body?.error || err.message || 'Réinitialisation échouée');
+      setError(err.body?.error || err.message || 'Reset failed');
     } finally {
       setLoading(false);
     }
@@ -31,8 +31,8 @@ export default function ResetPassword() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-eva-dark p-4">
         <div className="text-center">
-          <p className="text-red-400">Lien invalide ou expiré.</p>
-          <Link to="/forgot-password" className="text-cyan-400 hover:text-cyan-300 mt-4 inline-block">Demander un nouveau lien</Link>
+          <p className="text-red-400">Invalid or expired link.</p>
+          <Link to="/forgot-password" className="text-cyan-400 hover:text-cyan-300 mt-4 inline-block">Request a new link</Link>
         </div>
       </div>
     );
@@ -43,7 +43,7 @@ export default function ResetPassword() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center text-white font-bold text-xl mx-auto mb-3">E</div>
-          <h1 className="text-2xl font-semibold text-white">Nouveau mot de passe</h1>
+          <h1 className="text-2xl font-semibold text-white">New password</h1>
         </div>
         <div className="bg-eva-panel rounded-xl border border-slate-700/40 p-6">
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -59,7 +59,7 @@ export default function ResetPassword() {
               />
             </div>
             <div>
-              <label className="block text-sm text-slate-400 mb-1">Nouveau mot de passe</label>
+              <label className="block text-sm text-slate-400 mb-1">New password</label>
               <input
                 type="password"
                 value={password}
@@ -73,12 +73,12 @@ export default function ResetPassword() {
               disabled={loading}
               className="w-full py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-medium rounded-lg hover:from-cyan-400 hover:to-blue-500 disabled:opacity-50 transition-all"
             >
-              {loading ? 'Enregistrement...' : 'Réinitialiser'}
+              {loading ? 'Saving...' : 'Reset'}
             </button>
           </form>
         </div>
         <p className="text-center text-eva-muted text-sm mt-6">
-          <Link to="/login" className="text-cyan-400 hover:text-cyan-300">← Retour connexion</Link>
+          <Link to="/login" className="text-cyan-400 hover:text-cyan-300">← Back to sign in</Link>
         </p>
       </div>
     </div>

@@ -11,11 +11,11 @@ const OPENAI_KEY = (process.env.OPENAI_API_KEY || '').trim();
 const REALTIME_ENABLED = !!OPENAI_KEY;
 const DEFAULT_OWNER_EMAIL = process.env.EVA_OWNER_EMAIL || 'loic@halisoft.biz';
 
-const EVA_INSTRUCTIONS_BASE = `Tu es EVA, assistant personnel de Loic (HaliSoft, Dubai). Réponses courtes et directes. Parle en français ou anglais selon la langue de l'utilisateur. Style professionnel mais chaleureux.
+const EVA_INSTRUCTIONS_BASE = `You are EVA, personal assistant (HaliSoft, Dubai). Keep answers short and direct. Professional but warm style.
 
-ACCÈS AUX DONNÉES: Tu as accès à TOUT ce qui est injecté ci-dessous (emails + documents). Utilise ces données pour répondre à toute question de Loic. Pas de caméra ni calendrier.
+DATA ACCESS: You have access to everything injected below (emails + documents). Use this data to answer any question. No camera or calendar.
 
-STOP: Si Loic dit "stop", "arrête", "assez", "stop talking" — réponds UNIQUEMENT "OK" ou "D'accord" en une toute courte phrase puis TAIRE. Ne continue pas.`;
+STOP: If the user says "stop", "arrête", "assez", "stop talking" — reply ONLY "OK" or "Understood" in a very short phrase then STOP. Do not continue.`;
 
 async function buildInstructionsWithContext(ownerId) {
   let instructions = EVA_INSTRUCTIONS_BASE;
@@ -25,7 +25,15 @@ async function buildInstructionsWithContext(ownerId) {
       : await db.getOrCreateOwner(DEFAULT_OWNER_EMAIL, 'Loic Hennocq');
     if (!owner) return instructions;
 
-    // Emails — tous les récents
+    // Chat language from settings (en/fr)
+    const langRow = await db.query('SELECT value FROM eva.settings WHERE owner_id = $1 AND key = $2', [owner.id, 'chat_language']);
+    const chatLang = langRow.rows[0]?.value?.lang || 'en';
+    const langInstr = chatLang === 'fr'
+      ? 'CRITICAL: Reply ONLY in French. Always write and speak in French.'
+      : 'CRITICAL: Reply ONLY in English. Always write and speak in English.';
+    instructions = langInstr + '\n\n' + instructions;
+
+    // Emails — recent
     let gmailSync = null;
     try {
       gmailSync = require('../services/gmailSync');
@@ -34,7 +42,7 @@ async function buildInstructionsWithContext(ownerId) {
       const recent = await gmailSync.getRecentEmails(owner.id, 30);
       if (recent.length > 0) {
         console.log(`[EVA Realtime] Injected ${recent.length} emails`);
-        instructions += '\n\n## EMAILS (accès complet)\n';
+        instructions += '\n\n## EMAILS (full access)\n';
         recent.forEach((e) => {
           const date = new Date(e.received_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
           const snippet = (e.snippet || '').slice(0, 300);
@@ -54,11 +62,11 @@ async function buildInstructionsWithContext(ownerId) {
       const docs = await docProcessor.getRecentDocuments(owner.id, 10);
       if (docs.length > 0) {
         console.log(`[EVA Realtime] Injected ${docs.length} documents`);
-        instructions += '\n\n## DOCUMENTS UPLOADÉS (accès complet)\n';
+        instructions += '\n\n## UPLOADED DOCUMENTS (full access)\n';
         docs.forEach((d) => {
           instructions += `**${d.filename}:**\n${(d.content_text || '').slice(0, 1200)}\n\n`;
         });
-        instructions += 'Utilise ces documents pour vol, billet, Shanghai, rendez-vous, etc.';
+        instructions += 'Use these documents for flights, tickets, Shanghai, meetings, etc.';
       }
     }
   } catch (err) {

@@ -22,11 +22,11 @@ export default function DataSources() {
     loadData();
     const params = new URLSearchParams(window.location.search);
     if (params.get('connected') === 'gmail') {
-      setConnectSuccess('Gmail connecté avec succès ! Synchronisation en cours...');
+      setConnectSuccess('Gmail connected successfully. Syncing...');
       window.history.replaceState({}, '', '/sources');
     }
     if (params.get('error')) {
-      setError('Erreur OAuth: ' + params.get('error'));
+      setError('OAuth error: ' + params.get('error'));
       window.history.replaceState({}, '', '/sources');
     }
   }, []);
@@ -52,7 +52,7 @@ export default function DataSources() {
       const { auth_url } = await api.getGmailAuthUrl();
       window.location.href = auth_url;
     } catch (e) {
-      setError('Gmail OAuth non disponible: ' + (e.body?.error || e.message) + '. Vérifiez que EVA_GOOGLE_CLIENT_ID et EVA_GOOGLE_CLIENT_SECRET sont configurés sur Render (service EVA).');
+      setError('Gmail OAuth not available: ' + (e.body?.error || e.message) + '. Ensure EVA_GOOGLE_CLIENT_ID and EVA_GOOGLE_CLIENT_SECRET are set on Render (EVA service).');
     }
   };
 
@@ -69,7 +69,7 @@ export default function DataSources() {
   };
 
   const disconnectGmail = async (accountId) => {
-    if (!confirm('Déconnecter ce compte Gmail ? Tous les emails synchronisés seront supprimés.')) return;
+    if (!confirm('Disconnect this Gmail account? All synced emails will be removed.')) return;
     try {
       await api.disconnectGmail(accountId);
       await loadData();
@@ -232,11 +232,11 @@ export default function DataSources() {
 
       {/* Pipeline info */}
       <div className="bg-slate-800/40 rounded-xl p-5 text-sm text-slate-400 max-w-2xl">
-        <h3 className="text-slate-300 font-medium mb-2">Comment fonctionne le Memory Vault</h3>
+        <h3 className="text-slate-300 font-medium mb-2">How the Memory Vault works</h3>
         <p>
-          Phase 2 : EVA se connecte directement à tes comptes (Gmail via OAuth2) et synchronise tes emails toutes les 30 minutes.
-          Les emails sont indexés avec PostgreSQL full-text search. Quand tu poses une question à EVA sur un email ou un contact,
-          elle cherche dans ta boîte mail et utilise le contexte pour répondre précisément.
+          Phase 2: EVA connects directly to your accounts (Gmail via OAuth2) and syncs your emails every 30 minutes.
+          Emails are indexed with PostgreSQL full-text search. When you ask EVA about an email or contact,
+          it searches your inbox and uses context to respond accurately.
         </p>
       </div>
     </div>

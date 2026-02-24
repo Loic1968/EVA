@@ -35,8 +35,6 @@ export default function ChatRealtime() {
   const dataChannelRef = useRef(null);
   const audioRef = useRef(null);
   const durationInterval = useRef(null);
-  const lang = navigator.language?.startsWith('fr') ? 'fr' : 'en';
-
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
@@ -176,26 +174,24 @@ export default function ChatRealtime() {
           <div className="w-24 h-24 rounded-full bg-slate-700/60 flex items-center justify-center">
             <span className="text-4xl">📞</span>
           </div>
-          <h2 className="text-xl font-semibold text-white">
-            {lang === 'fr' ? 'Appeler EVA' : 'Call EVA'}
-          </h2>
+          <h2 className="text-xl font-semibold text-white">Call EVA</h2>
           <p className="text-slate-400 text-sm text-center max-w-xs">
-            {lang === 'fr' ? 'Conversation vocale en direct (comme ChatGPT)' : 'Live voice conversation (like ChatGPT)'}
+            Live voice conversation (like ChatGPT)
           </p>
           {audioDevices.length > 0 && (
             <div className="w-full max-w-xs">
               <label className="block text-slate-500 text-xs mb-1">
-                🎧 {lang === 'fr' ? 'Micro (AirPods, etc.)' : 'Microphone (AirPods, etc.)'}
+                🎧 Microphone (AirPods, etc.)
               </label>
               <select
                 value={selectedDeviceId}
                 onChange={(e) => setSelectedDeviceId(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg bg-slate-800/80 border border-slate-600/60 text-slate-200 text-sm focus:outline-none focus:ring-1 focus:ring-cyan-400"
               >
-                <option value="">{lang === 'fr' ? 'Par défaut' : 'Default'}</option>
+                <option value="">Default</option>
                 {audioDevices.map((d) => (
                   <option key={d.deviceId} value={d.deviceId}>
-                    {d.label || `Micro ${audioDevices.indexOf(d) + 1}`}
+                    {d.label || `Mic ${audioDevices.indexOf(d) + 1}`}
                   </option>
                 ))}
               </select>
@@ -204,7 +200,7 @@ export default function ChatRealtime() {
           <button
             onClick={startSession}
             className="w-20 h-20 rounded-full bg-emerald-500 hover:bg-emerald-400 text-white flex items-center justify-center text-2xl shadow-lg shadow-emerald-500/30 transition-all hover:scale-105 active:scale-95"
-            title={lang === 'fr' ? 'Appeler' : 'Call'}
+            title="Call"
           >
             <svg className="w-10 h-10" fill="currentColor" viewBox="0 0 24 24"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
           </button>
@@ -212,7 +208,7 @@ export default function ChatRealtime() {
       ) : status === 'connecting' ? (
         <div className="flex flex-col items-center gap-4">
           <div className="w-16 h-16 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin" />
-          <p className="text-slate-400">{lang === 'fr' ? 'Connexion…' : 'Connecting…'}</p>
+          <p className="text-slate-400">Connecting…</p>
         </div>
       ) : (
         <div className="flex flex-col w-full max-w-lg">
@@ -220,14 +216,12 @@ export default function ChatRealtime() {
             <div className="w-16 h-16 rounded-full bg-emerald-500/20 flex items-center justify-center">
               <span className="w-4 h-4 rounded-full bg-emerald-400 animate-pulse" />
             </div>
-            <p className="text-emerald-400 font-medium">{lang === 'fr' ? 'Connecté' : 'Connected'}</p>
+            <p className="text-emerald-400 font-medium">Connected</p>
             <p className="text-slate-500 text-sm font-mono">{formatDuration(callDuration)}</p>
           </div>
           <div className="flex-1 rounded-xl bg-slate-800/60 border border-slate-700/40 p-4 max-h-64 overflow-y-auto space-y-3">
             {transcript.length === 0 ? (
-              <p className="text-slate-500 text-sm text-center py-4">
-                {lang === 'fr' ? 'Parlez…' : 'Speak…'}
-              </p>
+              <p className="text-slate-500 text-sm text-center py-4">Speak…</p>
             ) : (
               transcript.map((item, i) => (
                 <div key={i} className={`flex ${item.role === 'user' ? 'justify-end' : ''}`}>
@@ -241,7 +235,7 @@ export default function ChatRealtime() {
           <button
             onClick={stopSession}
             className="mt-6 w-16 h-16 rounded-full bg-red-500/30 hover:bg-red-500/50 text-red-300 mx-auto flex items-center justify-center transition-colors"
-            title={lang === 'fr' ? 'Raccrocher' : 'Hang up'}
+            title="Hang up"
           >
             <svg className="w-8 h-8 rotate-[135deg]" fill="currentColor" viewBox="0 0 24 24"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
           </button>

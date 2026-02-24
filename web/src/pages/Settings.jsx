@@ -30,6 +30,21 @@ export default function Settings() {
     }
   };
 
+  const setChatLanguage = async (lang) => {
+    setSaving(true);
+    setSaved(false);
+    try {
+      await api.setSetting('chat_language', { lang });
+      setSettings((s) => ({ ...s, chat_language: { lang } }));
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const setSyncFrequency = async (minutes) => {
     setSaving(true);
     setSaved(false);
@@ -98,11 +113,32 @@ export default function Settings() {
         <p className="text-eva-muted text-sm mt-1">Control EVA's behavior and security settings</p>
       </div>
 
+      {/* Chat Language */}
+      <div className="bg-eva-panel rounded-xl border border-slate-700/40 p-6 max-w-2xl">
+        <h2 className="text-lg font-medium text-white mb-2">Chat language</h2>
+        <p className="text-eva-muted text-sm mb-4">
+          Language EVA uses when responding (voice & chat).
+        </p>
+        <div className="flex items-center gap-3">
+          <select
+            value={settings.chat_language?.lang ?? 'en'}
+            onChange={(e) => setChatLanguage(e.target.value)}
+            disabled={saving}
+            className="bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-cyan-500 focus:border-transparent disabled:opacity-50"
+          >
+            <option value="en">English</option>
+            <option value="fr">French</option>
+          </select>
+          {saving && <span className="text-eva-muted text-sm">Saving...</span>}
+          {saved && <span className="text-emerald-400 text-sm">Saved</span>}
+        </div>
+      </div>
+
       {/* Sync Frequency */}
       <div className="bg-eva-panel rounded-xl border border-slate-700/40 p-6 max-w-2xl">
-        <h2 className="text-lg font-medium text-white mb-2">Fréquence de synchronisation Gmail</h2>
+        <h2 className="text-lg font-medium text-white mb-2">Gmail sync frequency</h2>
         <p className="text-eva-muted text-sm mb-4">
-          Détermine à quel intervalle EVA récupère tes nouveaux emails. Plus fréquent = données plus à jour, mais plus de requêtes API.
+          How often EVA fetches your new emails. More frequent = fresher data, but more API requests.
         </p>
         <div className="flex items-center gap-3">
           <select
@@ -115,11 +151,11 @@ export default function Settings() {
             <option value={10}>10 minutes</option>
             <option value={15}>15 minutes</option>
             <option value={30}>30 minutes</option>
-            <option value={60}>1 heure</option>
-            <option value={120}>2 heures</option>
+            <option value={60}>1 hour</option>
+            <option value={120}>2 hours</option>
           </select>
-          {saving && <span className="text-eva-muted text-sm">Enregistrement...</span>}
-          {saved && <span className="text-emerald-400 text-sm">Enregistré</span>}
+          {saving && <span className="text-eva-muted text-sm">Saving...</span>}
+          {saved && <span className="text-emerald-400 text-sm">Saved</span>}
         </div>
       </div>
 
@@ -161,7 +197,7 @@ export default function Settings() {
       <div className="bg-eva-panel rounded-xl border border-slate-700/40 p-6 max-w-2xl">
         <h2 className="text-lg font-medium text-white mb-2">Permission Tiers</h2>
         <p className="text-eva-muted text-sm mb-4">
-          Définis ce qu'EVA peut faire par canal. Clique sur chaque badge pour activer/désactiver.
+          Control what EVA can do per channel. Click each badge to enable/disable.
         </p>
         <div className="space-y-3">
           {tierKeys.map((key) => {
@@ -187,7 +223,7 @@ export default function Settings() {
                         className={`text-xs px-2 py-1 rounded cursor-pointer transition-colors disabled:opacity-50 hover:opacity-80 ${
                           tier[perm] ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-700 text-slate-500'
                         }`}
-                        title={`${tier[perm] ? 'Désactiver' : 'Activer'} ${perm}`}
+                        title={`${tier[perm] ? 'Disable' : 'Enable'} ${perm}`}
                       >
                         {perm}
                       </button>
@@ -198,8 +234,8 @@ export default function Settings() {
             );
           })}
         </div>
-        {saving && <span className="text-eva-muted text-xs mt-2 block">Enregistrement...</span>}
-        {saved && <span className="text-emerald-400 text-xs mt-2 block">Enregistré</span>}
+        {saving && <span className="text-eva-muted text-xs mt-2 block">Saving...</span>}
+        {saved && <span className="text-emerald-400 text-xs mt-2 block">Saved</span>}
       </div>
 
       {/* Security info */}

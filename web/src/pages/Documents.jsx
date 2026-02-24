@@ -164,9 +164,9 @@ export default function Documents() {
                       onClick={() => handleProcess(doc)}
                       disabled={processingId !== null}
                       className="text-xs px-2 py-1 rounded bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 disabled:opacity-50"
-                      title="Extraire le texte pour que EVA puisse chercher dedans"
+                      title="Extract text so EVA can search it"
                     >
-                      {processingId === doc.id ? '…' : 'Indexer'}
+                      {processingId === doc.id ? '…' : 'Index'}
                     </button>
                   )}
                 </div>

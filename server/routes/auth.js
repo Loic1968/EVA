@@ -99,8 +99,7 @@ router.post('/forgot-password', forgotLimiter, async (req, res) => {
 
     const r = await db.query('SELECT id FROM eva.owners WHERE email = $1', [e]);
     if (r.rows.length === 0) {
-      // Don't reveal if email exists
-      return res.json({ message: 'If that email exists, a reset link was sent' });
+      return res.json({ exists: false, message: 'Email not registered' });
     }
 
     const rawToken = crypto.randomBytes(32).toString('hex');
@@ -145,10 +144,10 @@ router.post('/forgot-password', forgotLimiter, async (req, res) => {
       console.log('[EVA Auth] Reset link (no SMTP):', resetUrl);
       // Dev fallback: return link so user can click it (never in production)
       if (process.env.NODE_ENV !== 'production') {
-        return res.json({ message: 'If that email exists, a reset link was sent', resetUrl });
+        return res.json({ exists: true, message: 'Reset link ready', resetUrl });
       }
     }
-    res.json({ message: 'If that email exists, a reset link was sent' });
+    res.json({ exists: true, message: 'Reset link sent by email' });
   } catch (e) {
     console.error('[EVA Auth] forgot:', e.message);
     res.status(500).json({ error: 'Request failed' });

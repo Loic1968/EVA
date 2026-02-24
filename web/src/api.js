@@ -111,6 +111,7 @@ export const api = {
     if (!res.ok) throw new Error('Upload failed');
     return res.json();
   },
+  processDocument: (id) => request(`/documents/${id}/process`, { method: 'POST' }),
 
   // Gmail OAuth & Emails
   getGmailAuthUrl: () => request('/oauth/gmail/start'),

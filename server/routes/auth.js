@@ -1,8 +1,11 @@
 /**
- * EVA Auth: signup, login, forgot password, reset password
+ * EVA Auth: signup, login, forgot password, reset password, passkey
  */
 const express = require('express');
 const router = express.Router();
+const webauthnRouter = require('./webauthn');
+
+router.use('/webauthn', webauthnRouter);
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');

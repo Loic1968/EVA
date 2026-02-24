@@ -17,7 +17,8 @@ function getApiBase() {
 const API_BASE = getApiBase();
 
 function getAuthHeaders() {
-  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('eva_token') : null;
+  if (typeof window === 'undefined') return {};
+  const token = localStorage.getItem('eva_token') || sessionStorage.getItem('eva_token');
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 

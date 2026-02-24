@@ -4,8 +4,8 @@
   "private": true,
   "description": "Project EVA – Personal AI Digital Twin. Independent app, same DB and stack as Halisoft.",
   "scripts": {
-    "server": "node server/index.js",
-    "dev:server": "node --watch server/index.js",
+    "server": "EVA_PORT=5002 node server/index.js",
+    "dev:server": "EVA_PORT=5002 node --watch server/index.js",
     "client": "cd web && npm run dev",
     "dev": "concurrently \"npm run dev:server\" \"npm run client\"",
     "build": "npm run build:web",
@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
+    "@simplewebauthn/server": "^13.2.3",
     "bcrypt": "^6.0.0",
     "cheerio": "^1.2.0",
     "cookie-parser": "^1.4.7",

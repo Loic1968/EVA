@@ -17,7 +17,11 @@ if (!DATABASE_URL) {
   process.exit(1);
 }
 
-const pool = new Pool({ connectionString: DATABASE_URL });
+const isProduction = process.env.NODE_ENV === 'production';
+const pool = new Pool({
+  connectionString: DATABASE_URL,
+  ssl: isProduction ? { rejectUnauthorized: false } : false,
+});
 const migrationsDir = require('path').join(__dirname, '../migrations');
 const files = fs.readdirSync(migrationsDir).filter((f) => f.endsWith('.sql')).sort();
 

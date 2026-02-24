@@ -52,7 +52,7 @@ export default function DataSources() {
       const { auth_url } = await api.getGmailAuthUrl();
       window.location.href = auth_url;
     } catch (e) {
-      setError('Gmail OAuth non disponible: ' + (e.body?.error || e.message) + '. Vérifiez que GOOGLE_CLIENT_ID est configuré sur Render.');
+      setError('Gmail OAuth non disponible: ' + (e.body?.error || e.message) + '. Vérifiez que EVA_GOOGLE_CLIENT_ID et EVA_GOOGLE_CLIENT_SECRET sont configurés sur Render (service EVA).');
     }
   };
 

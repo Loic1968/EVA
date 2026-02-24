@@ -10,15 +10,15 @@ const SCOPES = [
 ];
 
 function getOAuth2Client() {
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  const clientId = process.env.EVA_GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.EVA_GOOGLE_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET;
   const redirectUri =
     process.env.NODE_ENV === 'production'
       ? process.env.GOOGLE_OAUTH_REDIRECT_URI || 'https://eva.halisoft.biz/api/oauth/gmail/callback'
       : process.env.GOOGLE_OAUTH_REDIRECT_URI || 'http://localhost:5002/api/oauth/gmail/callback';
 
   if (!clientId || !clientSecret) {
-    throw new Error('GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set');
+    throw new Error('EVA_GOOGLE_CLIENT_ID et EVA_GOOGLE_CLIENT_SECRET (ou GOOGLE_*) doivent être définis');
   }
   return new google.auth.OAuth2(clientId, clientSecret, redirectUri);
 }

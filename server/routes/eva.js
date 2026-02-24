@@ -484,22 +484,22 @@ router.get('/documents', async (req, res, next) => {
 });
 
 // Simple file upload (multipart or base64 JSON)
+// Store file_data in DB so docs survive Render ephemeral disk (deploys wipe filesystem)
 router.post('/documents/upload', express.raw({ type: '*/*', limit: '50mb' }), async (req, res, next) => {
   try {
-    // Ensure upload dir exists
-    if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-
     const filename = req.headers['x-filename'] || `upload_${Date.now()}`;
     const fileType = path.extname(filename).replace('.', '').toLowerCase() || 'unknown';
-    const filePath = path.join(UPLOAD_DIR, `${Date.now()}_${filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`);
+    const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body || '');
+    const fileSize = buffer.length;
 
-    fs.writeFileSync(filePath, req.body);
-    const fileSize = fs.statSync(filePath).size;
+    const filePath = path.join(UPLOAD_DIR, `${Date.now()}_${filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`);
+    if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+    fs.writeFileSync(filePath, buffer);
 
     const r = await db.query(
-      `INSERT INTO eva.documents (owner_id, filename, file_type, file_size, storage_path, status)
-       VALUES ($1, $2, $3, $4, $5, 'uploaded') RETURNING *`,
-      [req.ownerId, filename, fileType, fileSize, filePath]
+      `INSERT INTO eva.documents (owner_id, filename, file_type, file_size, storage_path, file_data, status)
+       VALUES ($1, $2, $3, $4, $5, $6, 'uploaded') RETURNING *`,
+      [req.ownerId, filename, fileType, fileSize, filePath, buffer]
     );
 
     // Auto-index: extract text immediately after upload (async, non-blocking)
@@ -524,6 +524,7 @@ router.post('/documents/upload', express.raw({ type: '*/*', limit: '50mb' }), as
 });
 
 // Crawl website → create document (Selenium or fetch+cheerio)
+// Store file_data so docs survive Render ephemeral disk
 router.post('/documents/crawl', async (req, res, next) => {
   try {
     const { url } = req.body || {};
@@ -532,16 +533,18 @@ router.post('/documents/crawl', async (req, res, next) => {
     }
     const websiteCrawler = require('../services/websiteCrawler');
     const result = await websiteCrawler.crawlAndSave(url, UPLOAD_DIR);
+    const fileData = fs.readFileSync(result.filePath, 'utf-8');
 
     const r = await db.query(
-      `INSERT INTO eva.documents (owner_id, filename, file_type, file_size, storage_path, status, metadata)
-       VALUES ($1, $2, $3, $4, $5, 'uploaded', $6) RETURNING *`,
+      `INSERT INTO eva.documents (owner_id, filename, file_type, file_size, storage_path, file_data, status, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6, 'uploaded', $7) RETURNING *`,
       [
         req.ownerId,
         result.filename,
         result.fileType,
         result.fileSize,
         result.filePath,
+        Buffer.from(fileData, 'utf-8'),
         JSON.stringify({ source: result.source, crawl_method: result.method }),
       ]
     );

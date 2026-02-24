@@ -5,10 +5,9 @@ const fs = require('fs');
 const path = require('path');
 const db = require('../db');
 
-async function extractPdfText(filePath) {
+async function extractPdfFromBuffer(buffer) {
   try {
     const pdf = require('pdf-parse');
-    const buffer = fs.readFileSync(filePath);
     const data = await pdf(buffer);
     return (data?.text || '').trim();
   } catch (e) {
@@ -17,29 +16,52 @@ async function extractPdfText(filePath) {
   }
 }
 
-function extractTxtContent(filePath) {
+function extractTxtFromBuffer(buffer) {
   try {
-    return fs.readFileSync(filePath, 'utf-8').trim();
+    return (buffer.toString('utf-8') || '').trim();
   } catch (e) {
     console.warn('[DocumentProcessor] TXT read failed:', e.message);
     return null;
   }
 }
 
-async function extractText(filePath, fileType) {
-  const ext = (fileType || path.extname(filePath) || '').toLowerCase().replace('.', '');
-  if (ext === 'pdf') return extractPdfText(filePath);
-  if (['txt', 'text', 'csv'].includes(ext)) return extractTxtContent(filePath);
+async function extractText(filePathOrBuffer, fileType) {
+  const isBuffer = Buffer.isBuffer(filePathOrBuffer);
+  const ext = (fileType || (!isBuffer && path.extname(filePathOrBuffer)) || '').toLowerCase().replace('.', '');
+  if (ext === 'pdf') {
+    const buffer = isBuffer ? filePathOrBuffer : fs.readFileSync(filePathOrBuffer);
+    return extractPdfFromBuffer(buffer);
+  }
+  if (['txt', 'text', 'csv'].includes(ext)) {
+    if (isBuffer) return extractTxtFromBuffer(filePathOrBuffer);
+    try {
+      return fs.readFileSync(filePathOrBuffer, 'utf-8').trim() || null;
+    } catch (e) {
+      console.warn('[DocumentProcessor] TXT read failed:', e.message);
+      return null;
+    }
+  }
   return null;
 }
 
 async function processDocument(documentId, ownerId) {
   const r = await db.query(
-    'SELECT id, storage_path, file_type, filename FROM eva.documents WHERE id = $1 AND owner_id = $2',
+    'SELECT id, storage_path, file_type, filename, file_data FROM eva.documents WHERE id = $1 AND owner_id = $2',
     [documentId, ownerId]
   );
   const doc = r.rows[0];
-  if (!doc || !doc.storage_path || !fs.existsSync(doc.storage_path)) {
+  if (!doc) {
+    return null;
+  }
+
+  // Prefer file on disk; fallback to file_data (persisted in DB for prod/ephemeral fs)
+  let input = null;
+  if (doc.storage_path && fs.existsSync(doc.storage_path)) {
+    input = doc.storage_path;
+  } else if (Buffer.isBuffer(doc.file_data) && doc.file_data.length > 0) {
+    input = doc.file_data;
+  }
+  if (!input) {
     await db.query(
       "UPDATE eva.documents SET status = 'error', metadata = metadata || $1 WHERE id = $2",
       [JSON.stringify({ error: 'File not found' }), documentId]
@@ -49,7 +71,7 @@ async function processDocument(documentId, ownerId) {
 
   try {
     await db.query("UPDATE eva.documents SET status = 'processing' WHERE id = $1", [documentId]);
-    const text = await extractText(doc.storage_path, doc.file_type);
+    const text = await extractText(input, doc.file_type);
     if (text && text.length > 0) {
       await db.query(
         "UPDATE eva.documents SET content_text = $1, status = 'indexed', processed_at = now() WHERE id = $2",

@@ -30,6 +30,51 @@ export default function Settings() {
     }
   };
 
+  const setSyncFrequency = async (minutes) => {
+    setSaving(true);
+    setSaved(false);
+    try {
+      await api.setSetting('sync_frequency_minutes', { minutes });
+      setSettings((s) => ({ ...s, sync_frequency_minutes: { minutes } }));
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const DEFAULT_TIERS = {
+    gmail: { channel: 'Email (Gmail)', read: true, draft: true, send: false },
+    whatsapp: { channel: 'WhatsApp', read: false, draft: false, send: false, soon: true },
+    linkedin: { channel: 'LinkedIn', read: false, draft: false, send: false, soon: true },
+    sms: { channel: 'SMS', read: false, draft: false, send: false, soon: true },
+  };
+
+  const tiers = { ...DEFAULT_TIERS, ...(settings.permission_tiers || {}) };
+  const tierKeys = Object.keys(DEFAULT_TIERS);
+
+  const setPermission = async (key, perm, value) => {
+    const def = DEFAULT_TIERS[key];
+    if (def?.soon) return; // non-clickable for "soon" channels
+    const next = { ...(tiers[key] || def), [perm]: value };
+    const nextTiers = { ...tiers, [key]: next };
+    const cleanTiers = tierKeys.reduce((acc, k) => ({ ...acc, [k]: nextTiers[k] || DEFAULT_TIERS[k] }), {});
+    setSaving(true);
+    setSaved(false);
+    try {
+      await api.setSetting('permission_tiers', cleanTiers);
+      setSettings((s) => ({ ...s, permission_tiers: cleanTiers }));
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -51,6 +96,31 @@ export default function Settings() {
       <div>
         <h1 className="text-2xl font-semibold text-white">Settings</h1>
         <p className="text-eva-muted text-sm mt-1">Control EVA's behavior and security settings</p>
+      </div>
+
+      {/* Sync Frequency */}
+      <div className="bg-eva-panel rounded-xl border border-slate-700/40 p-6 max-w-2xl">
+        <h2 className="text-lg font-medium text-white mb-2">Fréquence de synchronisation Gmail</h2>
+        <p className="text-eva-muted text-sm mb-4">
+          Détermine à quel intervalle EVA récupère tes nouveaux emails. Plus fréquent = données plus à jour, mais plus de requêtes API.
+        </p>
+        <div className="flex items-center gap-3">
+          <select
+            value={settings.sync_frequency_minutes?.minutes ?? 15}
+            onChange={(e) => setSyncFrequency(Number(e.target.value))}
+            disabled={saving}
+            className="bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-cyan-500 focus:border-transparent disabled:opacity-50"
+          >
+            <option value={5}>5 minutes</option>
+            <option value={10}>10 minutes</option>
+            <option value={15}>15 minutes</option>
+            <option value={30}>30 minutes</option>
+            <option value={60}>1 heure</option>
+            <option value={120}>2 heures</option>
+          </select>
+          {saving && <span className="text-eva-muted text-sm">Enregistrement...</span>}
+          {saved && <span className="text-emerald-400 text-sm">Enregistré</span>}
+        </div>
       </div>
 
       {/* Kill Switch */}
@@ -91,30 +161,45 @@ export default function Settings() {
       <div className="bg-eva-panel rounded-xl border border-slate-700/40 p-6 max-w-2xl">
         <h2 className="text-lg font-medium text-white mb-2">Permission Tiers</h2>
         <p className="text-eva-muted text-sm mb-4">
-          Configure what EVA can do per channel. Each action (read, draft, send) requires explicit authorization.
+          Définis ce qu'EVA peut faire par canal. Clique sur chaque badge pour activer/désactiver.
         </p>
         <div className="space-y-3">
-          {[
-            { channel: 'Email (Gmail)', read: true, draft: true, send: false },
-            { channel: 'WhatsApp', read: false, draft: false, send: false },
-            { channel: 'LinkedIn', read: false, draft: false, send: false },
-            { channel: 'SMS', read: false, draft: false, send: false },
-          ].map((tier) => (
-            <div key={tier.channel} className="flex items-center justify-between py-2 border-b border-slate-700/30 last:border-0">
-              <span className="text-sm text-slate-300">{tier.channel}</span>
-              <div className="flex gap-3">
-                {['read', 'draft', 'send'].map((perm) => (
-                  <span key={perm} className={`text-xs px-2 py-0.5 rounded ${
-                    tier[perm] ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-700 text-slate-500'
-                  }`}>
-                    {perm}
-                  </span>
-                ))}
+          {tierKeys.map((key) => {
+            const tier = tiers[key] || DEFAULT_TIERS[key];
+            return (
+              <div key={key} className="flex items-center justify-between py-2 border-b border-slate-700/30 last:border-0">
+                <span className="text-sm text-slate-300">
+                  {tier.channel}
+                  {tier.soon && <span className="ml-2 text-xs text-slate-500">(soon)</span>}
+                </span>
+                <div className="flex gap-2">
+                  {['read', 'draft', 'send'].map((perm) => (
+                    tier.soon ? (
+                      <span key={perm} className="text-xs px-2 py-1 rounded bg-slate-800 text-slate-600 cursor-not-allowed">
+                        {perm}
+                      </span>
+                    ) : (
+                      <button
+                        key={perm}
+                        type="button"
+                        onClick={() => setPermission(key, perm, !tier[perm])}
+                        disabled={saving}
+                        className={`text-xs px-2 py-1 rounded cursor-pointer transition-colors disabled:opacity-50 hover:opacity-80 ${
+                          tier[perm] ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-700 text-slate-500'
+                        }`}
+                        title={`${tier[perm] ? 'Désactiver' : 'Activer'} ${perm}`}
+                      >
+                        {perm}
+                      </button>
+                    )
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
-        <p className="text-xs text-slate-500 mt-3">Phase 3+ — permission controls will be fully configurable</p>
+        {saving && <span className="text-eva-muted text-xs mt-2 block">Enregistrement...</span>}
+        {saved && <span className="text-emerald-400 text-xs mt-2 block">Enregistré</span>}
       </div>
 
       {/* Security info */}

@@ -10,7 +10,6 @@ const evaEnv = path.join(__dirname, '../.env');
 if (fs.existsSync(parentEnv)) require('dotenv').config({ path: parentEnv });
 if (fs.existsSync(evaEnv)) require('dotenv').config({ path: evaEnv });
 const { Pool } = require('pg');
-const fs = require('fs');
 
 const DATABASE_URL = process.env.EVA_DATABASE_URL || process.env.DATABASE_URL;
 if (!DATABASE_URL) {

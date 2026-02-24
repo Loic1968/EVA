@@ -3,8 +3,8 @@ import { useState } from 'react';
 import EvaTopBar from './EvaTopBar';
 
 const nav = [
-  { to: '/', label: 'Dashboard', icon: '◉' },
   { to: '/voice', label: '🎤 Real Time (voix)', icon: '🎤', highlight: true },
+  { to: '/dashboard', label: 'Dashboard', icon: '◉' },
   { to: '/chat', label: 'Chat EVA', icon: '◈' },
   { to: '/emails', label: 'Emails', icon: '✉' },
   { to: '/drafts', label: 'Drafts', icon: '◇' },

@@ -5,6 +5,8 @@ export default function Documents() {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [crawling, setCrawling] = useState(false);
+  const [crawlUrl, setCrawlUrl] = useState('');
   const [processingId, setProcessingId] = useState(null);
   const [error, setError] = useState(null);
   const [dragOver, setDragOver] = useState(false);

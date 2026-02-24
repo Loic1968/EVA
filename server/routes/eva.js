@@ -562,6 +562,51 @@ router.post('/documents/upload', express.raw({ type: '*/*', limit: '50mb' }), as
   }
 });
 
+// Crawl website → create document (Selenium or fetch+cheerio)
+router.post('/documents/crawl', async (req, res, next) => {
+  try {
+    const { url } = req.body || {};
+    if (!url || typeof url !== 'string') {
+      return res.status(400).json({ error: 'url is required' });
+    }
+    const websiteCrawler = require('../services/websiteCrawler');
+    const result = await websiteCrawler.crawlAndSave(url, UPLOAD_DIR);
+
+    const r = await db.query(
+      `INSERT INTO eva.documents (owner_id, filename, file_type, file_size, storage_path, status, metadata)
+       VALUES ($1, $2, $3, $4, $5, 'uploaded', $6) RETURNING *`,
+      [
+        req.ownerId,
+        result.filename,
+        result.fileType,
+        result.fileSize,
+        result.filePath,
+        JSON.stringify({ source: result.source, crawl_method: result.method }),
+      ]
+    );
+
+    const docProcessor = require('../services/documentProcessor');
+    const docId = r.rows[0].id;
+    docProcessor.processDocument(docId, req.ownerId).then(() => {
+      console.log(`[EVA] Crawled document ${docId} indexed`);
+    }).catch((e) => {
+      console.warn('[EVA] Crawled document auto-index failed:', e.message);
+    });
+
+    await db.query(
+      `INSERT INTO eva.audit_logs (owner_id, action_type, channel, details) VALUES ($1, 'website_crawled', 'documents', $2)`,
+      [req.ownerId, JSON.stringify({ url: result.source, filename: result.filename, method: result.method })]
+    );
+
+    res.status(201).json(r.rows[0]);
+  } catch (e) {
+    if (e.message?.includes('not allowed') || e.message?.includes('not found')) {
+      return res.status(400).json({ error: e.message });
+    }
+    next(e);
+  }
+});
+
 // Reprocess document (extract text for search)
 router.post('/documents/:id/process', async (req, res, next) => {
   try {

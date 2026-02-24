@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Drafts from './pages/Drafts';
@@ -16,7 +16,8 @@ export default function App() {
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <Layout>
         <Routes>
-          <Route path="/" element={<Dashboard />} />
+          <Route path="/" element={<Navigate to="/voice" replace />} />
+          <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/chat/realtime" element={<ChatRealtime />} />
           <Route path="/voice" element={<ChatRealtime />} />
           <Route path="/chat" element={<Chat />} />

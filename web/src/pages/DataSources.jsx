@@ -3,11 +3,11 @@ import { api } from '../api';
 
 const SOURCE_TYPES = [
   { type: 'gmail', label: 'Gmail', desc: 'Connect via OAuth2 — EVA reads your recent emails and uses them as context.', color: 'bg-red-500/20 text-red-400', oauth: true },
-  { type: 'whatsapp', label: 'WhatsApp', desc: 'Chat exports (coming soon)', color: 'bg-green-500/20 text-green-400' },
-  { type: 'linkedin', label: 'LinkedIn', desc: 'Messages & connections (coming soon)', color: 'bg-indigo-500/20 text-indigo-400' },
-  { type: 'drive', label: 'Google Drive', desc: 'Documents & contracts (coming soon)', color: 'bg-amber-500/20 text-amber-400' },
-  { type: 'telegram', label: 'Telegram', desc: 'Message history (coming soon)', color: 'bg-blue-500/20 text-blue-400' },
-  { type: 'documents', label: 'Manual Upload', desc: 'PDFs, contracts, reports', color: 'bg-purple-500/20 text-purple-400' },
+  { type: 'documents', label: 'Documents', desc: 'PDFs, contracts, reports — upload via the Documents page.', color: 'bg-purple-500/20 text-purple-400', route: '/documents', alwaysAvailable: true },
+  { type: 'whatsapp', label: 'WhatsApp', desc: 'Chat exports (soon)', color: 'bg-green-500/20 text-green-400', soon: true },
+  { type: 'linkedin', label: 'LinkedIn', desc: 'Messages & connections (soon)', color: 'bg-indigo-500/20 text-indigo-400', soon: true },
+  { type: 'drive', label: 'Google Drive', desc: 'Documents & contracts (soon)', color: 'bg-amber-500/20 text-amber-400', soon: true },
+  { type: 'telegram', label: 'Telegram', desc: 'Message history (soon)', color: 'bg-blue-500/20 text-blue-400', soon: true },
 ];
 
 export default function DataSources() {
@@ -181,28 +181,31 @@ export default function DataSources() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {SOURCE_TYPES.map((src) => {
             const connected = src.type === 'gmail' ? hasGmail : connectedTypes.includes(src.type);
+            const showAction = src.alwaysAvailable || (!connected && !src.soon);
             return (
               <div
                 key={src.type}
                 className={'bg-eva-panel rounded-xl border p-5 transition-all ' + (
                   connected ? 'border-emerald-500/30' : 'border-slate-700/40 hover:border-slate-600/60'
-                )}
+                ) + (src.soon ? ' opacity-80' : '')}
               >
                 <div className="flex items-start justify-between">
                   <span className={'text-xs font-medium px-2 py-1 rounded ' + src.color}>{src.label}</span>
                   {connected && <span className="text-xs text-emerald-400">Connecté</span>}
+                  {src.alwaysAvailable && !connected && <span className="text-xs text-slate-500">Disponible</span>}
+                  {src.soon && <span className="text-xs text-slate-500">soon</span>}
                 </div>
                 <p className="text-xs text-eva-muted mt-3">{src.desc}</p>
-                {!connected && (
+                {showAction && !src.soon && (
                   <button
-                    onClick={() => src.oauth ? connectGmail() : addSource(src.type)}
+                    onClick={() => src.oauth ? connectGmail() : (src.route ? window.location.assign(src.route) : addSource(src.type))}
                     className={'mt-3 text-xs font-medium transition-colors ' + (
                       src.oauth
                         ? 'px-4 py-2 bg-eva-accent/20 text-eva-accent rounded-lg hover:bg-eva-accent/30'
                         : 'text-eva-accent hover:text-cyan-300'
                     )}
                   >
-                    {src.oauth ? 'Connect Gmail →' : 'Register source →'}
+                    {src.oauth ? 'Connect Gmail →' : src.route ? 'Go to Documents →' : 'Register source →'}
                   </button>
                 )}
                 {connected && src.type === 'gmail' && (

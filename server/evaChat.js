@@ -48,11 +48,12 @@ const EVA_SYSTEM = `You are EVA, a Personal AI Digital Twin created for Loic Hen
 - HaliSoft is building an onboarding platform for invoice factoring — digitalizing the client onboarding process.
 - Key stakeholders include investors, clients (SMEs seeking factoring), and technology partners.
 
-## Your Capabilities (Current Phase — Memory Vault + Gmail)
+## Your Capabilities (Current Phase — Memory Vault + Gmail + Documents)
 - You can have natural conversations, answer questions, brainstorm, and draft content.
 - You can draft emails, messages, and documents in Loic's professional voice.
 - You log all interactions for audit purposes.
 - **Gmail Integration**: You have access to Loic's recent emails (last 30 days). When relevant emails are found, they will be provided as context below. Use them to give accurate, specific answers about recent communications.
+- **Documents uploadés**: When Loic asks about his flight, plane ticket (billet), travel to Shanghai, or anything in his uploaded documents (PDF, etc.), search the Memory Vault. If document content is provided below, use it to answer (dates, flight numbers, times, etc.).
 - When citing emails, mention the sender, date, and subject to help Loic identify the message.
 - Your Memory Vault (20+ years of emails, documents, communications) is being expanded — if asked about older events, acknowledge this honestly.
 
@@ -82,6 +83,9 @@ function getClient() {
 
 // Keywords that suggest the user is asking about emails
 const EMAIL_KEYWORDS = /email|mail|envoy[eé]|re[çc]u|message|from|sent|wrote|[eé]crit|r[eé]pondu|contact[eé]|inbox|courrier|correspondance/i;
+
+// Keywords for travel/documents (vol, billet, Shanghai, document uploadé)
+const DOCUMENT_KEYWORDS = /vol|billet|avion|train|Shanghai|voyage|travel|flight|semaine prochaine|document|fichier|upload|upload[eé]/i;
 
 /**
  * @param {string} userMessage
@@ -118,7 +122,27 @@ async function reply(userMessage, history = [], ownerId = null, mode = null) {
     }
   }
 
-  let systemPrompt = EVA_SYSTEM + emailContext;
+  // Build document context (vol, billet, Shanghai, documents uploadés)
+  let documentContext = '';
+  if (ownerId && DOCUMENT_KEYWORDS.test(userMessage)) {
+    try {
+      const docProcessor = require('./services/documentProcessor');
+      const docResults = await docProcessor.searchDocuments(ownerId, userMessage, 3);
+      if (docResults.length > 0) {
+        documentContext = '\n\n## Documents uploadés (Memory Vault)\n';
+        documentContext += 'Loic a uploadé des documents. Contenu pertinent pour sa question:\n\n';
+        docResults.forEach((d, i) => {
+          documentContext += `**Document ${i + 1}:** ${d.filename}\n`;
+          documentContext += `${(d.content_preview || d.content_text || '').slice(0, 800)}\n\n`;
+        });
+        documentContext += 'Utilise ces extraits pour répondre (vol, billet, horaires, Shanghai, etc.).';
+      }
+    } catch (err) {
+      console.warn('[EVA Chat] Document context lookup failed:', err.message);
+    }
+  }
+
+  let systemPrompt = EVA_SYSTEM + emailContext + documentContext;
   if (mode && MODE_HINTS[mode]) {
     systemPrompt += `\n\n## Current Mode: ${mode}\n${MODE_HINTS[mode]}`;
   }
@@ -183,7 +207,25 @@ async function createReplyStream(userMessage, history = [], ownerId = null, mode
     }
   }
 
-  let systemPrompt = EVA_SYSTEM + emailContext;
+  let documentContext = '';
+  if (ownerId && DOCUMENT_KEYWORDS.test(userMessage)) {
+    try {
+      const docProcessor = require('./services/documentProcessor');
+      const docResults = await docProcessor.searchDocuments(ownerId, userMessage, 3);
+      if (docResults.length > 0) {
+        documentContext = '\n\n## Documents uploadés (Memory Vault)\n';
+        documentContext += 'Loic a uploadé des documents. Contenu pertinent:\n\n';
+        docResults.forEach((d, i) => {
+          documentContext += `**Document ${i + 1}:** ${d.filename}\n`;
+          documentContext += `${(d.content_preview || d.content_text || '').slice(0, 800)}\n\n`;
+        });
+      }
+    } catch (err) {
+      console.warn('[EVA Chat] Document context lookup failed:', err.message);
+    }
+  }
+
+  let systemPrompt = EVA_SYSTEM + emailContext + documentContext;
   if (mode && MODE_HINTS[mode]) {
     systemPrompt += `\n\n## Current Mode: ${mode}\n${MODE_HINTS[mode]}`;
   }

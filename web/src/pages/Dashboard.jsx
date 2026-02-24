@@ -62,10 +62,10 @@ export default function Dashboard() {
           <p className="text-eva-muted text-sm mt-1">EVA Command Center — status and recent activity</p>
         </div>
         <Link
-          to="/chat"
+          to="/voice"
           className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-medium rounded-lg hover:from-cyan-400 hover:to-blue-500 transition-all shadow-lg shadow-cyan-500/20"
         >
-          <span>◈</span> Parler à EVA
+          <span>🎤</span> Parler à EVA
         </Link>
       </div>
 

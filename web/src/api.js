@@ -22,12 +22,28 @@ function getAuthHeaders() {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+function onAuthFailure() {
+  localStorage.removeItem('eva_token');
+  sessionStorage.removeItem('eva_token');
+  if (!window.location.pathname.startsWith('/login') && !window.location.pathname.startsWith('/signup') &&
+      !window.location.pathname.startsWith('/forgot-password') && !window.location.pathname.startsWith('/reset-password')) {
+    window.location.href = '/login?expired=1';
+  }
+}
+
 async function request(path, options = {}) {
   const url = path.startsWith('http') ? path : `${API_BASE}${path}`;
   const res = await fetch(url, {
     ...options,
     headers: { 'Content-Type': 'application/json', ...getAuthHeaders(), ...options.headers },
   });
+  if (res.status === 401) {
+    onAuthFailure();
+    const err = new Error('Session expired. Please log in again.');
+    err.status = 401;
+    try { err.body = await res.json(); } catch (_) {}
+    throw err;
+  }
   if (!res.ok) {
     const err = new Error(res.statusText || 'Request failed');
     err.status = res.status;
@@ -65,6 +81,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify({ message, history, conversation_id }),
     });
+    if (res.status === 401) { onAuthFailure(); throw new Error('Session expired'); }
     if (!res.ok) {
       const err = new Error(res.statusText || 'Stream failed');
       err.status = res.status;
@@ -129,6 +146,7 @@ export const api = {
       headers: { 'X-Filename': file.name, ...getAuthHeaders() },
       body: file,
     });
+    if (res.status === 401) { onAuthFailure(); throw new Error('Session expired'); }
     if (!res.ok) throw new Error('Upload failed');
     return res.json();
   },
@@ -171,6 +189,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify({ audio: base64, format }),
     });
+    if (res.status === 401) { onAuthFailure(); throw new Error('Session expired'); }
     if (!res.ok) {
       const err = new Error(res.statusText || 'STT failed');
       err.status = res.status;
@@ -186,6 +205,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify({ text: (text || '').slice(0, 4096), lang: 'auto' }),
     });
+    if (res.status === 401) { onAuthFailure(); throw new Error('Session expired'); }
     if (!res.ok) {
       const err = new Error(res.statusText || 'TTS failed');
       err.status = res.status;

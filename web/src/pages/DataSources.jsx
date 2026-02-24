@@ -52,7 +52,11 @@ export default function DataSources() {
       const { auth_url } = await api.getGmailAuthUrl();
       window.location.href = auth_url;
     } catch (e) {
-      setError('Gmail OAuth not available: ' + (e.body?.error || e.message) + '. Ensure EVA_GOOGLE_CLIENT_ID and EVA_GOOGLE_CLIENT_SECRET are set on Render (EVA service).');
+      if (e.status === 401) {
+        setError('Session expired. Please log in again, then try connecting Gmail.');
+      } else {
+        setError((e.body?.error || e.message) + '. Ensure EVA_GOOGLE_CLIENT_ID and EVA_GOOGLE_CLIENT_SECRET are set on Render.');
+      }
     }
   };
 

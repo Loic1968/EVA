@@ -1,10 +1,21 @@
-import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 export default function Login() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [expiredMsg, setExpiredMsg] = useState(false);
+  useEffect(() => {
+    if (searchParams.get('expired') === '1') {
+      setExpiredMsg(true);
+      setSearchParams({}, { replace: true });
+    } else if (searchParams.get('error')) {
+      setError(searchParams.get('error'));
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
   const [showPassword, setShowPassword] = useState(false);
   const [stayConnected, setStayConnected] = useState(true);
   const [error, setError] = useState('');
@@ -36,6 +47,7 @@ export default function Login() {
         </div>
         <div className="bg-eva-panel rounded-xl border border-slate-700/40 p-6">
           <form onSubmit={handleSubmit} className="space-y-4">
+            {expiredMsg && <div className="text-amber-400 text-sm bg-amber-500/10 rounded-lg px-4 py-2">Your session expired. Please sign in again.</div>}
             {error && <div className="text-red-400 text-sm bg-red-500/10 rounded-lg px-4 py-2">{error}</div>}
             <div>
               <label className="block text-sm text-slate-400 mb-1">Email</label>

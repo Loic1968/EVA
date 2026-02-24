@@ -17,14 +17,30 @@ const nav = [
 
 export default function Layout({ children }) {
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const { user, logout, requireAuth } = useAuth();
   const navigate = useNavigate();
 
+  const closeMobile = () => setMobileOpen(false);
+
   return (
     <div className="min-h-screen flex flex-col bg-eva-dark">
-      <EvaTopBar />
+      <EvaTopBar onMenuClick={() => setMobileOpen(true)} />
       <div className="flex flex-1 min-h-0">
-      <aside className={`${collapsed ? 'w-16' : 'w-60'} bg-eva-panel border-r border-slate-700/40 flex flex-col transition-all duration-200 shrink-0`}>
+      {/* Mobile overlay */}
+      {mobileOpen && (
+        <div className="fixed inset-0 z-40 lg:hidden" onClick={closeMobile}>
+          <div className="absolute inset-0 bg-black/60" />
+        </div>
+      )}
+      <aside className={`
+        fixed lg:static inset-y-0 left-0 z-50 transform transition-transform duration-200 ease-out
+        lg:transform-none
+        ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+        ${collapsed && !mobileOpen ? 'w-16' : 'w-60'}
+        bg-eva-panel border-r border-slate-700/40 flex flex-col shrink-0
+        top-12 lg:top-0
+      `}>
         <div className="p-4 border-b border-slate-700/40 flex items-center justify-between">
           <div className={`flex items-center gap-3 ${collapsed ? 'justify-center w-full' : ''}`}>
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center text-white font-bold text-sm shrink-0">E</div>
@@ -35,8 +51,11 @@ export default function Layout({ children }) {
               </div>
             )}
           </div>
-          {!collapsed && (
-            <button onClick={() => setCollapsed(true)} className="text-eva-muted hover:text-white text-xs">‹‹</button>
+          {!collapsed && !mobileOpen && (
+            <button onClick={() => setCollapsed(true)} className="hidden lg:block text-eva-muted hover:text-white text-xs">‹‹</button>
+          )}
+          {mobileOpen && (
+            <button onClick={closeMobile} className="lg:hidden text-eva-muted hover:text-white text-sm p-1">✕</button>
           )}
         </div>
         <nav className="p-2 flex-1 space-y-0.5">
@@ -44,7 +63,8 @@ export default function Layout({ children }) {
             <NavLink
               key={to}
               to={to}
-              title={collapsed ? label : undefined}
+              onClick={closeMobile}
+              title={collapsed && !mobileOpen ? label : undefined}
               className={({ isActive }) =>
                 `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${
                   isActive ? 'bg-eva-accent/15 text-eva-accent font-medium' :
@@ -59,8 +79,8 @@ export default function Layout({ children }) {
           ))}
         </nav>
         <div className="p-3 border-t border-slate-700/40">
-          {collapsed ? (
-            <button onClick={() => setCollapsed(false)} className="w-full text-eva-muted hover:text-white text-xs text-center">››</button>
+          {collapsed && !mobileOpen ? (
+            <button onClick={() => setCollapsed(false)} className="hidden lg:block w-full text-eva-muted hover:text-white text-xs text-center">››</button>
           ) : (
             <div className="flex items-center gap-2 px-2">
               <div className="w-6 h-6 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-[10px] text-white font-medium">
@@ -77,7 +97,7 @@ export default function Layout({ children }) {
         </div>
       </aside>
       <main className="flex-1 overflow-auto min-w-0">
-        <div className="max-w-7xl mx-auto p-6">{children}</div>
+        <div className="max-w-7xl mx-auto p-4 sm:p-6">{children}</div>
       </main>
       </div>
     </div>

@@ -631,69 +631,8 @@ router.get('/oauth/gmail/start', async (req, res, next) => {
   }
 });
 
-// OAuth callback — exchanges code for tokens, stores account
-router.get('/oauth/gmail/callback', async (req, res, next) => {
-  try {
-    const { code, state } = req.query;
-    if (!code) return res.status(400).json({ error: 'Authorization code missing' });
-
-    // Exchange code for tokens
-    const tokens = googleOAuth.exchangeCode ? await googleOAuth.exchangeCode(code) : null;
-    if (!tokens || !tokens.access_token) {
-      return res.status(400).json({ error: 'Token exchange failed' });
-    }
-
-    // Get user email
-    const gmailAddress = await googleOAuth.getUserEmail(tokens.access_token, tokens.refresh_token);
-
-    // Store in gmail_accounts (upsert)
-    await db.query(
-      `INSERT INTO eva.gmail_accounts (owner_id, gmail_address, access_token, refresh_token, token_scope, expires_at, sync_status)
-       VALUES ($1, $2, $3, $4, $5, $6, 'pending')
-       ON CONFLICT (owner_id, gmail_address) DO UPDATE SET
-         access_token = $3, refresh_token = COALESCE($4, eva.gmail_accounts.refresh_token),
-         token_scope = $5, expires_at = $6, sync_status = 'pending',
-         token_updated_at = now(), error_message = NULL`,
-      [
-        req.ownerId, gmailAddress, tokens.access_token,
-        tokens.refresh_token || null, tokens.scope || null,
-        tokens.expiry_date ? new Date(tokens.expiry_date) : null,
-      ]
-    );
-
-    // Register in data_sources (upsert)
-    const configJson = JSON.stringify({ connected_at: new Date().toISOString() });
-    const existing = await db.query(
-      `SELECT id FROM eva.data_sources WHERE owner_id = $1 AND source_type = 'gmail' AND external_id = $2`,
-      [req.ownerId, gmailAddress]
-    );
-    if (existing.rows.length > 0) {
-      await db.query(
-        `UPDATE eva.data_sources SET config = $1, updated_at = now() WHERE owner_id = $2 AND source_type = 'gmail' AND external_id = $3`,
-        [configJson, req.ownerId, gmailAddress]
-      );
-    } else {
-      await db.query(
-        `INSERT INTO eva.data_sources (owner_id, source_type, external_id, config)
-         VALUES ($1, 'gmail', $2, $3)`,
-        [req.ownerId, gmailAddress, configJson]
-      );
-    }
-
-    // Audit log
-    await db.query(
-      `INSERT INTO eva.audit_logs (owner_id, action_type, channel, details)
-       VALUES ($1, 'gmail_connected', 'gmail', $2)`,
-      [req.ownerId, JSON.stringify({ gmail_address: gmailAddress })]
-    );
-
-    // Redirect to frontend data sources page
-    res.redirect('/sources?connected=gmail');
-  } catch (e) {
-    console.error('[EVA] Gmail OAuth callback error:', e);
-    res.redirect('/sources?error=' + encodeURIComponent(e.message));
-  }
-});
+// OAuth callback → routes/oauth.js (public; Google redirects with code+state)
+// REMOVED: callback now in routes/oauth.js
 
 // List connected Gmail accounts
 router.get('/gmail/accounts', async (req, res, next) => {

@@ -102,6 +102,10 @@ function apiKeyOrSameOrigin(req, res, next) {
 // Auth (public)
 app.use('/api/auth', authRoutes);
 
+// Gmail OAuth callback — PUBLIC (Google redirects with ?code&state; no JWT). Must be before eva.
+const oauthCallback = require('./routes/oauth').gmailCallback;
+app.get('/api/oauth/gmail/callback', oauthCallback);
+
 // Realtime API — requires auth for owner context
 const realtimeRoutes = require('./routes/realtime');
 app.use('/api/realtime', verifyAuth, apiKeyOrSameOrigin, realtimeRoutes);

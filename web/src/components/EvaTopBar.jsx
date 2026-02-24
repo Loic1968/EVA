@@ -1,12 +1,28 @@
 /**
  * EvaTopBar - HaliSoft-branded top bar for EVA Digital Twin
- * Styled like LandingTopBar; links to HaliSoft ecosystem
+ * Shows auth state (logged in / out), hamburger on mobile, links to HaliSoft ecosystem
  */
-export default function EvaTopBar() {
+import { useAuth } from '../context/AuthContext';
+
+export default function EvaTopBar({ onMenuClick }) {
+  const { user, isAuthenticated, logout, requireAuth } = useAuth();
+
   return (
     <div className="sticky top-0 z-50 bg-slate-900/95 backdrop-blur-sm border-b border-slate-700/40">
       <nav className="flex items-center justify-between px-4 md:px-6 h-12">
-        {/* Logo / Brand */}
+        {/* Left: hamburger (mobile) + Logo */}
+        <div className="flex items-center gap-3">
+          {onMenuClick && (
+            <button
+              onClick={onMenuClick}
+              className="lg:hidden p-2 -ml-2 text-slate-400 hover:text-white rounded-lg"
+              aria-label="Open menu"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+          )}
         <a
           href="https://halisoft.biz"
           target="_blank"
@@ -21,12 +37,28 @@ export default function EvaTopBar() {
               Hali<span className="text-[#3B82F6]">Soft</span>
             </span>
             <span className="text-slate-400 text-sm ml-1.5">·</span>
-            <span className="text-sm text-cyan-400 font-medium ml-1.5">EVA</span>
+            <span className="text-sm text-cyan-400 font-medium ml-1.5">EVA            </span>
           </div>
         </a>
+        </div>
 
-        {/* Right: links */}
-        <div className="flex items-center gap-4">
+        {/* Right: auth state + links */}
+        <div className="flex items-center gap-3 sm:gap-6">
+          {isAuthenticated && (
+            <div className="flex items-center gap-2 sm:gap-3">
+              <span className="text-xs text-emerald-400/90 truncate max-w-[120px] sm:max-w-[180px]" title={user?.email}>
+                {user?.skipAuth ? 'Guest' : (user?.email || '')}
+              </span>
+              {requireAuth && (
+                <button
+                  onClick={() => logout()}
+                  className="text-xs px-2 py-1 rounded bg-slate-700/60 text-slate-400 hover:text-red-400 hover:bg-slate-700/80 transition-colors"
+                >
+                  Log out
+                </button>
+              )}
+            </div>
+          )}
           <a
             href="https://halisoft.biz"
             target="_blank"

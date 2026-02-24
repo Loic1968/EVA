@@ -26,14 +26,14 @@ export default function EvaTopBar({ onMenuClick }) {
   const { darkMode, toggleTheme } = useTheme();
 
   return (
-    <div className="sticky top-0 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border-b border-slate-200 dark:border-slate-700/40 pt-[env(safe-area-inset-top)]">
+    <div className="sticky top-0 z-[100] bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border-b border-slate-200 dark:border-slate-700/40 pt-[env(safe-area-inset-top)]">
       <nav className="flex items-center justify-between px-4 md:px-6 h-12 min-h-[48px]">
         {/* Left: hamburger (mobile) + Logo */}
         <div className="flex items-center gap-3">
           {onMenuClick && (
             <button
               onClick={onMenuClick}
-              className="lg:hidden p-2 -ml-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-lg"
+              className="lg:hidden p-2 -ml-2 min-w-[44px] min-h-[44px] flex items-center justify-center text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-lg touch-manipulation"
               aria-label="Open menu"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">

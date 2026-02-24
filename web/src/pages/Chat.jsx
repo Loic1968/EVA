@@ -230,12 +230,12 @@ export default function Chat() {
   };
 
   return (
-    <div className="flex h-[calc(100vh-5rem)] gap-0 -m-6">
-      {/* Sidebar — slide-over like ChatGPT */}
+    <div className="flex h-[calc(100vh-5rem)] min-h-[300px] gap-0 -m-4 sm:-m-6">
+      {/* Sidebar — slide-over like ChatGPT (z-[60] below topbar z-[100]) */}
       {showSidebar && (
         <>
-          <div className="fixed inset-0 bg-black/40 z-40" onClick={() => setShowSidebar(false)} />
-          <div className="fixed left-0 top-0 bottom-0 w-64 bg-eva-panel border-r border-slate-700/40 z-50 flex flex-col">
+          <div className="fixed inset-0 bg-black/40 z-[55]" onClick={() => setShowSidebar(false)} />
+          <div className="fixed left-0 top-0 bottom-0 w-64 bg-eva-panel border-r border-slate-700/40 z-[60] flex flex-col">
             <div className="p-3 border-b border-slate-700/40 flex items-center justify-between">
               <span className="text-sm font-medium text-white">{lang === 'fr' ? 'Conversations' : 'Conversations'}</span>
               <div className="flex gap-1">

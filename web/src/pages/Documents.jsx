@@ -90,8 +90,8 @@ export default function Documents() {
     <div className="space-y-4 sm:space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <h1 className="text-xl sm:text-2xl font-semibold text-white">Documents</h1>
-          <p className="text-eva-muted text-sm mt-1">Upload files for EVA&apos;s Memory Vault. Contracts, emails, reports — everything feeds the brain.</p>
+          <h1 className="text-xl sm:text-2xl font-semibold text-slate-900 dark:text-white">Documents</h1>
+          <p className="text-slate-600 dark:text-eva-muted text-sm mt-1">Upload files for EVA&apos;s Memory Vault. Contracts, emails, reports — everything feeds the brain.</p>
         </div>
         <div className="flex gap-2 shrink-0">
           <button
@@ -138,10 +138,10 @@ export default function Documents() {
         onDragLeave={() => setDragOver(false)}
         onDrop={onDrop}
         className={`border-2 border-dashed rounded-xl p-6 sm:p-8 text-center transition-colors min-h-[100px] flex items-center justify-center ${
-          dragOver ? 'border-eva-accent bg-eva-accent/5' : 'border-slate-700/40 hover:border-slate-600 active:border-slate-600'
+          dragOver ? 'border-cyan-500 dark:border-eva-accent bg-cyan-50 dark:bg-eva-accent/5' : 'border-slate-300 dark:border-slate-700/40 hover:border-slate-400 dark:hover:border-slate-600 active:border-slate-400 dark:active:border-slate-600'
         }`}
       >
-        <div className="text-eva-muted">
+        <div className="text-slate-600 dark:text-eva-muted">
           <p className="text-base sm:text-lg mb-1">
             {dragOver ? 'Drop files here' : (
               <>
@@ -155,16 +155,16 @@ export default function Documents() {
       </div>
 
       {/* File list */}
-      <div className="bg-eva-panel rounded-xl border border-slate-700/40 overflow-hidden">
-        <div className="px-5 py-3 border-b border-slate-700/40">
-          <span className="text-sm font-medium text-white">{documents.length} documents</span>
+      <div className="bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 overflow-hidden">
+        <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-700/40">
+          <span className="text-sm font-medium text-slate-900 dark:text-white">{documents.length} documents</span>
         </div>
         {documents.length === 0 ? (
-          <div className="p-8 text-center text-eva-muted text-sm">
+          <div className="p-8 text-center text-slate-500 dark:text-eva-muted text-sm">
             No documents uploaded yet. Start feeding EVA's memory.
           </div>
         ) : (
-          <div className="divide-y divide-slate-700/30">
+          <div className="divide-y divide-slate-200 dark:divide-slate-700/30">
             {documents.map((doc) => (
               <div key={doc.id} className="px-4 sm:px-5 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4">
                 <div className="flex items-center gap-3 min-w-0">
@@ -178,8 +178,8 @@ export default function Documents() {
                     {(doc.file_type || '?').toUpperCase().slice(0, 3)}
                   </div>
                   <div className="min-w-0">
-                    <div className="text-sm text-white truncate">{doc.filename}</div>
-                    <div className="text-xs text-eva-muted">{formatBytes(doc.file_size)} — {new Date(doc.created_at).toLocaleDateString()}</div>
+                    <div className="text-sm text-slate-900 dark:text-white truncate">{doc.filename}</div>
+                    <div className="text-xs text-slate-500 dark:text-eva-muted">{formatBytes(doc.file_size)} — {new Date(doc.created_at).toLocaleDateString()}</div>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">

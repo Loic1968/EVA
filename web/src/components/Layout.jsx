@@ -24,7 +24,7 @@ export default function Layout({ children }) {
   const closeMobile = () => setMobileOpen(false);
 
   return (
-    <div className="min-h-screen flex flex-col bg-eva-dark">
+    <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-eva-dark">
       <EvaTopBar onMenuClick={() => setMobileOpen(true)} />
       <div className="flex flex-1 min-h-0">
       {/* Mobile overlay */}
@@ -38,24 +38,24 @@ export default function Layout({ children }) {
         lg:transform-none
         ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
         ${collapsed && !mobileOpen ? 'w-16' : 'w-60'}
-        bg-eva-panel border-r border-slate-700/40 flex flex-col shrink-0
+        bg-white dark:bg-eva-panel border-r border-slate-200 dark:border-slate-700/40 flex flex-col shrink-0
         top-[calc(3rem+env(safe-area-inset-top,0px))] lg:top-0
       `}>
-        <div className="p-4 border-b border-slate-700/40 flex items-center justify-between">
+        <div className="p-4 border-b border-slate-200 dark:border-slate-700/40 flex items-center justify-between">
           <div className={`flex items-center gap-3 ${collapsed ? 'justify-center w-full' : ''}`}>
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center text-white font-bold text-sm shrink-0">E</div>
             {!collapsed && (
               <div>
-                <h1 className="text-base font-semibold text-white leading-tight">EVA</h1>
-                <p className="text-[10px] text-eva-muted leading-tight">Digital Twin</p>
+                <h1 className="text-base font-semibold text-slate-900 dark:text-white leading-tight">EVA</h1>
+                <p className="text-[10px] text-slate-500 dark:text-eva-muted leading-tight">Digital Twin</p>
               </div>
             )}
           </div>
           {!collapsed && !mobileOpen && (
-            <button onClick={() => setCollapsed(true)} className="hidden lg:block text-eva-muted hover:text-white text-xs">‹‹</button>
+            <button onClick={() => setCollapsed(true)} className="hidden lg:block text-slate-500 dark:text-eva-muted hover:text-slate-900 dark:hover:text-white text-xs">‹‹</button>
           )}
           {mobileOpen && (
-            <button onClick={closeMobile} className="lg:hidden text-eva-muted hover:text-white text-sm p-1">✕</button>
+            <button onClick={closeMobile} className="lg:hidden text-slate-500 dark:text-eva-muted hover:text-slate-900 dark:hover:text-white text-sm p-1">✕</button>
           )}
         </div>
         <nav className="p-2 flex-1 space-y-0.5">
@@ -67,9 +67,9 @@ export default function Layout({ children }) {
               title={collapsed && !mobileOpen ? label : undefined}
               className={({ isActive }) =>
                 `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${
-                  isActive ? 'bg-eva-accent/15 text-eva-accent font-medium' :
-                  highlight ? 'text-cyan-400 hover:bg-cyan-500/20 hover:text-cyan-300 font-medium' :
-                  'text-slate-400 hover:bg-slate-700/40 hover:text-slate-200'
+                  isActive ? 'bg-cyan-100 dark:bg-eva-accent/15 text-cyan-700 dark:text-eva-accent font-medium' :
+                  highlight ? 'text-cyan-500 dark:text-cyan-400 hover:bg-cyan-50 dark:hover:bg-cyan-500/20 hover:text-cyan-600 dark:hover:text-cyan-300 font-medium' :
+                  'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700/40 hover:text-slate-900 dark:hover:text-slate-200'
                 } ${collapsed ? 'justify-center' : ''}`
               }
             >
@@ -78,18 +78,18 @@ export default function Layout({ children }) {
             </NavLink>
           ))}
         </nav>
-        <div className="p-3 border-t border-slate-700/40">
+        <div className="p-3 border-t border-slate-200 dark:border-slate-700/40">
           {collapsed && !mobileOpen ? (
-            <button onClick={() => setCollapsed(false)} className="hidden lg:block w-full text-eva-muted hover:text-white text-xs text-center">››</button>
+            <button onClick={() => setCollapsed(false)} className="hidden lg:block w-full text-slate-500 dark:text-eva-muted hover:text-slate-900 dark:hover:text-white text-xs text-center">››</button>
           ) : (
             <div className="flex items-center gap-2 px-2">
               <div className="w-6 h-6 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-[10px] text-white font-medium">
                 {(user?.email || user?.display_name || (user?.skipAuth ? 'G' : '?'))[0].toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-xs text-eva-muted truncate">{user?.email || (user?.skipAuth ? 'Guest' : '')}</div>
+                <div className="text-xs text-slate-500 dark:text-eva-muted truncate">{user?.email || (user?.skipAuth ? 'Guest' : '')}</div>
                 {requireAuth && (
-                  <button onClick={() => { logout(); navigate('/login'); }} className="text-[10px] text-slate-500 hover:text-red-400">Log out</button>
+                  <button onClick={() => { logout(); navigate('/login'); }} className="text-[10px] text-slate-500 hover:text-red-500 dark:hover:text-red-400">Log out</button>
                 )}
               </div>
             </div>

@@ -81,6 +81,29 @@ export default function Emails() {
     return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
   };
 
+  const formatGroupDate = (dateStr) => {
+    const d = new Date(dateStr);
+    const now = new Date();
+    const today = now.toISOString().slice(0, 10);
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().slice(0, 10);
+    const diff = now - d;
+    const weekAgo = 7 * 86400000;
+    if (dateStr === today) return 'Aujourd\'hui';
+    if (dateStr === yesterdayStr) return 'Hier';
+    if (diff < weekAgo) return d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+    return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+  };
+
+  const emailsByDate = emails.reduce((acc, email) => {
+    const dateStr = new Date(email.received_at).toISOString().slice(0, 10);
+    if (!acc[dateStr]) acc[dateStr] = [];
+    acc[dateStr].push(email);
+    return acc;
+  }, {});
+  const dateKeys = Object.keys(emailsByDate).sort((a, b) => b.localeCompare(a));
+
   const formatAttachmentSize = (bytes) => {
     if (!bytes) return '';
     if (bytes < 1024) return `${bytes} o`;
@@ -211,34 +234,43 @@ export default function Emails() {
         </div>
       ) : (
             <>
-          <div className="overflow-y-auto flex-1 divide-y divide-slate-700/30">
-            {emails.map((email) => (
-              <button
-                key={email.id}
-                onClick={() => openEmail(email)}
-                className={`w-full text-left px-4 py-3 hover:bg-slate-700/20 flex items-start gap-3 ${
-                  selectedEmail?.id === email.id ? 'bg-slate-700/30 border-l-2 border-eva-accent' : ''
-                } ${!email.is_read ? 'bg-slate-700/10' : ''}`}
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <span className={`text-sm truncate ${!email.is_read ? 'text-white font-medium' : 'text-slate-300'}`}>
-                      {email.from_name || email.from_email}
-                    </span>
-                    {email.is_starred && <span className="text-amber-400 text-xs">★</span>}
-                    {email.has_attachments && <span className="text-slate-500 text-xs">📎</span>}
-                  </div>
-                  <div className={`text-sm truncate ${!email.is_read ? 'text-slate-200' : 'text-slate-400'}`}>
-                    {email.subject || '(sans objet)'}
-                  </div>
-                  <div className="text-xs text-eva-muted truncate mt-0.5">
-                    {email.snippet}
-                  </div>
+          <div className="overflow-y-auto flex-1">
+            {dateKeys.map((dateStr) => (
+              <div key={dateStr} className="border-b border-slate-700/30 last:border-b-0">
+                <div className="px-4 py-2 bg-slate-800/50 sticky top-0 z-10 text-xs font-medium text-eva-muted uppercase tracking-wider">
+                  {formatGroupDate(dateStr)}
                 </div>
-                <span className="text-xs text-eva-muted whitespace-nowrap shrink-0">
-                  {formatDate(email.received_at)}
-                </span>
-              </button>
+                <div className="divide-y divide-slate-700/20">
+                  {emailsByDate[dateStr].map((email) => (
+                    <button
+                      key={email.id}
+                      onClick={() => openEmail(email)}
+                      className={`w-full text-left px-4 py-3 hover:bg-slate-700/20 flex items-start gap-3 ${
+                        selectedEmail?.id === email.id ? 'bg-slate-700/30 border-l-2 border-eva-accent' : ''
+                      } ${!email.is_read ? 'bg-slate-700/10' : ''}`}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span className={`text-sm truncate ${!email.is_read ? 'text-white font-medium' : 'text-slate-300'}`}>
+                            {email.from_name || email.from_email}
+                          </span>
+                          {email.is_starred && <span className="text-amber-400 text-xs">★</span>}
+                          {email.has_attachments && <span className="text-slate-500 text-xs">📎</span>}
+                        </div>
+                        <div className={`text-sm truncate ${!email.is_read ? 'text-slate-200' : 'text-slate-400'}`}>
+                          {email.subject || '(sans objet)'}
+                        </div>
+                        <div className="text-xs text-eva-muted truncate mt-0.5">
+                          {email.snippet}
+                        </div>
+                      </div>
+                      <span className="text-xs text-eva-muted whitespace-nowrap shrink-0" title={new Date(email.received_at).toLocaleString('fr-FR')}>
+                        {formatDate(email.received_at)}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
 

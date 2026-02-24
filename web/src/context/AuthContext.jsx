@@ -8,6 +8,8 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [requireAuth, setRequireAuth] = useState(true);
 
+  const getTokenStorage = () => localStorage.getItem('eva_token') || sessionStorage.getItem('eva_token');
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -20,7 +22,7 @@ export function AuthProvider({ children }) {
           setLoading(false);
           return;
         }
-        const token = localStorage.getItem('eva_token');
+        const token = getTokenStorage();
         if (!token) {
           setLoading(false);
           return;
@@ -30,6 +32,7 @@ export function AuthProvider({ children }) {
       } catch {
         setRequireAuth(true);
         localStorage.removeItem('eva_token');
+        sessionStorage.removeItem('eva_token');
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -37,30 +40,41 @@ export function AuthProvider({ children }) {
     return () => { cancelled = true; };
   }, []);
 
-  const login = async (email, password) => {
+  const storeToken = (token, remember) => {
+    localStorage.removeItem('eva_token');
+    sessionStorage.removeItem('eva_token');
+    if (remember) {
+      localStorage.setItem('eva_token', token);
+    } else {
+      sessionStorage.setItem('eva_token', token);
+    }
+  };
+
+  const login = async (email, password, remember = true) => {
     const { token, user: u } = await api.login(email, password);
-    localStorage.setItem('eva_token', token);
+    storeToken(token, remember);
     setUser(u);
   };
 
-  const signup = async (email, password, displayName) => {
+  const signup = async (email, password, displayName, remember = true) => {
     const { token, user: u } = await api.signup(email, password, displayName);
-    localStorage.setItem('eva_token', token);
+    storeToken(token, remember);
     setUser(u);
   };
 
   const logout = () => {
     localStorage.removeItem('eva_token');
+    sessionStorage.removeItem('eva_token');
     setUser(null);
   };
 
-  const resetPassword = async (token, email, password) => {
+  const resetPassword = async (token, email, password, remember = true) => {
     const { token: newToken, user: u } = await api.resetPassword(token, email, password);
-    localStorage.setItem('eva_token', newToken);
+    storeToken(newToken, remember);
     setUser(u);
   };
 
-  const getToken = () => localStorage.getItem('eva_token');
+  const getToken = () => getTokenStorage();
 
   const isAuthenticated = !!user;
   return (

@@ -34,32 +34,29 @@ function parseCommand(text) {
   return { command: null, message: t, mode: null };
 }
 
-const EVA_SYSTEM = `You are EVA, a Personal AI Digital Twin created for Loic Hennocq, Founder & CEO of HaliSoft L.L.C-FZ, based in Dubai, UAE.
+const EVA_SYSTEM = `## COMPREHENSION (TOP PRIORITY — DO THIS FIRST)
+1. Parse the user's question: What exactly are they asking? (person, topic, date, action?)
+2. Search the context below (emails, documents). Match names, subjects, dates.
+3. If you find the answer → give it with specifics (who, when, what). Cite source.
+4. If you don't find it → say clearly "Je n'ai pas cette info" / "I don't have that". Never invent.
+5. NEVER give vague or generic answers when they ask something specific. Go straight to the answer.
+
+You are EVA, a Personal AI Digital Twin for Loic Hennocq, Founder & CEO of HaliSoft L.L.C-FZ, Dubai.
 
 ## Your Identity
-- You are NOT a generic chatbot. You are Loic's dedicated AI proxy — designed to mirror his thinking, tone, and decision-making style.
-- You are professional, direct, and efficient. You match the language the user speaks (French or English seamlessly). NEVER say you are "required to stick to English" — always reply in French when the user writes in French.
-- You have a slight warmth but default to concise, actionable responses. No fluff.
+- Loic's dedicated AI proxy. Professional, direct, efficient. Match the user's language (French ↔ English).
+- NEVER say "required to stick to English" — always reply in French when the user writes in French.
+- No fluff. No "Je comprends" / "I understand" as opener — go straight to the answer.
 
 ## About Loic & HaliSoft
-- HaliSoft L.L.C-FZ is a technology company in Dubai focused on trade finance and invoice factoring.
-- Loic has 20+ years of experience at the intersection of technology and international business.
-- He previously worked at Incomlend (invoice factoring / trade finance platform).
-- HaliSoft is building an onboarding platform for invoice factoring — digitalizing the client onboarding process.
-- Key stakeholders include investors, clients (SMEs seeking factoring), and technology partners.
+- Trade finance, invoice factoring. 20+ years tech + international business. Ex-Incomlend. HaliSoft = onboarding platform for factoring.
 
-## Your Capabilities (Current Phase — Memory Vault + Gmail + Documents)
-- You can have natural conversations, answer questions, brainstorm, and draft content.
-- You can draft emails, messages, and documents in Loic's professional voice.
-- You log all interactions for audit purposes.
-- **Gmail Integration**: You have access to Loic's recent emails (last 30 days). When relevant emails are found, they will be provided as context below. Use them to give accurate, specific answers about recent communications.
-- **Documents uploadés**: When Loic asks about his flight, plane ticket (billet), travel to Shanghai, or anything in his uploaded documents (PDF, etc.), search the Memory Vault. If document content is provided below, use it to answer (dates, flight numbers, times, etc.).
-- When citing emails, mention the sender, date, and subject to help Loic identify the message.
-- Your Memory Vault (20+ years of emails, documents, communications) is being expanded — if asked about older events, acknowledge this honestly.
+## Capabilities (Memory Vault + Gmail + Documents)
+- Emails and documents are injected below. USE THEM to answer. Cite sender, date, subject when relevant.
+- If asked about something not in the data, say you don't have it.
 
 ## Communication Style
-- Default to the language the user writes in (French ↔ English). French user → French reply. NEVER refuse to speak French.
-- Professional but not stiff. Think senior executive who respects people's time.
+- French user → French reply. Professional, concise. Senior executive tone.
 - When drafting for Loic: slightly formal for investors/partners, warmer for team, direct for vendors.
 - Use short paragraphs. Bullet points only when listing action items.
 - Always suggest next steps when relevant.
@@ -81,11 +78,14 @@ function getClient() {
   return new Anthropic({ apiKey: key.trim() });
 }
 
-// Keywords that suggest the user is asking about emails
-const EMAIL_KEYWORDS = /email|mail|envoy[eé]|re[çc]u|message|from|sent|wrote|[eé]crit|r[eé]pondu|contact[eé]|inbox|courrier|correspondance/i;
+// Keywords that suggest the user is asking about emails (widened for French)
+const EMAIL_KEYWORDS = /email|mail|envoy[eé]|re[çc]u|message|from|sent|wrote|[eé]crit|r[eé]pondu|contact[eé]|inbox|courrier|correspondance|dernier|dit|demand[eé]|r[eé]ponse|qui m'a|pierre|jean|paul|marie/i;
 
 // Keywords for travel/documents (vol, billet, Shanghai, document uploadé)
 const DOCUMENT_KEYWORDS = /vol|billet|avion|train|Shanghai|voyage|travel|flight|semaine prochaine|document|fichier|upload|upload[eé]/i;
+
+// Always inject recent context for owner (not just on keyword match) - helps comprehension
+const ALWAYS_INJECT_RECENT = true;
 
 /**
  * @param {string} userMessage
@@ -98,23 +98,28 @@ async function reply(userMessage, history = [], ownerId = null, mode = null) {
   const client = getClient();
   const model = process.env.EVA_CHAT_MODEL || 'claude-sonnet-4-20250514';
 
-  // Build email context if relevant
+  // Build email context: search on keywords, or inject recent when ALWAYS_INJECT
   let emailContext = '';
-  if (ownerId && EMAIL_KEYWORDS.test(userMessage)) {
+  if (ownerId) {
     try {
       const sync = getGmailSync();
       if (sync) {
-        const emailResults = await sync.searchEmails(ownerId, userMessage, 5);
-        if (emailResults.length > 0) {
-          emailContext = '\n\n## Recent Emails from Memory Vault\n';
-          emailContext += 'The following emails match the user\'s query. Use them to provide accurate, specific answers:\n\n';
-          emailResults.forEach((e, i) => {
-            emailContext += `**Email ${i + 1}:**\n`;
-            emailContext += `- From: ${e.from_name ? `${e.from_name} <${e.from_email}>` : e.from_email}\n`;
-            emailContext += `- Subject: ${e.subject}\n`;
-            emailContext += `- Date: ${new Date(e.received_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}\n`;
-            emailContext += `- Preview: ${(e.body_preview || e.snippet || '').slice(0, 300)}\n\n`;
-          });
+        const shouldInject = ALWAYS_INJECT_RECENT || EMAIL_KEYWORDS.test(userMessage);
+        if (shouldInject) {
+          const emailResults = EMAIL_KEYWORDS.test(userMessage)
+            ? await sync.searchEmails(ownerId, userMessage, 5)
+            : await sync.getRecentEmails(ownerId, 5);
+          if (emailResults.length > 0) {
+            emailContext = '\n\n## Recent Emails (Memory Vault)\n';
+            emailContext += 'Use these emails to answer questions about messages, who said what, etc. If the answer is here, cite it. If not, say you don\'t have that info.\n\n';
+            emailResults.forEach((e, i) => {
+              emailContext += `**Email ${i + 1}:**\n`;
+              emailContext += `- From: ${e.from_name ? `${e.from_name} <${e.from_email}>` : e.from_email}\n`;
+              emailContext += `- Subject: ${e.subject}\n`;
+              emailContext += `- Date: ${new Date(e.received_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}\n`;
+              emailContext += `- Preview: ${(e.body_preview || e.snippet || '').slice(0, 300)}\n\n`;
+            });
+          }
         }
       }
     } catch (err) {
@@ -122,20 +127,23 @@ async function reply(userMessage, history = [], ownerId = null, mode = null) {
     }
   }
 
-  // Build document context (vol, billet, Shanghai, documents uploadés)
+  // Build document context: search on keywords or always inject recent
   let documentContext = '';
-  if (ownerId && DOCUMENT_KEYWORDS.test(userMessage)) {
+  if (ownerId) {
     try {
       const docProcessor = require('./services/documentProcessor');
-      const docResults = await docProcessor.searchDocuments(ownerId, userMessage, 3);
-      if (docResults.length > 0) {
-        documentContext = '\n\n## Documents uploadés (Memory Vault)\n';
-        documentContext += 'Loic a uploadé des documents. Contenu pertinent pour sa question:\n\n';
-        docResults.forEach((d, i) => {
-          documentContext += `**Document ${i + 1}:** ${d.filename}\n`;
-          documentContext += `${(d.content_preview || d.content_text || '').slice(0, 800)}\n\n`;
-        });
-        documentContext += 'Utilise ces extraits pour répondre (vol, billet, horaires, Shanghai, etc.).';
+      const shouldInject = ALWAYS_INJECT_RECENT || DOCUMENT_KEYWORDS.test(userMessage);
+      if (shouldInject) {
+        const docResults = DOCUMENT_KEYWORDS.test(userMessage)
+          ? await docProcessor.searchDocuments(ownerId, userMessage, 3)
+          : await docProcessor.getRecentDocuments(ownerId, 3);
+        if (docResults.length > 0) {
+          documentContext = '\n\n## Documents (Memory Vault)\n';
+          documentContext += 'Use these for flights, tickets, travel, etc. If the answer is here, give it. If not, say you don\'t have that info.\n\n';
+          docResults.forEach((d, i) => {
+            documentContext += `**${d.filename}:**\n${(d.content_text || '').slice(0, 1000)}\n\n`;
+          });
+        }
       }
     } catch (err) {
       console.warn('[EVA Chat] Document context lookup failed:', err.message);
@@ -156,12 +164,17 @@ async function reply(userMessage, history = [], ownerId = null, mode = null) {
     { role: 'user', content: userMessage },
   ];
 
-  const response = await client.messages.create({
+  const useThinking = process.env.EVA_USE_THINKING !== 'false';
+  const createOptions = {
     model,
     max_tokens: 2048,
     system: systemPrompt,
     messages,
-  });
+  };
+  if (useThinking) {
+    createOptions.thinking = { type: 'enabled', budget_tokens: 2048 };
+  }
+  const response = await client.messages.create(createOptions);
 
   const textBlock = response.content?.find((b) => b.type === 'text');
   const replyText = textBlock ? textBlock.text : 'No response.';

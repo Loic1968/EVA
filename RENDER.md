@@ -36,7 +36,7 @@ for f in eva/migrations/00*.sql; do psql "$DATABASE_URL" -f "$f"; done
 
 ## 3. Vérifier après déploiement
 
-- **https://eva.halisoft.biz/health** → doit répondre `{"status":"ok","app":"eva",...}`
+- **https://eva.halisoft.biz/health** → doit répondre `{"status":"ok","app":"eva","db":"ok",...}`
 - **https://eva.halisoft.biz/chat** → envoyer un message : si tout est bon, EVA répond. Si tu vois "Database unavailable. On Render: set DATABASE_URL...", (re)vérifier **DATABASE_URL** et la migration.
 
 ## 4. Build / Start sur Render

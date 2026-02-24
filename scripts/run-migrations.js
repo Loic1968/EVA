@@ -3,9 +3,12 @@
  * Run EVA migrations using Node.js pg (no psql required).
  */
 const path = require('path');
-// Load parent .env first (has real DATABASE_URL), then eva overrides
-require('dotenv').config({ path: path.join(__dirname, '../../.env') });
-require('dotenv').config({ path: path.join(__dirname, '../.env') });
+const fs = require('fs');
+// Load .env files if they exist (local dev). Prod uses Render env vars.
+const parentEnv = path.join(__dirname, '../../.env');
+const evaEnv = path.join(__dirname, '../.env');
+if (fs.existsSync(parentEnv)) require('dotenv').config({ path: parentEnv });
+if (fs.existsSync(evaEnv)) require('dotenv').config({ path: evaEnv });
 const { Pool } = require('pg');
 const fs = require('fs');
 

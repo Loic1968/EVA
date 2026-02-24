@@ -25,6 +25,24 @@ function extractTxtFromBuffer(buffer) {
   }
 }
 
+async function extractImageOcr(buffer) {
+  try {
+    const { createWorker } = require('tesseract.js');
+    const worker = await createWorker('eng');
+    try {
+      const { data: { text } } = await worker.recognize(buffer);
+      await worker.terminate();
+      return (text || '').trim();
+    } catch (e) {
+      await worker.terminate();
+      throw e;
+    }
+  } catch (e) {
+    console.warn('[DocumentProcessor] OCR failed:', e.message);
+    return null;
+  }
+}
+
 async function extractText(filePathOrBuffer, fileType) {
   const isBuffer = Buffer.isBuffer(filePathOrBuffer);
   const ext = (fileType || (!isBuffer && path.extname(filePathOrBuffer)) || '').toLowerCase().replace('.', '');
@@ -40,6 +58,10 @@ async function extractText(filePathOrBuffer, fileType) {
       console.warn('[DocumentProcessor] TXT read failed:', e.message);
       return null;
     }
+  }
+  if (['jpg', 'jpeg', 'png', 'webp'].includes(ext)) {
+    const buffer = isBuffer ? filePathOrBuffer : fs.readFileSync(filePathOrBuffer);
+    return extractImageOcr(buffer);
   }
   return null;
 }

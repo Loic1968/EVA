@@ -1,6 +1,8 @@
 import { useEffect, useState, useRef } from 'react';
 import { api } from '../api';
 
+const INDEXABLE_TYPES = ['pdf', 'txt', 'csv', 'jpg', 'jpeg', 'png', 'webp'];
+
 export default function Documents() {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -11,6 +13,7 @@ export default function Documents() {
   const [error, setError] = useState(null);
   const [dragOver, setDragOver] = useState(false);
   const fileRef = useRef(null);
+  const cameraRef = useRef(null);
 
   const handleProcess = async (doc) => {
     setProcessingId(doc.id);
@@ -36,11 +39,11 @@ export default function Documents() {
     load().finally(() => setLoading(false));
   }, []);
 
-  // Auto-index documents that are still 'uploaded' (PDF/TXT) on first load
+  // Auto-index documents that are still 'uploaded' (PDF, TXT, images) on first load
   useEffect(() => {
     if (documents.length === 0 || autoIndexRun.current) return;
     const toProcess = documents.filter(
-      (d) => (d.status === 'uploaded' || d.status === 'error') && ['pdf', 'txt', 'csv'].includes((d.file_type || '').toLowerCase())
+      (d) => (d.status === 'uploaded' || d.status === 'error') && INDEXABLE_TYPES.includes((d.file_type || '').toLowerCase())
     );
     if (toProcess.length === 0) return;
     autoIndexRun.current = true;
@@ -90,17 +93,36 @@ export default function Documents() {
           <h1 className="text-2xl font-semibold text-white">Documents</h1>
           <p className="text-eva-muted text-sm mt-1">Upload files for EVA's Memory Vault. Contracts, emails, reports — everything feeds the brain.</p>
         </div>
-        <button
-          onClick={() => fileRef.current?.click()}
-          disabled={uploading}
-          className="px-4 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-medium rounded-lg hover:from-cyan-400 hover:to-blue-500 disabled:opacity-50 transition-all"
-        >
-          {uploading ? 'Uploading...' : 'Upload Files'}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => fileRef.current?.click()}
+            disabled={uploading}
+            className="px-4 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-medium rounded-lg hover:from-cyan-400 hover:to-blue-500 disabled:opacity-50 transition-all"
+          >
+            {uploading ? 'Uploading...' : 'Upload Files'}
+          </button>
+          <button
+            onClick={() => cameraRef.current?.click()}
+            disabled={uploading}
+            className="px-4 py-2.5 bg-slate-700 hover:bg-slate-600 text-white font-medium rounded-lg disabled:opacity-50 transition-all flex items-center gap-2"
+            title="Take a photo of a document (camera on mobile)"
+          >
+            <span className="text-lg">📷</span> Take Photo
+          </button>
+        </div>
         <input
           ref={fileRef}
           type="file"
           multiple
+          accept=".pdf,.docx,.txt,.csv,application/pdf,text/*"
+          className="hidden"
+          onChange={(e) => handleUpload(e.target.files)}
+        />
+        <input
+          ref={cameraRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
           className="hidden"
           onChange={(e) => handleUpload(e.target.files)}
         />
@@ -119,7 +141,7 @@ export default function Documents() {
       >
         <div className="text-eva-muted">
           <p className="text-lg mb-1">{dragOver ? 'Drop files here' : 'Drag & drop files here'}</p>
-          <p className="text-xs">PDF, DOCX, TXT, CSV, email archives — up to 50MB per file</p>
+          <p className="text-xs">PDF, DOCX, TXT, CSV, photos (JPG/PNG) — up to 50MB. Use Take Photo on mobile to capture documents.</p>
         </div>
       </div>
 
@@ -141,6 +163,7 @@ export default function Documents() {
                     doc.file_type === 'pdf' ? 'bg-red-500/20 text-red-400' :
                     doc.file_type === 'docx' ? 'bg-blue-500/20 text-blue-400' :
                     doc.file_type === 'csv' ? 'bg-green-500/20 text-green-400' :
+                    ['jpg', 'jpeg', 'png', 'webp'].includes((doc.file_type || '').toLowerCase()) ? 'bg-amber-500/20 text-amber-400' :
                     'bg-slate-700 text-slate-400'
                   }`}>
                     {(doc.file_type || '?').toUpperCase().slice(0, 3)}
@@ -159,7 +182,7 @@ export default function Documents() {
                   }`}>
                     {doc.status}
                   </span>
-                  {(doc.status === 'uploaded' || doc.status === 'error') && (doc.file_type === 'pdf' || doc.file_type === 'txt') && (
+                  {(doc.status === 'uploaded' || doc.status === 'error') && INDEXABLE_TYPES.includes((doc.file_type || '').toLowerCase()) && (
                     <button
                       onClick={() => handleProcess(doc)}
                       disabled={processingId !== null}

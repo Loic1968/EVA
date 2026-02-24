@@ -5,18 +5,47 @@ export default function Documents() {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [processingId, setProcessingId] = useState(null);
   const [error, setError] = useState(null);
   const [dragOver, setDragOver] = useState(false);
   const fileRef = useRef(null);
+
+  const handleProcess = async (doc) => {
+    setProcessingId(doc.id);
+    setError(null);
+    try {
+      await api.processDocument(doc.id);
+      await load();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setProcessingId(null);
+    }
+  };
 
   const load = () =>
     api.getDocuments({ limit: 100 })
       .then((r) => setDocuments(r.documents || []))
       .catch((e) => setError(e.message));
 
+  const autoIndexRun = useRef(false);
+
   useEffect(() => {
     load().finally(() => setLoading(false));
   }, []);
+
+  // Auto-index documents that are still 'uploaded' (PDF/TXT) on first load
+  useEffect(() => {
+    if (documents.length === 0 || autoIndexRun.current) return;
+    const toProcess = documents.filter(
+      (d) => (d.status === 'uploaded' || d.status === 'error') && ['pdf', 'txt', 'csv'].includes((d.file_type || '').toLowerCase())
+    );
+    if (toProcess.length === 0) return;
+    autoIndexRun.current = true;
+    toProcess.forEach((d) => {
+      api.processDocument(d.id).then(() => load()).catch(() => {});
+    });
+  }, [documents]);
 
   const handleUpload = async (files) => {
     if (!files || files.length === 0) return;
@@ -119,14 +148,26 @@ export default function Documents() {
                     <div className="text-xs text-eva-muted">{formatBytes(doc.file_size)} — {new Date(doc.created_at).toLocaleDateString()}</div>
                   </div>
                 </div>
-                <span className={`text-xs px-2 py-1 rounded-full ${
-                  doc.status === 'indexed' ? 'bg-emerald-500/20 text-emerald-400' :
-                  doc.status === 'processing' ? 'bg-amber-500/20 text-amber-400' :
-                  doc.status === 'error' ? 'bg-red-500/20 text-red-400' :
-                  'bg-slate-700 text-slate-400'
-                }`}>
-                  {doc.status}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs px-2 py-1 rounded-full ${
+                    doc.status === 'indexed' ? 'bg-emerald-500/20 text-emerald-400' :
+                    doc.status === 'processing' ? 'bg-amber-500/20 text-amber-400' :
+                    doc.status === 'error' ? 'bg-red-500/20 text-red-400' :
+                    'bg-slate-700 text-slate-400'
+                  }`}>
+                    {doc.status}
+                  </span>
+                  {(doc.status === 'uploaded' || doc.status === 'error') && (doc.file_type === 'pdf' || doc.file_type === 'txt') && (
+                    <button
+                      onClick={() => handleProcess(doc)}
+                      disabled={processingId !== null}
+                      className="text-xs px-2 py-1 rounded bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 disabled:opacity-50"
+                      title="Extraire le texte pour que EVA puisse chercher dedans"
+                    >
+                      {processingId === doc.id ? '…' : 'Indexer'}
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>

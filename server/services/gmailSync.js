@@ -306,12 +306,12 @@ async function searchEmails(ownerId, queryText, limit = 5, gmailAccountId = null
 async function getRecentEmails(ownerId, limit = 8) {
   try {
     const r = await db.query(
-      `SELECT id, from_email, from_name, subject, snippet, received_at
+      `SELECT id, from_email, from_name, subject, snippet, left(body_plain, 600) as body_preview, received_at
        FROM eva.emails
        WHERE owner_id = $1
        ORDER BY received_at DESC
        LIMIT $2`,
-      [ownerId, Math.min(limit, 15)]
+      [ownerId, Math.min(limit, 50)]
     );
     return r.rows;
   } catch (err) {

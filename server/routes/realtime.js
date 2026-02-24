@@ -13,34 +13,53 @@ const DEFAULT_OWNER_EMAIL = process.env.EVA_OWNER_EMAIL || 'loic@halisoft.biz';
 
 const EVA_INSTRUCTIONS_BASE = `Tu es EVA, assistant personnel de Loic (HaliSoft, Dubai). Réponses courtes et directes. Parle en français ou anglais selon la langue de l'utilisateur. Style professionnel mais chaleureux.
 
-VISION vs DONNÉES: Tu n'as pas de caméra ni d'écran (pas de slides, PDF, présentation). MAIS tu peux avoir accès à des DONNÉES en texte (emails, etc.) injectées dans tes instructions. Si on te fournit une liste d'emails ci-dessous, tu DOIS les utiliser et les résumer quand Loic demande "mes emails". Ne dis jamais "je ne peux pas voir tes emails" si la liste est fournie. Tu n'as pas accès au calendrier.`;
+ACCÈS AUX DONNÉES: Tu as accès à TOUT ce qui est injecté ci-dessous (emails + documents). Utilise ces données pour répondre à toute question de Loic. Pas de caméra ni calendrier.
 
-async function buildInstructionsWithEmailContext() {
+STOP: Si Loic dit "stop", "arrête", "assez", "stop talking" — réponds UNIQUEMENT "OK" ou "D'accord" en une toute courte phrase puis TAIRE. Ne continue pas.`;
+
+async function buildInstructionsWithContext() {
   let instructions = EVA_INSTRUCTIONS_BASE;
   try {
     const owner = await db.getOrCreateOwner(DEFAULT_OWNER_EMAIL, 'Loic Hennocq');
+
+    // Emails — tous les récents
     let gmailSync = null;
     try {
       gmailSync = require('../services/gmailSync');
     } catch (_) {}
-    if (gmailSync && gmailSync.getRecentEmails) {
-      const recent = await gmailSync.getRecentEmails(owner.id, 8);
+    if (gmailSync?.getRecentEmails) {
+      const recent = await gmailSync.getRecentEmails(owner.id, 30);
       if (recent.length > 0) {
-        console.log(`[EVA Realtime] Injected ${recent.length} emails into session`);
-        instructions += '\n\n## EMAILS DE LOIC (Memory Vault) — TU AS ACCÈS À CECI\n';
-        instructions += 'Quand Loic demande ses emails, "mes derniers emails", etc., réponds en résumant cette liste:\n\n';
+        console.log(`[EVA Realtime] Injected ${recent.length} emails`);
+        instructions += '\n\n## EMAILS (accès complet)\n';
         recent.forEach((e) => {
           const date = new Date(e.received_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
-          instructions += `• De ${e.from_name || e.from_email} — ${(e.subject || '').slice(0, 70)} (${date})\n  ${(e.snippet || '').slice(0, 100)}\n`;
+          const snippet = (e.snippet || '').slice(0, 300);
+          const body = ((e.body_preview || '').replace(/\s+/g, ' ').trim()).slice(0, 400);
+          const extra = body ? ` | ${body}` : (snippet ? ` | ${snippet}` : '');
+          instructions += `• ${e.from_name || e.from_email}: "${(e.subject || '').slice(0, 100)}" (${date})${extra}\n`;
         });
-        instructions += '\nRègle: Ne dis JAMAIS que tu n\'as pas accès aux emails quand cette liste est fournie.';
-      } else {
-        instructions += '\n\n( Pas d\'emails synchronisés. Si Loic demande ses emails, dis-lui de connecter Gmail dans Data Sources.)';
-        console.log('[EVA Realtime] No emails in DB, skipped injection');
+      }
+    }
+
+    // Documents — tous les indexés
+    let docProcessor = null;
+    try {
+      docProcessor = require('../services/documentProcessor');
+    } catch (_) {}
+    if (docProcessor?.getRecentDocuments) {
+      const docs = await docProcessor.getRecentDocuments(owner.id, 10);
+      if (docs.length > 0) {
+        console.log(`[EVA Realtime] Injected ${docs.length} documents`);
+        instructions += '\n\n## DOCUMENTS UPLOADÉS (accès complet)\n';
+        docs.forEach((d) => {
+          instructions += `**${d.filename}:**\n${(d.content_text || '').slice(0, 1200)}\n\n`;
+        });
+        instructions += 'Utilise ces documents pour vol, billet, Shanghai, rendez-vous, etc.';
       }
     }
   } catch (err) {
-    console.warn('[EVA Realtime] Email context injection failed:', err.message);
+    console.warn('[EVA Realtime] Context injection failed:', err.message);
   }
   return instructions;
 }
@@ -51,7 +70,7 @@ router.get('/token', async (req, res, next) => {
       return res.status(503).json({ error: 'Realtime API disabled. Set OPENAI_API_KEY.' });
     }
 
-    const instructions = await buildInstructionsWithEmailContext();
+    const instructions = await buildInstructionsWithContext();
 
     const sessionConfig = {
       session: {

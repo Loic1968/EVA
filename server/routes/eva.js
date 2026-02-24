@@ -541,6 +541,15 @@ router.post('/documents/upload', express.raw({ type: '*/*', limit: '50mb' }), as
       [req.ownerId, filename, fileType, fileSize, filePath]
     );
 
+    // Auto-index: extract text immediately after upload (async, non-blocking)
+    const docProcessor = require('../services/documentProcessor');
+    const docId = r.rows[0].id;
+    docProcessor.processDocument(docId, req.ownerId).then(() => {
+      console.log(`[EVA] Document ${docId} indexed`);
+    }).catch((e) => {
+      console.warn('[EVA] Document auto-index failed:', e.message);
+    });
+
     // Audit log
     await db.query(
       `INSERT INTO eva.audit_logs (owner_id, action_type, channel, details) VALUES ($1, 'file_uploaded', 'documents', $2)`,
@@ -548,6 +557,20 @@ router.post('/documents/upload', express.raw({ type: '*/*', limit: '50mb' }), as
     );
 
     res.status(201).json(r.rows[0]);
+  } catch (e) {
+    next(e);
+  }
+});
+
+// Reprocess document (extract text for search)
+router.post('/documents/:id/process', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const docProcessor = require('../services/documentProcessor');
+    await docProcessor.processDocument(id, req.ownerId);
+    const r = await db.query('SELECT id, filename, status, processed_at FROM eva.documents WHERE id = $1 AND owner_id = $2', [id, req.ownerId]);
+    if (!r.rows[0]) return res.status(404).json({ error: 'Document not found' });
+    res.json(r.rows[0]);
   } catch (e) {
     next(e);
   }

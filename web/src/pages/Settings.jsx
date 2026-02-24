@@ -117,15 +117,16 @@ export default function Settings() {
       <div className="bg-eva-panel rounded-xl border border-slate-700/40 p-6 max-w-2xl">
         <h2 className="text-lg font-medium text-white mb-2">Chat language</h2>
         <p className="text-eva-muted text-sm mb-4">
-          Language EVA uses when responding (voice & chat).
+          Auto: EVA replies in the same language you speak. Or force English/French.
         </p>
         <div className="flex items-center gap-3">
           <select
-            value={settings.chat_language?.lang ?? 'en'}
+            value={settings.chat_language?.lang ?? 'auto'}
             onChange={(e) => setChatLanguage(e.target.value)}
             disabled={saving}
             className="bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-cyan-500 focus:border-transparent disabled:opacity-50"
           >
+            <option value="auto">Auto (match your language)</option>
             <option value="en">English</option>
             <option value="fr">French</option>
           </select>

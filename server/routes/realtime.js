@@ -13,9 +13,11 @@ const DEFAULT_OWNER_EMAIL = process.env.EVA_OWNER_EMAIL || 'loic@halisoft.biz';
 
 const EVA_INSTRUCTIONS_BASE = `You are EVA, personal assistant (HaliSoft, Dubai). Keep answers short and direct. Professional but warm style.
 
+LANGUAGE: Always reply in the SAME language the user speaks. If they speak French, reply in French. If they speak English, reply in English. Match their language automatically.
+
 DATA ACCESS: You have access to everything injected below (emails + documents). Use this data to answer any question. No camera or calendar.
 
-STOP: If the user says "stop", "arrête", "assez", "stop talking" — reply ONLY "OK" or "Understood" in a very short phrase then STOP. Do not continue.`;
+STOP: If the user says "stop", "arrête", "assez", "stop talking" — reply ONLY "OK" or "D'accord" in a very short phrase then STOP. Do not continue.`;
 
 async function buildInstructionsWithContext(ownerId) {
   let instructions = EVA_INSTRUCTIONS_BASE;
@@ -25,13 +27,15 @@ async function buildInstructionsWithContext(ownerId) {
       : await db.getOrCreateOwner(DEFAULT_OWNER_EMAIL, 'Loic Hennocq');
     if (!owner) return instructions;
 
-    // Chat language from settings (en/fr)
+    // Optional: force language from settings (auto = match user)
     const langRow = await db.query('SELECT value FROM eva.settings WHERE owner_id = $1 AND key = $2', [owner.id, 'chat_language']);
-    const chatLang = langRow.rows[0]?.value?.lang || 'en';
-    const langInstr = chatLang === 'fr'
-      ? 'CRITICAL: Reply ONLY in French. Always write and speak in French.'
-      : 'CRITICAL: Reply ONLY in English. Always write and speak in English.';
-    instructions = langInstr + '\n\n' + instructions;
+    const chatLang = langRow.rows[0]?.value?.lang || 'auto';
+    if (chatLang === 'fr') {
+      instructions = 'CRITICAL: Reply ONLY in French.\n\n' + instructions;
+    } else if (chatLang === 'en') {
+      instructions = 'CRITICAL: Reply ONLY in English.\n\n' + instructions;
+    }
+    // chatLang === 'auto' -> no override, match user language
 
     // Emails — recent
     let gmailSync = null;

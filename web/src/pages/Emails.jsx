@@ -3,6 +3,8 @@ import { api } from '../api';
 
 export default function Emails() {
   const [emails, setEmails] = useState([]);
+  const [gmailAccounts, setGmailAccounts] = useState([]);
+  const [activeTab, setActiveTab] = useState('all');
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -12,18 +14,28 @@ export default function Emails() {
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 30;
 
-  const fetchEmails = async (searchQuery = '', pageNum = 0) => {
+  const fetchAccounts = async () => {
+    try {
+      const res = await api.getGmailAccounts().catch(() => ({ accounts: [] }));
+      setGmailAccounts(res.accounts || []);
+    } catch (_) {}
+  };
+
+  const fetchEmails = async (searchQuery = '', pageNum = 0, accountId = null) => {
     setLoading(true);
     setError(null);
     try {
+      const params = { limit: PAGE_SIZE, offset: pageNum * PAGE_SIZE };
+      if (accountId && accountId !== 'all') params.gmail_account_id = accountId;
+
       let result;
       if (searchQuery.trim()) {
-        result = await api.searchEmails(searchQuery, PAGE_SIZE);
+        result = await api.searchEmails(searchQuery, PAGE_SIZE, accountId && accountId !== 'all' ? accountId : undefined);
       } else {
-        result = await api.getEmails({ limit: PAGE_SIZE, offset: pageNum * PAGE_SIZE });
+        result = await api.getEmails(params);
       }
       setEmails(result.emails || []);
-      setTotal(result.total || 0);
+      setTotal(result.total || (result.emails?.length ?? 0));
     } catch (e) {
       setError(e.message);
     } finally {
@@ -31,23 +43,25 @@ export default function Emails() {
     }
   };
 
+  useEffect(() => { fetchAccounts(); }, []);
   useEffect(() => {
-    fetchEmails();
-  }, []);
+    fetchEmails(search, page, activeTab);
+  }, [activeTab, page]);
 
   const handleSearch = (e) => {
     e.preventDefault();
     setPage(0);
-    fetchEmails(search, 0);
+    fetchEmails(search, 0, activeTab);
   };
 
   const handlePageChange = (newPage) => {
     setPage(newPage);
-    fetchEmails(search, newPage);
+    fetchEmails(search, newPage, activeTab);
   };
 
   const openEmail = async (email) => {
     setDetailLoading(true);
+    setSelectedEmail(null);
     try {
       const detail = await api.getEmail(email.id);
       setSelectedEmail(detail);
@@ -67,77 +81,102 @@ export default function Emails() {
     return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
   };
 
-  // Email detail modal
-  if (selectedEmail) {
-    return (
-      <div className="space-y-4">
-        <button
-          onClick={() => setSelectedEmail(null)}
-          className="text-sm text-eva-accent hover:text-cyan-300 flex items-center gap-1"
-        >
-          ← Retour aux emails
-        </button>
-        <div className="bg-eva-panel rounded-xl border border-slate-700/40 p-6">
-          <div className="flex items-start justify-between mb-4">
-            <div>
-              <h2 className="text-lg font-medium text-white">{selectedEmail.subject || '(sans objet)'}</h2>
-              <p className="text-sm text-eva-muted mt-1">
-                De: <span className="text-slate-300">{selectedEmail.from_name ? `${selectedEmail.from_name} <${selectedEmail.from_email}>` : selectedEmail.from_email}</span>
-              </p>
-              {selectedEmail.to_emails?.length > 0 && (
-                <p className="text-sm text-eva-muted">
-                  À: <span className="text-slate-400">{selectedEmail.to_emails.join(', ')}</span>
-                </p>
-              )}
-              {selectedEmail.cc_emails?.length > 0 && (
-                <p className="text-sm text-eva-muted">
-                  Cc: <span className="text-slate-400">{selectedEmail.cc_emails.join(', ')}</span>
-                </p>
-              )}
-            </div>
-            <span className="text-xs text-eva-muted whitespace-nowrap">
-              {new Date(selectedEmail.received_at).toLocaleString('fr-FR')}
-            </span>
-          </div>
+  const formatAttachmentSize = (bytes) => {
+    if (!bytes) return '';
+    if (bytes < 1024) return `${bytes} o`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} Ko`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
+  };
 
-          {selectedEmail.attachments?.length > 0 && (
-            <div className="flex flex-wrap gap-2 mb-4">
-              {selectedEmail.attachments.map((att, i) => (
-                <span key={i} className="text-xs bg-slate-700/50 text-slate-300 px-2 py-1 rounded">
-                  📎 {att.filename} {att.size_bytes ? `(${(att.size_bytes / 1024).toFixed(0)} KB)` : ''}
-                </span>
-              ))}
-            </div>
-          )}
+  const formatSyncTime = (d) => {
+    if (!d) return null;
+    const date = new Date(d);
+    return date.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  };
 
-          <div className="border-t border-slate-700/40 pt-4">
-            {selectedEmail.body_html ? (
-              <div
-                className="prose prose-invert prose-sm max-w-none text-slate-300"
-                dangerouslySetInnerHTML={{ __html: selectedEmail.body_html }}
-              />
-            ) : (
-              <pre className="text-sm text-slate-300 whitespace-pre-wrap font-sans">{selectedEmail.body_plain || '(contenu vide)'}</pre>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const formatRelativeTime = (d) => {
+    if (!d) return null;
+    const diff = (Date.now() - new Date(d)) / 1000;
+    if (diff < 60) return 'à l\'instant';
+    if (diff < 3600) return `il y a ${Math.floor(diff / 60)} min`;
+    if (diff < 86400) return `il y a ${Math.floor(diff / 3600)} h`;
+    return formatSyncTime(d);
+  };
+
+  const activeAccount = activeTab === 'all' ? null : gmailAccounts.find((a) => String(a.id) === activeTab);
+  const lastSyncAt = activeTab === 'all'
+    ? gmailAccounts.reduce((latest, a) => {
+        if (!a.last_sync_at) return latest;
+        return !latest || new Date(a.last_sync_at) > new Date(latest) ? a.last_sync_at : latest;
+      }, null)
+    : activeAccount?.last_sync_at;
+  const syncStatus = activeAccount?.sync_status;
+  const syncLabel = syncStatus === 'active' ? 'Synchronisé' : syncStatus === 'syncing' ? 'Synchronisation…' : syncStatus === 'error' ? 'Erreur' : syncStatus === 'pending' ? 'En attente' : null;
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold text-white">Emails</h1>
-        <p className="text-eva-muted text-sm mt-1">
-          {total > 0 ? `${total.toLocaleString()} emails synchronisés depuis Gmail` : 'Connecte ton Gmail depuis Data Sources pour voir tes emails ici.'}
-        </p>
+    <div className="flex flex-col h-[calc(100vh-8rem)]">
+      <div className="flex-shrink-0 mb-4 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-white">Boîte mail</h1>
+          <p className="text-eva-muted text-sm mt-1">
+            {total > 0 ? `${total.toLocaleString()} emails` : 'Connecte Gmail depuis Data Sources.'}
+          </p>
+          {gmailAccounts.length > 0 && (
+            <div className="flex items-center gap-3 mt-1.5 text-xs">
+              {syncLabel && (
+                <span className={`px-2 py-0.5 rounded font-medium ${
+                  syncStatus === 'active' ? 'bg-emerald-500/20 text-emerald-400' :
+                  syncStatus === 'syncing' ? 'bg-amber-500/20 text-amber-400' :
+                  syncStatus === 'error' ? 'bg-red-500/20 text-red-400' :
+                  'bg-slate-700/60 text-slate-400'
+                }`}>
+                  {syncLabel}
+                </span>
+              )}
+              {lastSyncAt ? (
+                <span className="text-eva-muted" title={formatSyncTime(lastSyncAt)}>
+                  Dernière sync: {formatRelativeTime(lastSyncAt)}
+                </span>
+              ) : activeTab !== 'all' && (
+                <span className="text-eva-muted">Pas encore synchronisé</span>
+              )}
+            </div>
+          )}
+        </div>
+        <a
+          href="https://mail.google.com/mail/?view=cm"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex-shrink-0 px-4 py-2.5 bg-eva-accent text-slate-900 rounded-lg text-sm font-medium hover:bg-cyan-400 transition-colors flex items-center gap-2"
+        >
+          <span>✏️</span> Nouvel email
+        </a>
       </div>
 
-      {error && <div className="text-red-400 text-sm bg-red-500/10 rounded-lg px-4 py-2">{error}</div>}
+      {error && <div className="text-red-400 text-sm bg-red-500/10 rounded-lg px-4 py-2 mb-4">{error}</div>}
+
+      {/* Tabs par boîte mail */}
+      <div className="flex flex-wrap gap-1 mb-4">
+        <button
+          onClick={() => { setActiveTab('all'); setPage(0); setSelectedEmail(null); }}
+          className={`px-4 py-2 rounded-lg text-sm font-medium ${activeTab === 'all' ? 'bg-eva-accent/20 text-eva-accent' : 'bg-eva-panel border border-slate-700/40 text-slate-400 hover:text-white'}`}
+        >
+          ✉ Tous
+        </button>
+        {gmailAccounts.map((acct) => (
+          <button
+            key={acct.id}
+            onClick={() => { setActiveTab(String(acct.id)); setPage(0); setSelectedEmail(null); }}
+            className={`px-4 py-2 rounded-lg text-sm font-medium truncate max-w-[180px] ${activeTab === String(acct.id) ? 'bg-eva-accent/20 text-eva-accent' : 'bg-eva-panel border border-slate-700/40 text-slate-400 hover:text-white'}`}
+            title={acct.gmail_address}
+          >
+            📧 {acct.gmail_address}
+          </button>
+        ))}
+      </div>
 
       {/* Search */}
-      <form onSubmit={handleSearch} className="flex gap-2">
+      <form onSubmit={handleSearch} className="flex gap-2 mb-4 flex-shrink-0">
         <input
           type="text"
           value={search}
@@ -153,7 +192,9 @@ export default function Emails() {
         </button>
       </form>
 
-      {/* Email list */}
+      {/* Split: liste | détail */}
+      <div className="flex-1 flex gap-4 min-h-0">
+        <div className={`bg-eva-panel rounded-xl border border-slate-700/40 overflow-hidden flex flex-col ${selectedEmail ? 'w-[380px] flex-shrink-0' : 'flex-1'}`}>
       {loading ? (
         <div className="flex items-center justify-center h-32">
           <div className="flex gap-1">
@@ -163,21 +204,21 @@ export default function Emails() {
           </div>
         </div>
       ) : emails.length === 0 ? (
-        <div className="bg-eva-panel rounded-xl border border-slate-700/40 p-8 text-center">
+        <div className="p-8 text-center flex-1">
           <p className="text-eva-muted text-sm">
-            {search ? 'Aucun email trouvé pour cette recherche.' : 'Aucun email synchronisé. Connecte ton Gmail depuis Data Sources.'}
+            {search ? 'Aucun email trouvé.' : 'Aucun email. Connecte Gmail depuis Data Sources.'}
           </p>
         </div>
       ) : (
-        <div className="bg-eva-panel rounded-xl border border-slate-700/40 overflow-hidden">
-          <div className="divide-y divide-slate-700/30">
+            <>
+          <div className="overflow-y-auto flex-1 divide-y divide-slate-700/30">
             {emails.map((email) => (
               <button
                 key={email.id}
                 onClick={() => openEmail(email)}
-                className={`w-full text-left px-5 py-3 hover:bg-slate-700/20 transition-colors flex items-center gap-4 ${
-                  !email.is_read ? 'bg-slate-700/10' : ''
-                }`}
+                className={`w-full text-left px-4 py-3 hover:bg-slate-700/20 flex items-start gap-3 ${
+                  selectedEmail?.id === email.id ? 'bg-slate-700/30 border-l-2 border-eva-accent' : ''
+                } ${!email.is_read ? 'bg-slate-700/10' : ''}`}
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5">
@@ -201,9 +242,8 @@ export default function Emails() {
             ))}
           </div>
 
-          {/* Pagination */}
           {total > PAGE_SIZE && (
-            <div className="px-5 py-3 border-t border-slate-700/40 flex items-center justify-between">
+            <div className="px-4 py-2 border-t border-slate-700/40 flex items-center justify-between flex-shrink-0">
               <span className="text-xs text-eva-muted">
                 Page {page + 1} / {Math.ceil(total / PAGE_SIZE)}
               </span>
@@ -225,8 +265,52 @@ export default function Emails() {
               </div>
             </div>
           )}
+            </>
+        )}
         </div>
-      )}
+
+        {/* Panneau détail */}
+        <div className={`flex-1 bg-eva-panel rounded-xl border border-slate-700/40 overflow-hidden flex flex-col min-w-0 ${!selectedEmail ? 'hidden' : ''}`}>
+          {detailLoading ? (
+            <div className="flex justify-center items-center flex-1">
+              <div className="flex gap-1"><div className="w-2 h-2 rounded-full bg-eva-accent eva-dot" /><div className="w-2 h-2 rounded-full bg-eva-accent eva-dot" /><div className="w-2 h-2 rounded-full bg-eva-accent eva-dot" /></div>
+            </div>
+          ) : selectedEmail ? (
+            <>
+              <div className="p-4 border-b border-slate-700/40 flex-shrink-0">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <h2 className="text-lg font-medium text-white truncate">{selectedEmail.subject || '(sans objet)'}</h2>
+                    <p className="text-sm text-eva-muted mt-0.5">De: <span className="text-slate-300">{selectedEmail.from_name ? `${selectedEmail.from_name} <${selectedEmail.from_email}>` : selectedEmail.from_email}</span></p>
+                    {selectedEmail.to_emails?.length > 0 && <p className="text-sm text-eva-muted">À: <span className="text-slate-400">{Array.isArray(selectedEmail.to_emails) ? selectedEmail.to_emails.join(', ') : selectedEmail.to_emails}</span></p>}
+                    {selectedEmail.cc_emails?.length > 0 && <p className="text-sm text-eva-muted">Cc: <span className="text-slate-400">{Array.isArray(selectedEmail.cc_emails) ? selectedEmail.cc_emails.join(', ') : selectedEmail.cc_emails}</span></p>}
+                  </div>
+                  <span className="text-xs text-eva-muted whitespace-nowrap">{new Date(selectedEmail.received_at).toLocaleString('fr-FR')}</span>
+                </div>
+                {selectedEmail.attachments && selectedEmail.attachments.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-slate-700/30">
+                    <div className="text-xs text-eva-muted mb-1">Pièces jointes :</div>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedEmail.attachments.map((att, i) => (
+                        <div key={i} className="flex items-center gap-2 px-3 py-2 bg-slate-700/40 rounded-lg text-sm text-slate-300">
+                          <span>📎</span>
+                          <span className="truncate max-w-[200px]" title={att.filename}>{att.filename}</span>
+                          {att.size_bytes && <span className="text-xs text-eva-muted">({att.size_bytes < 1024 ? att.size_bytes + ' o' : (att.size_bytes / 1024).toFixed(0) + ' Ko'})</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="flex-1 overflow-y-auto p-4">
+                <pre className="text-sm text-slate-300 whitespace-pre-wrap font-sans">
+                  {selectedEmail.body_plain || (selectedEmail.body_html ? selectedEmail.body_html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() : '') || '(contenu vide)'}
+                </pre>
+              </div>
+            </>
+          ) : null}
+        </div>
+      </div>
     </div>
   );
 }

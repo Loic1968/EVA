@@ -5,6 +5,7 @@ services:
     runtime: node
     buildCommand: npm install && npm run build
     startCommand: npm start
+    releaseCommand: node scripts/run-migrations.js
     envVars:
       - key: NODE_ENV
         value: production

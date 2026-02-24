@@ -25,11 +25,13 @@ function optionalAuth(req, res, next) {
   const key = req.headers['x-api-key'] || req.query.api_key;
   if (!API_KEY) return next();
   if (key === API_KEY) return next();
-  // Prod: allow same-origin (no Origin = same-origin) or allowed origins
-  if (isProd) {
-    const origin = req.get('origin');
-    if (!origin || allowedOrigins.includes(origin)) return next();
-  }
+  const origin = req.get('origin');
+  // Same-origin: no Origin header (browser omits it for same-origin)
+  if (!origin) return next();
+  // Dev: allow localhost
+  if (!isProd && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return next();
+  // Prod: allowed origins only
+  if (isProd && allowedOrigins.includes(origin)) return next();
   return res.status(401).json({ error: 'Invalid or missing API key' });
 }
 
@@ -725,12 +727,12 @@ router.delete('/gmail/accounts/:id', async (req, res, next) => {
 // List/search synced emails
 router.get('/gmail/emails', async (req, res, next) => {
   try {
-    const { q, limit = 50, offset = 0, from, after, before } = req.query;
+    const { q, limit = 50, offset = 0, from, after, before, gmail_account_id } = req.query;
 
     // Full-text search
     if (q && q.trim().length > 0) {
       try {
-        const emails = await gmailSync.searchEmails(req.ownerId, q, Math.min(Number(limit), 100));
+        const emails = await gmailSync.searchEmails(req.ownerId, q, Math.min(Number(limit), 100), gmail_account_id ? parseInt(gmail_account_id, 10) : null);
         return res.json({ emails, total: emails.length });
       } catch (err) {
         if (/relation "eva\.emails" does not exist|does not exist/i.test(String(err.message))) {
@@ -741,11 +743,16 @@ router.get('/gmail/emails', async (req, res, next) => {
     }
 
     // Default: list recent emails with optional filters
-    let query = `SELECT id, from_email, from_name, subject, snippet, received_at, labels, is_read, is_starred, has_attachments
+    let query = `SELECT id, gmail_account_id, from_email, from_name, subject, snippet, received_at, labels, is_read, is_starred, has_attachments
                  FROM eva.emails WHERE owner_id = $1`;
     const params = [req.ownerId];
     let paramIdx = 2;
 
+    if (gmail_account_id) {
+      query += ` AND gmail_account_id = $${paramIdx}`;
+      params.push(parseInt(gmail_account_id, 10));
+      paramIdx++;
+    }
     if (from) {
       query += ` AND from_email ILIKE $${paramIdx}`;
       params.push(`%${from}%`);
@@ -762,12 +769,19 @@ router.get('/gmail/emails', async (req, res, next) => {
       paramIdx++;
     }
 
+    const countParams = params.slice();
+    let countQuery = 'SELECT count(*) as cnt FROM eva.emails WHERE owner_id = $1';
+    let countIdx = 2;
+    if (gmail_account_id) { countQuery += ` AND gmail_account_id = $${countIdx}`; countIdx++; }
+    if (from) { countQuery += ` AND from_email ILIKE $${countIdx}`; countIdx++; }
+    if (after) { countQuery += ` AND received_at >= $${countIdx}`; countIdx++; }
+    if (before) { countQuery += ` AND received_at <= $${countIdx}`; countIdx++; }
+
     query += ` ORDER BY received_at DESC LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`;
     params.push(Math.min(Number(limit) || 50, 100), Number(offset) || 0);
 
     const r = await db.query(query, params);
-
-    const countResult = await db.query('SELECT count(*) as cnt FROM eva.emails WHERE owner_id = $1', [req.ownerId]);
+    const countResult = await db.query(countQuery, countParams);
 
     res.json({ emails: r.rows, total: Number(countResult.rows[0].cnt) });
   } catch (e) {

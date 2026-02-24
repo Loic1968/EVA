@@ -37,7 +37,8 @@ app.use(helmet({
       connectSrc: ["'self'", "https://api.openai.com", "wss://api.openai.com"],
       mediaSrc: ["'self'", "blob:", "https://api.openai.com"],
       scriptSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
     },
   },
 }));

@@ -16,18 +16,23 @@ Optionnel :
 
 - **EVA_OWNER_EMAIL** : `loic@halisoft.biz` (défaut)
 - **EVA_ALLOWED_ORIGINS** : CORS restrictif (défaut: eva.halisoft.biz)
+- **EVA_GOOGLE_CLIENT_ID** / **EVA_GOOGLE_CLIENT_SECRET** : Gmail OAuth (lecture + envoi). Voir `docs/GMAIL_OAUTH_SETUP.md`
 
-## 2. Schéma EVA dans la base
+## 2. Migrations (schéma EVA)
 
-La base utilisée par `DATABASE_URL` doit contenir le **schéma `eva`** (tables `eva.owners`, `eva.settings`, etc.).
+Les migrations sont exécutées **automatiquement** à chaque déploiement via `releaseCommand: node scripts/run-migrations.js`.
 
-À exécuter **une fois** sur cette base (depuis la racine du repo Halisoft si la migration est là) :
+En manuel (ex. première installation ou DB vierge) :
 
 ```bash
-psql "$DATABASE_URL" -f migrations/2026_02_20_create_eva_schema.sql
+cd eva && node scripts/run-migrations.js
 ```
 
-Si EVA est dans un repo séparé, le SQL de la migration est dans la doc du repo EVA ou dans Halisoft sous `migrations/2026_02_20_create_eva_schema.sql`.
+Ou avec psql :
+
+```bash
+for f in eva/migrations/00*.sql; do psql "$DATABASE_URL" -f "$f"; done
+```
 
 ## 3. Vérifier après déploiement
 

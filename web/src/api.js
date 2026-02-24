@@ -119,7 +119,8 @@ export const api = {
   disconnectGmail: (accountId) => request(`/gmail/accounts/${accountId}`, { method: 'DELETE' }),
   getEmails: (params) => request('/gmail/emails?' + new URLSearchParams(params || {})),
   getEmail: (id) => request(`/gmail/emails/${id}`),
-  searchEmails: (q, limit = 20) => request(`/gmail/emails?q=${encodeURIComponent(q)}&limit=${limit}`),
+  searchEmails: (q, limit = 20, gmailAccountId) =>
+    request(`/gmail/emails?q=${encodeURIComponent(q)}&limit=${limit}` + (gmailAccountId ? `&gmail_account_id=${gmailAccountId}` : '')),
 
   // Confidence summary
   getConfidenceSummary: () => request('/confidence-summary'),

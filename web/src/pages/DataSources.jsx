@@ -123,7 +123,15 @@ export default function DataSources() {
         <div className="bg-eva-panel rounded-xl border border-emerald-500/30 overflow-hidden">
           <div className="px-5 py-3 border-b border-slate-700/40 flex items-center justify-between">
             <span className="text-sm font-medium text-white">Gmail Accounts</span>
-            <span className="text-xs text-emerald-400">Connected</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-emerald-400">Connected</span>
+              <button
+                onClick={connectGmail}
+                className="text-xs px-3 py-1.5 rounded bg-eva-accent/20 text-eva-accent hover:bg-eva-accent/30 transition-colors"
+              >
+                + Ajouter un compte Gmail
+              </button>
+            </div>
           </div>
           <div className="divide-y divide-slate-700/30">
             {gmailAccounts.map((acct) => (
@@ -198,12 +206,20 @@ export default function DataSources() {
                   </button>
                 )}
                 {connected && src.type === 'gmail' && (
-                  <button
-                    onClick={() => window.location.href = '/emails'}
-                    className="mt-3 text-xs text-eva-accent hover:text-cyan-300 transition-colors"
-                  >
-                    Voir les emails →
-                  </button>
+                  <div className="mt-3 flex flex-wrap gap-3">
+                    <button
+                      onClick={() => window.location.href = '/emails'}
+                      className="text-xs text-eva-accent hover:text-cyan-300 transition-colors"
+                    >
+                      Voir les emails →
+                    </button>
+                    <button
+                      onClick={connectGmail}
+                      className="text-xs text-eva-accent hover:text-cyan-300 transition-colors"
+                    >
+                      + Ajouter un compte
+                    </button>
+                  </div>
                 )}
               </div>
             );

@@ -273,26 +273,29 @@ async function storeEmail(ownerId, gmailAccountId, parsed) {
 /**
  * Search emails using PostgreSQL full-text search.
  */
-async function searchEmails(ownerId, queryText, limit = 5) {
+async function searchEmails(ownerId, queryText, limit = 5, gmailAccountId = null) {
   if (!queryText || queryText.trim().length === 0) return [];
 
-  // Build tsquery from user input (simple word matching)
   const words = queryText.trim().split(/\s+/).filter(w => w.length > 2);
   if (words.length === 0) return [];
   const tsquery = words.map(w => w.replace(/[^a-zA-Z0-9]/g, '')).filter(Boolean).join(' | ');
 
-  const result = await db.query(
-    `SELECT id, from_email, from_name, subject, snippet,
-            left(body_plain, 300) as body_preview,
-            received_at, labels, is_read, is_starred
+  let query = `SELECT id, gmail_account_id, from_email, from_name, subject, snippet,
+        left(body_plain, 300) as body_preview,
+        received_at, labels, is_read, is_starred, has_attachments
      FROM eva.emails
      WHERE owner_id = $1
        AND to_tsvector('english', coalesce(subject,'') || ' ' || coalesce(body_plain,''))
-           @@ to_tsquery('english', $2)
-     ORDER BY received_at DESC
-     LIMIT $3`,
-    [ownerId, tsquery, limit]
-  );
+           @@ to_tsquery('english', $2)`;
+  const params = [ownerId, tsquery];
+  if (gmailAccountId) {
+    query += ' AND gmail_account_id = $3';
+    params.push(gmailAccountId);
+  }
+  query += ' ORDER BY received_at DESC LIMIT $' + (params.length + 1);
+  params.push(limit);
+
+  const result = await db.query(query, params);
   return result.rows;
 }
 

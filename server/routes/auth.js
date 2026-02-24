@@ -114,9 +114,14 @@ router.post('/forgot-password', forgotLimiter, async (req, res) => {
     const resetUrl = `${FRONTEND_URL}/reset-password?token=${rawToken}&email=${encodeURIComponent(e)}`;
 
     let emailSent = false;
+    let emailError = null;
     const smtpUser = process.env.SMTP_USER || process.env.EMAIL_USER;
     const smtpPass = process.env.SMTP_PASS || process.env.EMAIL_PASSWORD;
-    if (smtpUser && smtpPass) {
+
+    if (!smtpUser || !smtpPass) {
+      emailError = 'Email service not configured (SMTP missing)';
+      console.log('[EVA Auth] Reset link (no SMTP):', resetUrl);
+    } else {
       try {
         const nodemailer = require('nodemailer');
         const transporter = nodemailer.createTransport({
@@ -128,23 +133,35 @@ router.post('/forgot-password', forgotLimiter, async (req, res) => {
         await transporter.sendMail({
           from: `"EVA" <${smtpUser}>`,
           to: e,
-          subject: 'EVA — Réinitialisation du mot de passe',
-          text: `Cliquez pour réinitialiser: ${resetUrl}\n\nCe lien expire dans 1 heure.`,
-          html: `<p>Cliquez pour réinitialiser votre mot de passe:</p><p><a href="${resetUrl}">${resetUrl}</a></p><p>Ce lien expire dans 1 heure.</p>`,
+          subject: 'EVA — Password reset',
+          text: `Click to reset: ${resetUrl}\n\nThis link expires in 1 hour.`,
+          html: `<p>Click to reset your password:</p><p><a href="${resetUrl}">${resetUrl}</a></p><p>This link expires in 1 hour.</p>`,
         });
         emailSent = true;
         console.log('[EVA Auth] Password reset email sent to', e);
       } catch (mailErr) {
-        console.error('[EVA Auth] Email send failed:', mailErr.message, '- code:', mailErr.code, '- response:', mailErr.response);
-        if (mailErr.response) console.error('[EVA Auth] SMTP response:', String(mailErr.response).slice(0, 200));
+        const code = mailErr.code || '';
+        const msg = (mailErr.message || '').toLowerCase();
+        if (code === 'EAUTH' || msg.includes('invalid login') || msg.includes('authentication')) {
+          emailError = 'SMTP authentication failed (check Gmail app password)';
+        } else if (msg.includes('self-signed') || msg.includes('certificate')) {
+          emailError = 'SMTP certificate error';
+        } else if (msg.includes('timeout') || msg.includes('econnrefused')) {
+          emailError = 'SMTP connection failed';
+        } else {
+          emailError = mailErr.message ? `${mailErr.message}`.slice(0, 100) : 'Email send failed';
+        }
+        console.error('[EVA Auth] Email send failed:', mailErr.message, '- code:', code);
       }
     }
 
-    if (!emailSent) {
-      console.log('[EVA Auth] Reset link (no SMTP or send failed):', resetUrl);
-    }
-    // Always return resetUrl so user can reset if email didn't arrive (SMTP fail, spam, etc.)
-    res.json({ exists: true, message: emailSent ? 'Reset link sent by email' : 'Reset link ready', resetUrl });
+    res.json({
+      exists: true,
+      emailSent,
+      emailError: emailSent ? null : emailError,
+      message: emailSent ? 'Email sent' : 'Email not sent',
+      resetUrl,
+    });
   } catch (e) {
     console.error('[EVA Auth] forgot:', e.message);
     res.status(500).json({ error: 'Request failed' });

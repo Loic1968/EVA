@@ -8,12 +8,16 @@ export default function ForgotPassword() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [resetUrl, setResetUrl] = useState(null);
+  const [emailSent, setEmailSent] = useState(false);
+  const [emailError, setEmailError] = useState(null);
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setResetUrl(null);
+    setEmailSent(false);
+    setEmailError(null);
     setLoading(true);
     try {
       const res = await api.forgotPassword(email.trim());
@@ -22,6 +26,8 @@ export default function ForgotPassword() {
         return;
       }
       setSent(true);
+      setEmailSent(res?.emailSent === true);
+      setEmailError(res?.emailError || null);
       if (res?.resetUrl) setResetUrl(res.resetUrl);
     } catch (err) {
       setError(err.body?.error || err.message || 'Request failed');
@@ -41,13 +47,26 @@ export default function ForgotPassword() {
         <div className="bg-eva-panel rounded-xl border border-slate-700/40 p-6">
           {sent ? (
             <div className="text-center py-4 space-y-2">
-              <p className="text-emerald-400">A reset link has been sent to your email.</p>
-              <p className="text-eva-muted text-sm">Check your inbox (and spam folder).</p>
+              {emailSent ? (
+                <>
+                  <p className="text-emerald-400">Email sent to your inbox.</p>
+                  <p className="text-eva-muted text-sm">Check your inbox (and spam folder).</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-amber-400">Email could not be sent.</p>
+                  {emailError && (
+                    <p className="text-red-400/90 text-sm bg-red-500/10 rounded-lg px-3 py-2 text-left">
+                      {emailError}
+                    </p>
+                  )}
+                </>
+              )}
               {resetUrl && (
                 <p className="text-sm mt-4 pt-4 border-t border-slate-700/40">
-                  <span className="text-slate-500">If you didn&apos;t receive the email: </span>
+                  <span className="text-slate-500">Use this link to reset: </span>
                   <a href={resetUrl} className="text-cyan-400 hover:text-cyan-300 underline break-all">
-                    Click here to reset
+                    Reset password
                   </a>
                 </p>
               )}

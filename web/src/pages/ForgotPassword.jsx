@@ -45,7 +45,7 @@ export default function ForgotPassword() {
               <p className="text-eva-muted text-sm">Check your inbox (and spam folder).</p>
               {resetUrl && (
                 <p className="text-sm mt-4 pt-4 border-t border-slate-700/40">
-                  <span className="text-slate-500">Dev mode (no SMTP) — </span>
+                  <span className="text-slate-500">If you didn&apos;t receive the email: </span>
                   <a href={resetUrl} className="text-cyan-400 hover:text-cyan-300 underline break-all">
                     Click here to reset
                   </a>

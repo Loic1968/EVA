@@ -141,13 +141,10 @@ router.post('/forgot-password', forgotLimiter, async (req, res) => {
     }
 
     if (!emailSent) {
-      console.log('[EVA Auth] Reset link (no SMTP):', resetUrl);
-      // Dev fallback: return link so user can click it (never in production)
-      if (process.env.NODE_ENV !== 'production') {
-        return res.json({ exists: true, message: 'Reset link ready', resetUrl });
-      }
+      console.log('[EVA Auth] Reset link (no SMTP or send failed):', resetUrl);
     }
-    res.json({ exists: true, message: 'Reset link sent by email' });
+    // Always return resetUrl so user can reset if email didn't arrive (SMTP fail, spam, etc.)
+    res.json({ exists: true, message: emailSent ? 'Reset link sent by email' : 'Reset link ready', resetUrl });
   } catch (e) {
     console.error('[EVA Auth] forgot:', e.message);
     res.status(500).json({ error: 'Request failed' });

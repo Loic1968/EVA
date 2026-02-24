@@ -8,8 +8,8 @@ export default function EvaTopBar({ onMenuClick }) {
   const { user, isAuthenticated, logout, requireAuth } = useAuth();
 
   return (
-    <div className="sticky top-0 z-50 bg-slate-900/95 backdrop-blur-sm border-b border-slate-700/40">
-      <nav className="flex items-center justify-between px-4 md:px-6 h-12">
+    <div className="sticky top-0 z-50 bg-slate-900/95 backdrop-blur-sm border-b border-slate-700/40 pt-[env(safe-area-inset-top)]">
+      <nav className="flex items-center justify-between px-4 md:px-6 h-12 min-h-[48px]">
         {/* Left: hamburger (mobile) + Logo */}
         <div className="flex items-center gap-3">
           {onMenuClick && (

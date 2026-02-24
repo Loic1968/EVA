@@ -87,27 +87,29 @@ export default function Documents() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-white">Documents</h1>
-          <p className="text-eva-muted text-sm mt-1">Upload files for EVA's Memory Vault. Contracts, emails, reports — everything feeds the brain.</p>
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-semibold text-white">Documents</h1>
+          <p className="text-eva-muted text-sm mt-1">Upload files for EVA&apos;s Memory Vault. Contracts, emails, reports — everything feeds the brain.</p>
         </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => fileRef.current?.click()}
-            disabled={uploading}
-            className="px-4 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-medium rounded-lg hover:from-cyan-400 hover:to-blue-500 disabled:opacity-50 transition-all"
-          >
-            {uploading ? 'Uploading...' : 'Upload Files'}
-          </button>
+        <div className="flex gap-2 shrink-0">
           <button
             onClick={() => cameraRef.current?.click()}
             disabled={uploading}
-            className="px-4 py-2.5 bg-slate-700 hover:bg-slate-600 text-white font-medium rounded-lg disabled:opacity-50 transition-all flex items-center gap-2"
-            title="Take a photo of a document (camera on mobile)"
+            className="flex-1 sm:flex-none min-h-[44px] sm:min-h-0 px-4 py-3 sm:py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-medium rounded-xl hover:from-cyan-400 hover:to-blue-500 disabled:opacity-50 transition-all flex items-center justify-center gap-2 touch-manipulation"
+            title="Take a photo (camera on mobile)"
           >
-            <span className="text-lg">📷</span> Take Photo
+            <span className="text-xl">📷</span>
+            <span>{uploading ? '…' : 'Take Photo'}</span>
+          </button>
+          <button
+            onClick={() => fileRef.current?.click()}
+            disabled={uploading}
+            className="flex-1 sm:flex-none min-h-[44px] sm:min-h-0 px-4 py-3 sm:py-2.5 bg-slate-700 hover:bg-slate-600 text-white font-medium rounded-xl disabled:opacity-50 transition-all flex items-center justify-center gap-2 touch-manipulation"
+          >
+            <span className="sm:hidden">📁</span>
+            <span>{uploading ? '…' : 'Upload'}</span>
           </button>
         </div>
         <input
@@ -130,18 +132,25 @@ export default function Documents() {
 
       {error && <div className="text-red-400 text-sm bg-red-500/10 rounded-lg px-4 py-2">{error}</div>}
 
-      {/* Drop zone */}
+      {/* Drop zone / tap hint */}
       <div
         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
         onDrop={onDrop}
-        className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${
-          dragOver ? 'border-eva-accent bg-eva-accent/5' : 'border-slate-700/40 hover:border-slate-600'
+        className={`border-2 border-dashed rounded-xl p-6 sm:p-8 text-center transition-colors min-h-[100px] flex items-center justify-center ${
+          dragOver ? 'border-eva-accent bg-eva-accent/5' : 'border-slate-700/40 hover:border-slate-600 active:border-slate-600'
         }`}
       >
         <div className="text-eva-muted">
-          <p className="text-lg mb-1">{dragOver ? 'Drop files here' : 'Drag & drop files here'}</p>
-          <p className="text-xs">PDF, DOCX, TXT, CSV, photos (JPG/PNG) — up to 50MB. Use Take Photo on mobile to capture documents.</p>
+          <p className="text-base sm:text-lg mb-1">
+            {dragOver ? 'Drop files here' : (
+              <>
+                <span className="sm:hidden">Tap Take Photo or Upload above</span>
+                <span className="hidden sm:inline">Drag & drop files here</span>
+              </>
+            )}
+          </p>
+          <p className="text-xs">PDF, DOCX, TXT, CSV, photos — up to 50MB</p>
         </div>
       </div>
 
@@ -157,9 +166,9 @@ export default function Documents() {
         ) : (
           <div className="divide-y divide-slate-700/30">
             {documents.map((doc) => (
-              <div key={doc.id} className="px-5 py-3 flex items-center justify-between gap-4">
+              <div key={doc.id} className="px-4 sm:px-5 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${
+                  <div className={`w-10 h-10 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${
                     doc.file_type === 'pdf' ? 'bg-red-500/20 text-red-400' :
                     doc.file_type === 'docx' ? 'bg-blue-500/20 text-blue-400' :
                     doc.file_type === 'csv' ? 'bg-green-500/20 text-green-400' :
@@ -173,8 +182,8 @@ export default function Documents() {
                     <div className="text-xs text-eva-muted">{formatBytes(doc.file_size)} — {new Date(doc.created_at).toLocaleDateString()}</div>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className={`text-xs px-2 py-1 rounded-full ${
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <span className={`text-xs px-2.5 py-1.5 rounded-full ${
                     doc.status === 'indexed' ? 'bg-emerald-500/20 text-emerald-400' :
                     doc.status === 'processing' ? 'bg-amber-500/20 text-amber-400' :
                     doc.status === 'error' ? 'bg-red-500/20 text-red-400' :
@@ -186,7 +195,7 @@ export default function Documents() {
                     <button
                       onClick={() => handleProcess(doc)}
                       disabled={processingId !== null}
-                      className="text-xs px-2 py-1 rounded bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 disabled:opacity-50"
+                      className="text-xs px-4 py-2.5 min-h-[44px] sm:min-h-0 sm:py-1 rounded-lg bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 active:bg-cyan-500/40 disabled:opacity-50 touch-manipulation"
                       title="Extract text so EVA can search it"
                     >
                       {processingId === doc.id ? '…' : 'Index'}

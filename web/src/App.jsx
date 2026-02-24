@@ -17,8 +17,9 @@ export default function App() {
       <Layout>
         <Routes>
           <Route path="/" element={<Dashboard />} />
-          <Route path="/chat" element={<Chat />} />
           <Route path="/chat/realtime" element={<ChatRealtime />} />
+          <Route path="/voice" element={<ChatRealtime />} />
+          <Route path="/chat" element={<Chat />} />
 
           <Route path="/emails" element={<Emails />} />
           <Route path="/drafts" element={<Drafts />} />

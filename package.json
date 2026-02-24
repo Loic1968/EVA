@@ -11,6 +11,7 @@
     "build": "npm run build:web",
     "build:web": "cd web && npm install --include=dev && npm run build",
     "start": "node server/index.js",
+    "migrate": "node scripts/run-migrations.js",
     "test:smoke": "node scripts/smoke-test.js",
     "test": "node --test server/__tests__/*.test.js",
     "test:unit": "node --test server/__tests__/*.test.js"

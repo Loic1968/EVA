@@ -62,6 +62,24 @@ Portal runs at **http://localhost:3001** (proxies `/api` to backend).
 npm run dev
 ```
 
+### 5. Local URLs to test
+
+| URL | Description |
+|-----|-------------|
+| http://localhost:3001 | Frontend (Dashboard) |
+| http://localhost:3001/chat | Chat EVA |
+| http://localhost:3001/voice | Voice (Realtime) |
+| http://localhost:3001/chat/realtime | Voice (Realtime) — alias |
+| http://localhost:3001/emails | Boîte mail |
+| http://localhost:3001/sources | Data Sources (Gmail OAuth) |
+| http://localhost:3001/drafts | Drafts |
+| http://localhost:3001/documents | Documents |
+| http://localhost:3001/audit | Audit Log |
+| http://localhost:3001/settings | Settings |
+| http://localhost:5002/health | API health check |
+| http://localhost:5002/api/realtime/status | Realtime API status |
+| http://localhost:5002/api/voice/status | Voice (Whisper/TTS) status |
+
 ## Environment variables
 
 | Variable           | Description |

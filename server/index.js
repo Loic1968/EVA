@@ -74,18 +74,24 @@ app.use('/api/realtime', apiStrictLimiter);
 
 app.use(express.json({ limit: '2mb' })); // 2mb for voice audio base64
 
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', app: 'eva', timestamp: new Date().toISOString() });
+app.get('/health', async (req, res) => {
+  try {
+    const db = require('./db');
+    await db.getOrCreateOwner(process.env.EVA_OWNER_EMAIL || 'loic@halisoft.biz', 'Loic Hennocq');
+    res.json({ status: 'ok', app: 'eva', db: 'ok', timestamp: new Date().toISOString() });
+  } catch (e) {
+    console.error('[EVA] health check failed:', e.message);
+    res.status(503).json({ status: 'error', app: 'eva', db: 'fail', error: e.message });
+  }
 });
 
 function apiKeyOrSameOrigin(req, res, next) {
+  if (!isProd) return next(); // Dev: no API key required
   if (!API_KEY) return next();
   const key = req.headers['x-api-key'] || req.query.api_key;
   if (key === API_KEY) return next();
-  if (isProd) {
-    const origin = req.get('origin');
-    if (!origin || allowedOrigins.includes(origin)) return next();
-  }
+  const origin = req.get('origin');
+  if (!origin || allowedOrigins.includes(origin)) return next();
   return res.status(401).json({ error: 'Invalid or missing API key' });
 }
 
@@ -95,16 +101,7 @@ app.use('/api/realtime', apiKeyOrSameOrigin, realtimeRoutes);
 
 // Voice API (no DB) — mounted before eva for reliability
 const voiceRoutes = require('./routes/voice');
-app.use('/api/voice', (req, res, next) => {
-  if (!API_KEY) return next();
-  const key = req.headers['x-api-key'] || req.query.api_key;
-  if (key === API_KEY) return next();
-  if (isProd) {
-    const origin = req.get('origin');
-    if (!origin || allowedOrigins.includes(origin)) return next();
-  }
-  return res.status(401).json({ error: 'Invalid or missing API key' });
-}, voiceRoutes);
+app.use('/api/voice', apiKeyOrSameOrigin, voiceRoutes);
 app.use('/api', evaRoutes);
 
 // Serve frontend (web/dist) when built (e.g. on Render: single service for eva.halisoft.biz)

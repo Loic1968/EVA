@@ -299,8 +299,32 @@ async function searchEmails(ownerId, queryText, limit = 5, gmailAccountId = null
   return result.rows;
 }
 
+/**
+ * Get recent emails for an owner (from synced DB, no Gmail API).
+ * Used by Realtime voice to inject email context into session instructions.
+ */
+async function getRecentEmails(ownerId, limit = 8) {
+  try {
+    const r = await db.query(
+      `SELECT id, from_email, from_name, subject, snippet, received_at
+       FROM eva.emails
+       WHERE owner_id = $1
+       ORDER BY received_at DESC
+       LIMIT $2`,
+      [ownerId, Math.min(limit, 15)]
+    );
+    return r.rows;
+  } catch (err) {
+    if (/relation "eva\.emails" does not exist/i.test(String(err.message))) {
+      return [];
+    }
+    throw err;
+  }
+}
+
 module.exports = {
   syncEmails,
   parseMessage,
   searchEmails,
+  getRecentEmails,
 };

@@ -22,16 +22,12 @@ const allowedOrigins = (process.env.EVA_ALLOWED_ORIGINS || 'https://eva.halisoft
   .filter(Boolean);
 
 function optionalAuth(req, res, next) {
-  const key = req.headers['x-api-key'] || req.query.api_key;
+  if (!isProd) return next(); // Dev: no API key required
   if (!API_KEY) return next();
+  const key = req.headers['x-api-key'] || req.query.api_key;
   if (key === API_KEY) return next();
   const origin = req.get('origin');
-  // Same-origin: no Origin header (browser omits it for same-origin)
-  if (!origin) return next();
-  // Dev: allow localhost
-  if (!isProd && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return next();
-  // Prod: allowed origins only
-  if (isProd && allowedOrigins.includes(origin)) return next();
+  if (!origin || allowedOrigins.includes(origin)) return next();
   return res.status(401).json({ error: 'Invalid or missing API key' });
 }
 
@@ -47,11 +43,10 @@ async function ensureOwner(req, res, next) {
     next();
   } catch (e) {
     console.error('[EVA] ensureOwner failed:', e.message);
-    const isDb = /DATABASE_URL|connection|ECONNREFUSED|timeout|relation "eva\./i.test(String(e.message || ''));
-    res.status(isDb ? 503 : 500).json({
-      error: isDb
-        ? 'Database unavailable. On Render: set DATABASE_URL and run eva schema migration.'
-        : (e.message || 'Server error'),
+    const isDb = /DATABASE_URL|connection|ECONNREFUSED|timeout|relation "eva\.|does not exist|ENOTFOUND|authentication|password/i.test(String(e.message || ''));
+    res.status(503).json({
+      error: 'Database unavailable. Run: cd eva && npm run migrate',
+      detail: process.env.NODE_ENV !== 'production' ? e.message : undefined,
     });
   }
 }
@@ -482,6 +477,9 @@ router.get('/data-sources', async (req, res, next) => {
     );
     res.json({ sources: r.rows });
   } catch (e) {
+    if (/relation .* does not exist|does not exist/i.test(String(e.message))) {
+      return res.json({ sources: [] });
+    }
     next(e);
   }
 });
@@ -678,6 +676,9 @@ router.get('/gmail/accounts', async (req, res, next) => {
     );
     res.json({ accounts: r.rows });
   } catch (e) {
+    if (/relation "eva\.gmail_accounts" does not exist|does not exist/i.test(String(e.message))) {
+      return res.json({ accounts: [] });
+    }
     next(e);
   }
 });
@@ -785,7 +786,7 @@ router.get('/gmail/emails', async (req, res, next) => {
 
     res.json({ emails: r.rows, total: Number(countResult.rows[0].cnt) });
   } catch (e) {
-    if (/relation "eva\.emails" does not exist|does not exist/i.test(String(e.message))) {
+    if (/relation "eva\.(emails|gmail_accounts)" does not exist|does not exist/i.test(String(e.message))) {
       return res.json({ emails: [], total: 0 });
     }
     next(e);

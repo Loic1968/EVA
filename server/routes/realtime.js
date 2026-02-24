@@ -1,16 +1,49 @@
 /**
  * OpenAI Realtime API — token endpoint for WebRTC voice (ChatGPT-level fluid conversation).
  * Returns ephemeral client secret so the frontend connects directly to OpenAI.
+ * Injects recent email context into instructions so EVA can answer email questions via voice.
  */
 const express = require('express');
 const router = express.Router();
+const db = require('../db');
 
 const OPENAI_KEY = (process.env.OPENAI_API_KEY || '').trim();
 const REALTIME_ENABLED = !!OPENAI_KEY;
+const DEFAULT_OWNER_EMAIL = process.env.EVA_OWNER_EMAIL || 'loic@halisoft.biz';
 
-const EVA_INSTRUCTIONS = `Tu es EVA, assistant personnel de Loic (HaliSoft, Dubai). Réponses courtes et directes. Parle en français ou anglais selon la langue de l'utilisateur. Style professionnel mais chaleureux.
+const EVA_INSTRUCTIONS_BASE = `Tu es EVA, assistant personnel de Loic (HaliSoft, Dubai). Réponses courtes et directes. Parle en français ou anglais selon la langue de l'utilisateur. Style professionnel mais chaleureux.
 
-IMPORTANT: Tu n'as aucune capacité visuelle (pas de webcam, pas d'écran). Tu ne peux PAS "voir" des slides, présentations ou documents. Tu n'as pas accès au calendrier ou à l'agenda. Si on te demande des infos que tu n'as pas, dis-le clairement au lieu d'inventer.`;
+VISION vs DONNÉES: Tu n'as pas de caméra ni d'écran (pas de slides, PDF, présentation). MAIS tu peux avoir accès à des DONNÉES en texte (emails, etc.) injectées dans tes instructions. Si on te fournit une liste d'emails ci-dessous, tu DOIS les utiliser et les résumer quand Loic demande "mes emails". Ne dis jamais "je ne peux pas voir tes emails" si la liste est fournie. Tu n'as pas accès au calendrier.`;
+
+async function buildInstructionsWithEmailContext() {
+  let instructions = EVA_INSTRUCTIONS_BASE;
+  try {
+    const owner = await db.getOrCreateOwner(DEFAULT_OWNER_EMAIL, 'Loic Hennocq');
+    let gmailSync = null;
+    try {
+      gmailSync = require('../services/gmailSync');
+    } catch (_) {}
+    if (gmailSync && gmailSync.getRecentEmails) {
+      const recent = await gmailSync.getRecentEmails(owner.id, 8);
+      if (recent.length > 0) {
+        console.log(`[EVA Realtime] Injected ${recent.length} emails into session`);
+        instructions += '\n\n## EMAILS DE LOIC (Memory Vault) — TU AS ACCÈS À CECI\n';
+        instructions += 'Quand Loic demande ses emails, "mes derniers emails", etc., réponds en résumant cette liste:\n\n';
+        recent.forEach((e) => {
+          const date = new Date(e.received_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+          instructions += `• De ${e.from_name || e.from_email} — ${(e.subject || '').slice(0, 70)} (${date})\n  ${(e.snippet || '').slice(0, 100)}\n`;
+        });
+        instructions += '\nRègle: Ne dis JAMAIS que tu n\'as pas accès aux emails quand cette liste est fournie.';
+      } else {
+        instructions += '\n\n( Pas d\'emails synchronisés. Si Loic demande ses emails, dis-lui de connecter Gmail dans Data Sources.)';
+        console.log('[EVA Realtime] No emails in DB, skipped injection');
+      }
+    }
+  } catch (err) {
+    console.warn('[EVA Realtime] Email context injection failed:', err.message);
+  }
+  return instructions;
+}
 
 router.get('/token', async (req, res, next) => {
   try {
@@ -18,11 +51,13 @@ router.get('/token', async (req, res, next) => {
       return res.status(503).json({ error: 'Realtime API disabled. Set OPENAI_API_KEY.' });
     }
 
+    const instructions = await buildInstructionsWithEmailContext();
+
     const sessionConfig = {
       session: {
         type: 'realtime',
         model: 'gpt-realtime',
-        instructions: EVA_INSTRUCTIONS,
+        instructions,
         audio: { output: { voice: 'marin' } },
       },
     };

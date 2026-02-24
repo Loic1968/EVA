@@ -1,51 +1,41 @@
 #!/usr/bin/env node
 /**
- * Run EVA migrations in order.
- * Usage: DATABASE_URL=... node scripts/run-migrations.js
- * Called automatically during Render deploy (releaseCommand).
+ * Run EVA migrations using Node.js pg (no psql required).
  */
 const path = require('path');
-const fs = require('fs');
+// Load parent .env first (has real DATABASE_URL), then eva overrides
+require('dotenv').config({ path: path.join(__dirname, '../../.env') });
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
 const { Pool } = require('pg');
-
-require('dotenv').config();
-const envPath = path.resolve(__dirname, '../.env');
-if (fs.existsSync(envPath)) {
-  require('dotenv').config({ path: envPath });
-}
+const fs = require('fs');
 
 const DATABASE_URL = process.env.EVA_DATABASE_URL || process.env.DATABASE_URL;
 if (!DATABASE_URL) {
-  console.error('[Migrations] DATABASE_URL not set, skipping');
-  process.exit(0);
+  console.error('DATABASE_URL or EVA_DATABASE_URL required');
+  process.exit(1);
 }
 
-const migrationsDir = path.resolve(__dirname, '../migrations');
-const files = fs.readdirSync(migrationsDir)
-  .filter((f) => f.endsWith('.sql'))
-  .sort();
+const pool = new Pool({ connectionString: DATABASE_URL });
+const migrationsDir = require('path').join(__dirname, '../migrations');
+const files = fs.readdirSync(migrationsDir).filter((f) => f.endsWith('.sql')).sort();
 
 async function run() {
-  const pool = new Pool({
-    connectionString: DATABASE_URL,
-    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-  });
   const client = await pool.connect();
   try {
     for (const file of files) {
-      const filePath = path.join(migrationsDir, file);
-      const sql = fs.readFileSync(filePath, 'utf8');
-      console.log(`[Migrations] Running ${file}...`);
+      const sql = fs.readFileSync(require('path').join(migrationsDir, file), 'utf8');
+      console.log(`Running ${file}...`);
       await client.query(sql);
-      console.log(`[Migrations] ✓ ${file}`);
+      console.log(`  ✓ ${file}`);
     }
+    console.log('All migrations completed.');
+  } catch (err) {
+    console.error('Migration failed:', err.message);
+    process.exit(1);
   } finally {
     client.release();
     await pool.end();
   }
 }
 
-run().catch((err) => {
-  console.error('[Migrations] Error:', err.message);
-  process.exit(1);
-});
+run();

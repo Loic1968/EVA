@@ -1,9 +1,10 @@
 import { NavLink } from 'react-router-dom';
 import { useState } from 'react';
+import EvaTopBar from './EvaTopBar';
 
 const nav = [
   { to: '/', label: 'Dashboard', icon: '◉' },
-  { to: '/chat/realtime', label: '🎤 Real Time (voix)', icon: '🎤', highlight: true },
+  { to: '/voice', label: '🎤 Real Time (voix)', icon: '🎤', highlight: true },
   { to: '/chat', label: 'Chat EVA', icon: '◈' },
   { to: '/emails', label: 'Emails', icon: '✉' },
   { to: '/drafts', label: 'Drafts', icon: '◇' },
@@ -17,7 +18,9 @@ export default function Layout({ children }) {
   const [collapsed, setCollapsed] = useState(false);
 
   return (
-    <div className="min-h-screen flex bg-eva-dark">
+    <div className="min-h-screen flex flex-col bg-eva-dark">
+      <EvaTopBar />
+      <div className="flex flex-1 min-h-0">
       <aside className={`${collapsed ? 'w-16' : 'w-60'} bg-eva-panel border-r border-slate-700/40 flex flex-col transition-all duration-200 shrink-0`}>
         <div className="p-4 border-b border-slate-700/40 flex items-center justify-between">
           <div className={`flex items-center gap-3 ${collapsed ? 'justify-center w-full' : ''}`}>
@@ -63,9 +66,10 @@ export default function Layout({ children }) {
           )}
         </div>
       </aside>
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-auto min-w-0">
         <div className="max-w-7xl mx-auto p-6">{children}</div>
       </main>
+      </div>
     </div>
   );
 }

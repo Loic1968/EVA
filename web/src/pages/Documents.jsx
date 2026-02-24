@@ -68,10 +68,25 @@ export default function Documents() {
     }
   };
 
+  const onDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'copy';
+    setDragOver(true);
+  };
+
+  const onDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!e.currentTarget.contains(e.relatedTarget)) setDragOver(false);
+  };
+
   const onDrop = (e) => {
     e.preventDefault();
+    e.stopPropagation();
     setDragOver(false);
-    handleUpload(e.dataTransfer.files);
+    const files = e.dataTransfer?.files;
+    if (files?.length) handleUpload(files);
   };
 
   if (loading) {
@@ -134,14 +149,15 @@ export default function Documents() {
 
       {/* Drop zone / tap hint */}
       <div
-        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-        onDragLeave={() => setDragOver(false)}
+        onDragOver={onDragOver}
+        onDragEnter={onDragOver}
+        onDragLeave={onDragLeave}
         onDrop={onDrop}
         className={`border-2 border-dashed rounded-xl p-6 sm:p-8 text-center transition-colors min-h-[100px] flex items-center justify-center ${
           dragOver ? 'border-cyan-500 dark:border-eva-accent bg-cyan-50 dark:bg-eva-accent/5' : 'border-slate-300 dark:border-slate-700/40 hover:border-slate-400 dark:hover:border-slate-600 active:border-slate-400 dark:active:border-slate-600'
         }`}
       >
-        <div className="text-slate-600 dark:text-eva-muted">
+        <div className="text-slate-600 dark:text-eva-muted pointer-events-none">
           <p className="text-base sm:text-lg mb-1">
             {dragOver ? 'Drop files here' : (
               <>

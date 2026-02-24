@@ -17,10 +17,13 @@ if (!DATABASE_URL) {
   process.exit(1);
 }
 
-const isProduction = process.env.NODE_ENV === 'production';
+// Render and other clouds use self-signed certs for internal DB
+const needInsecureSSL = process.env.NODE_ENV === 'production' ||
+  process.env.RENDER === 'true' ||
+  (DATABASE_URL || '').includes('render.com');
 const pool = new Pool({
   connectionString: DATABASE_URL,
-  ssl: isProduction ? { rejectUnauthorized: false } : false,
+  ssl: needInsecureSSL ? { rejectUnauthorized: false } : false,
 });
 const migrationsDir = require('path').join(__dirname, '../migrations');
 const files = fs.readdirSync(migrationsDir).filter((f) => f.endsWith('.sql')).sort();

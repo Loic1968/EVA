@@ -15,12 +15,14 @@ function getPool() {
     if (!connectionString) {
       throw new Error('EVA: DATABASE_URL or EVA_DATABASE_URL must be set');
     }
-    const isProduction = process.env.NODE_ENV === 'production';
+    const needInsecureSSL = process.env.NODE_ENV === 'production' ||
+      process.env.RENDER === 'true' ||
+      (connectionString || '').includes('render.com');
     pool = new Pool({
       connectionString,
       max: 5,
       idleTimeoutMillis: 30000,
-      ssl: isProduction ? { rejectUnauthorized: false } : false,
+      ssl: needInsecureSSL ? { rejectUnauthorized: false } : false,
     });
   }
   return pool;

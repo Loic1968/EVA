@@ -1,0 +1,77 @@
+import { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+
+export default function Login() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const { login } = useAuth();
+  const navigate = useNavigate();
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      await login(email.trim(), password);
+      navigate('/voice', { replace: true });
+    } catch (err) {
+      setError(err.body?.error || err.message || 'Login failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-eva-dark p-4">
+      <div className="w-full max-w-md">
+        <div className="text-center mb-8">
+          <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center text-white font-bold text-xl mx-auto mb-3">E</div>
+          <h1 className="text-2xl font-semibold text-white">EVA</h1>
+          <p className="text-eva-muted text-sm">Digital Twin — Connecte-toi</p>
+        </div>
+        <div className="bg-eva-panel rounded-xl border border-slate-700/40 p-6">
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {error && <div className="text-red-400 text-sm bg-red-500/10 rounded-lg px-4 py-2">{error}</div>}
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                className="w-full px-4 py-2.5 bg-slate-800 border border-slate-600 rounded-lg text-white focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                placeholder="toi@example.com"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Mot de passe</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="w-full px-4 py-2.5 bg-slate-800 border border-slate-600 rounded-lg text-white focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-medium rounded-lg hover:from-cyan-400 hover:to-blue-500 disabled:opacity-50 transition-all"
+            >
+              {loading ? 'Connexion...' : 'Se connecter'}
+            </button>
+          </form>
+          <div className="mt-4 text-center">
+            <Link to="/forgot-password" className="text-sm text-cyan-400 hover:text-cyan-300">Mot de passe oublié ?</Link>
+          </div>
+        </div>
+        <p className="text-center text-eva-muted text-sm mt-6">
+          Pas de compte ? <Link to="/signup" className="text-cyan-400 hover:text-cyan-300">S'inscrire</Link>
+        </p>
+      </div>
+    </div>
+  );
+}

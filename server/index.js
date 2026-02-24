@@ -15,8 +15,11 @@ if (fs.existsSync(baseEnvPath)) require('dotenv').config({ path: baseEnvPath });
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
 const evaRoutes = require('./routes/eva');
+const authRoutes = require('./routes/auth');
+const { verifyAuth } = require('./middleware/auth');
 
 const app = express();
 const PORT = process.env.EVA_PORT || process.env.PORT || 5002;
@@ -72,7 +75,8 @@ app.use('/api/oauth', apiStrictLimiter);
 app.use('/api/voice', apiStrictLimiter);
 app.use('/api/realtime', apiStrictLimiter);
 
-app.use(express.json({ limit: '2mb' })); // 2mb for voice audio base64
+app.use(express.json({ limit: '2mb' }));
+app.use(cookieParser());
 
 app.get('/health', async (req, res) => {
   try {
@@ -95,13 +99,18 @@ function apiKeyOrSameOrigin(req, res, next) {
   return res.status(401).json({ error: 'Invalid or missing API key' });
 }
 
-// Realtime API (OpenAI WebRTC voice — ChatGPT-level) — no DB
-const realtimeRoutes = require('./routes/realtime');
-app.use('/api/realtime', apiKeyOrSameOrigin, realtimeRoutes);
+// Auth (public)
+app.use('/api/auth', authRoutes);
 
-// Voice API (no DB) — mounted before eva for reliability
+// Realtime API — requires auth for owner context
+const realtimeRoutes = require('./routes/realtime');
+app.use('/api/realtime', verifyAuth, apiKeyOrSameOrigin, realtimeRoutes);
+
+// Voice API
 const voiceRoutes = require('./routes/voice');
-app.use('/api/voice', apiKeyOrSameOrigin, voiceRoutes);
+app.use('/api/voice', verifyAuth, apiKeyOrSameOrigin, voiceRoutes);
+
+// Main API (chat, documents, settings, etc.)
 app.use('/api', evaRoutes);
 
 // Serve frontend (web/dist) when built (e.g. on Render: single service for eva.halisoft.biz)

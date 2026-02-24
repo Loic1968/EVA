@@ -11,47 +11,8 @@ const fs = require('fs');
 const googleOAuth = require('../services/googleOAuth');
 const gmailSync = require('../services/gmailSync');
 
-const API_KEY = process.env.EVA_API_KEY;
-const EVA_ENABLED = process.env.EVA_ENABLED !== 'false';
-const isProd = process.env.NODE_ENV === 'production';
-
-// Same-origin: no Origin header (browser omits it for same-origin). Cross-origin sends Origin.
-const allowedOrigins = (process.env.EVA_ALLOWED_ORIGINS || 'https://eva.halisoft.biz,https://www.eva.halisoft.biz')
-  .split(',')
-  .map((o) => o.trim())
-  .filter(Boolean);
-
-function optionalAuth(req, res, next) {
-  if (!isProd) return next(); // Dev: no API key required
-  if (!API_KEY) return next();
-  const key = req.headers['x-api-key'] || req.query.api_key;
-  if (key === API_KEY) return next();
-  const origin = req.get('origin');
-  if (!origin || allowedOrigins.includes(origin)) return next();
-  return res.status(401).json({ error: 'Invalid or missing API key' });
-}
-
-router.use(optionalAuth);
-
-// Default owner for single-user (Phase 1–2). Replace with real auth later.
-const DEFAULT_OWNER_EMAIL = process.env.EVA_OWNER_EMAIL || 'loic@halisoft.biz';
-
-async function ensureOwner(req, res, next) {
-  try {
-    const owner = await db.getOrCreateOwner(DEFAULT_OWNER_EMAIL, 'Loic Hennocq');
-    req.ownerId = owner.id;
-    next();
-  } catch (e) {
-    console.error('[EVA] ensureOwner failed:', e.message);
-    const isDb = /DATABASE_URL|connection|ECONNREFUSED|timeout|relation "eva\.|does not exist|ENOTFOUND|authentication|password/i.test(String(e.message || ''));
-    res.status(503).json({
-      error: 'Database unavailable. Run: cd eva && npm run migrate',
-      detail: process.env.NODE_ENV !== 'production' ? e.message : undefined,
-    });
-  }
-}
-
-router.use(ensureOwner);
+const { verifyAuth } = require('../middleware/auth');
+router.use(verifyAuth);
 
 router.get('/status', (req, res) => {
   res.json({ eva_enabled: EVA_ENABLED });

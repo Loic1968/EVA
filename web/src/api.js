@@ -16,11 +16,16 @@ function getApiBase() {
 }
 const API_BASE = getApiBase();
 
+function getAuthHeaders() {
+  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('eva_token') : null;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 async function request(path, options = {}) {
   const url = path.startsWith('http') ? path : `${API_BASE}${path}`;
   const res = await fetch(url, {
     ...options,
-    headers: { 'Content-Type': 'application/json', ...options.headers },
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders(), ...options.headers },
   });
   if (!res.ok) {
     const err = new Error(res.statusText || 'Request failed');
@@ -32,6 +37,21 @@ async function request(path, options = {}) {
 }
 
 export const api = {
+  // Auth
+  getAuthConfig: () => request('/auth/config'),
+  login: (email, password) =>
+    request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+  signup: (email, password, display_name) =>
+    request('/auth/signup', { method: 'POST', body: JSON.stringify({ email, password, display_name }) }),
+  forgotPassword: (email) =>
+    request('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) }),
+  resetPassword: (token, email, password) =>
+    request('/auth/reset-password', { method: 'POST', body: JSON.stringify({ token, email, password }) }),
+  getAuthMe: (token) =>
+    fetch(`${API_BASE}/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then((r) => (r.ok ? r.json() : Promise.reject(new Error('Unauthorized')))),
+
   // Chat (non-streaming)
   chat: (message, history, conversation_id) =>
     request('/chat', { method: 'POST', body: JSON.stringify({ message, history, conversation_id }) }),
@@ -41,7 +61,7 @@ export const api = {
     const url = `${API_BASE.replace(/\/$/, '')}/chat/stream`;
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify({ message, history, conversation_id }),
     });
     if (!res.ok) {
@@ -105,7 +125,7 @@ export const api = {
     const url = `${API_BASE}/documents/upload`;
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'X-Filename': file.name },
+      headers: { 'X-Filename': file.name, ...getAuthHeaders() },
       body: file,
     });
     if (!res.ok) throw new Error('Upload failed');
@@ -147,7 +167,7 @@ export const api = {
     const format = /mp4|m4a|x-m4a/.test(t) ? 'm4a' : /ogg|opus/.test(t) ? 'ogg' : /mpeg|mp3/.test(t) ? 'mp3' : 'webm';
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify({ audio: base64, format }),
     });
     if (!res.ok) {
@@ -162,7 +182,7 @@ export const api = {
     const url = `${API_BASE.replace(/\/$/, '')}/voice/tts`;
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify({ text: (text || '').slice(0, 4096), lang: 'auto' }),
     });
     if (!res.ok) {

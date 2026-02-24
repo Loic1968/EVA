@@ -1,6 +1,7 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import EvaTopBar from './EvaTopBar';
+import { useAuth } from '../context/AuthContext';
 
 const nav = [
   { to: '/voice', label: '🎤 Real Time (voix)', icon: '🎤', highlight: true },
@@ -16,6 +17,8 @@ const nav = [
 
 export default function Layout({ children }) {
   const [collapsed, setCollapsed] = useState(false);
+  const { user, logout, requireAuth } = useAuth();
+  const navigate = useNavigate();
 
   return (
     <div className="min-h-screen flex flex-col bg-eva-dark">
@@ -60,8 +63,15 @@ export default function Layout({ children }) {
             <button onClick={() => setCollapsed(false)} className="w-full text-eva-muted hover:text-white text-xs text-center">››</button>
           ) : (
             <div className="flex items-center gap-2 px-2">
-              <div className="w-6 h-6 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-[10px] text-white font-medium">L</div>
-              <div className="text-xs text-eva-muted truncate">loic@halisoft.biz</div>
+              <div className="w-6 h-6 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-[10px] text-white font-medium">
+                {(user?.email || user?.display_name || (user?.skipAuth ? 'G' : '?'))[0].toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-xs text-eva-muted truncate">{user?.email || (user?.skipAuth ? 'Guest' : '')}</div>
+                {requireAuth && (
+                  <button onClick={() => { logout(); navigate('/login'); }} className="text-[10px] text-slate-500 hover:text-red-400">Déconnexion</button>
+                )}
+              </div>
             </div>
           )}
         </div>

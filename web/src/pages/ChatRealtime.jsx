@@ -77,7 +77,10 @@ export default function ChatRealtime() {
     setError(null);
     setStatus('connecting');
     try {
-      const r = await fetch(`${API_BASE}/realtime/token`);
+      const token = localStorage.getItem('eva_token');
+      const r = await fetch(`${API_BASE}/realtime/token`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
       if (!r.ok) {
         const e = await r.json().catch(() => ({}));
         throw new Error(e.error || r.statusText || 'Token failed');

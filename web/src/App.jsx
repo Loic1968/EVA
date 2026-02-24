@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Drafts from './pages/Drafts';
@@ -8,28 +8,58 @@ import DataSources from './pages/DataSources';
 import Documents from './pages/Documents';
 import Chat from './pages/Chat';
 import ChatRealtime from './pages/ChatRealtime';
-
+import Login from './pages/Login';
+import SignUp from './pages/SignUp';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 import Emails from './pages/Emails';
+import { useAuth } from './context/AuthContext';
+
+function LoadingScreen() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-eva-dark">
+      <div className="flex gap-1">
+        <div className="w-2 h-2 rounded-full bg-eva-accent eva-dot" />
+        <div className="w-2 h-2 rounded-full bg-eva-accent eva-dot" />
+        <div className="w-2 h-2 rounded-full bg-eva-accent eva-dot" />
+      </div>
+    </div>
+  );
+}
+
+function AppRoutes() {
+  const { user, loading, requireAuth, isAuthenticated } = useAuth();
+  if (loading) return <LoadingScreen />;
+  if (requireAuth && !isAuthenticated) {
+    return (
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/signup" element={<SignUp />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
+    );
+  }
+  return (
+    <Layout>
+      <Routes>
+        <Route path="/" element={<Navigate to="/voice" replace />} />
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/chat/realtime" element={<ChatRealtime />} />
+        <Route path="/voice" element={<ChatRealtime />} />
+        <Route path="/chat" element={<Chat />} />
+        <Route path="/emails" element={<Emails />} />
+        <Route path="/drafts" element={<Drafts />} />
+        <Route path="/documents" element={<Documents />} />
+        <Route path="/audit" element={<AuditLog />} />
+        <Route path="/settings" element={<Settings />} />
+        <Route path="/sources" element={<DataSources />} />
+      </Routes>
+    </Layout>
+  );
+}
 
 export default function App() {
-  return (
-    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-      <Layout>
-        <Routes>
-          <Route path="/" element={<Navigate to="/voice" replace />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/chat/realtime" element={<ChatRealtime />} />
-          <Route path="/voice" element={<ChatRealtime />} />
-          <Route path="/chat" element={<Chat />} />
-
-          <Route path="/emails" element={<Emails />} />
-          <Route path="/drafts" element={<Drafts />} />
-          <Route path="/documents" element={<Documents />} />
-          <Route path="/audit" element={<AuditLog />} />
-          <Route path="/settings" element={<Settings />} />
-          <Route path="/sources" element={<DataSources />} />
-        </Routes>
-      </Layout>
-    </BrowserRouter>
-  );
+  return <AppRoutes />;
 }

@@ -17,10 +17,13 @@ ACCÈS AUX DONNÉES: Tu as accès à TOUT ce qui est injecté ci-dessous (emails
 
 STOP: Si Loic dit "stop", "arrête", "assez", "stop talking" — réponds UNIQUEMENT "OK" ou "D'accord" en une toute courte phrase puis TAIRE. Ne continue pas.`;
 
-async function buildInstructionsWithContext() {
+async function buildInstructionsWithContext(ownerId) {
   let instructions = EVA_INSTRUCTIONS_BASE;
   try {
-    const owner = await db.getOrCreateOwner(DEFAULT_OWNER_EMAIL, 'Loic Hennocq');
+    const owner = ownerId
+      ? (await db.query('SELECT id FROM eva.owners WHERE id = $1', [ownerId])).rows[0]
+      : await db.getOrCreateOwner(DEFAULT_OWNER_EMAIL, 'Loic Hennocq');
+    if (!owner) return instructions;
 
     // Emails — tous les récents
     let gmailSync = null;
@@ -69,8 +72,7 @@ router.get('/token', async (req, res, next) => {
     if (!REALTIME_ENABLED) {
       return res.status(503).json({ error: 'Realtime API disabled. Set OPENAI_API_KEY.' });
     }
-
-    const instructions = await buildInstructionsWithContext();
+    const instructions = await buildInstructionsWithContext(req.ownerId);
 
     const sessionConfig = {
       session: {

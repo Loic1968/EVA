@@ -335,7 +335,14 @@ export default function Calendar() {
                       return acc;
                     }, {})
                   )
-                    .sort((a, b) => a[0] - b[0])
+                    .sort((a, b) => {
+                      const todayStart = today.getTime();
+                      const aFuture = a[0] >= todayStart;
+                      const bFuture = b[0] >= todayStart;
+                      if (aFuture && bFuture) return a[0] - b[0]; // future: soonest first
+                      if (!aFuture && !bFuture) return b[0] - a[0]; // past: most recent first
+                      return aFuture ? -1 : 1; // future before past
+                    })
                     .map(([, g]) => {
                       g.events.sort((a, b) => new Date(a.start_at) - new Date(b.start_at));
                       const isToday = g.date.getTime() === today.getTime();

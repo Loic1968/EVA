@@ -33,6 +33,7 @@ const EVA_INSTRUCTIONS_BASE = `# EVA — Voice Assistant (HaliSoft, Dubai)
 ## DOCUMENT PRECISION (billets, factures, invoices)
 - Use the EXACT date written in the document. Flight tickets: check departure AND arrival — Dubai 23h10 may arrive 2nd. Read the full ticket.
 - One day off is a critical error. If bill says 2 mars, say 2 mars — never 1 mars.
+- NEVER say "je note que tu mesures X" or "je note que tu fais X kg" — documents (passport, etc.) are for ANSWERING questions, not for attributing facts to the user. If they didn't SAY it, don't "note" it.
 
 ## USER CORRECTION (highest priority)
 - "C'est faux", "non c'est le 2 mars", "corrige" → STOP. Say "D'accord, je note : [their version]." Never insist. Never say "Je comprends".
@@ -79,18 +80,25 @@ async function buildInstructionsWithContext(ownerId) {
       transcriptionLang = 'fr';
     }
 
-    // Memories — what EVA has learned (Voice can read, cannot save — use Chat to add)
-    let memoryService = null;
+    // Memories — memory_items + feedback + legacy (Voice can read, cannot save — use Chat to add)
     try {
-      memoryService = require('../services/memoryService');
-    } catch (_) {}
-    if (memoryService?.getMemories) {
-      const memories = await memoryService.getMemories(owner.id, 20);
-      if (memories.length > 0) {
-        instructions += '\n---\n## MEMORIES (what you learned about the user)\n\n';
-        memories.forEach((m) => { instructions += `- ${m.fact}\n`; });
+      const memoryItems = require('../services/memoryItemsService');
+      const feedbackService = require('../services/feedbackService');
+      const memoryService = require('../services/memoryService');
+      const [items, feedback, legacy] = await Promise.all([
+        memoryItems.getMemoryItems(owner.id, 25),
+        feedbackService.getRecentFeedback(owner.id, 8),
+        memoryService.getMemories(owner.id, 10),
+      ]);
+      if (items.length > 0 || feedback.length > 0 || legacy.length > 0) {
+        instructions += '\n---\n## MEMORIES (corrections > preferences > facts — use these)\n\n';
+        items.forEach((m) => { instructions += `- [${m.kind}] ${m.key} = ${m.value}\n`; });
+        feedback.filter((f) => f.feedback_type === 'correction' && f.corrected_text).forEach((f) => {
+          instructions += `- Éviter: "${(f.original_text || '').slice(0, 50)}..." → Utiliser: "${(f.corrected_text || '').slice(0, 50)}..."\n`;
+        });
+        if (legacy.length > 0 && items.length < 3) legacy.slice(0, 5).forEach((m) => { instructions += `- ${m.fact}\n`; });
       }
-    }
+    } catch (_) {}
 
     // Emails — recent, structured for quick scanning
     let gmailSync = null;

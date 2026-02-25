@@ -17,7 +17,7 @@ import { useAuth } from './context/AuthContext';
 
 function LoadingScreen() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-eva-dark">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-eva-dark">
       <div className="flex gap-1">
         <div className="w-2 h-2 rounded-full bg-eva-accent eva-dot" />
         <div className="w-2 h-2 rounded-full bg-eva-accent eva-dot" />

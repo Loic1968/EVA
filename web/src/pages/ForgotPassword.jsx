@@ -37,35 +37,35 @@ export default function ForgotPassword() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-eva-dark p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-eva-dark p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center text-white font-bold text-xl mx-auto mb-3">E</div>
-          <h1 className="text-2xl font-semibold text-white">Forgot password</h1>
-          <p className="text-eva-muted text-sm">We'll send you a reset link</p>
+          <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">Forgot password</h1>
+          <p className="text-slate-600 dark:text-eva-muted text-sm">We'll send you a reset link</p>
         </div>
-        <div className="bg-eva-panel rounded-xl border border-slate-700/40 p-6">
+        <div className="bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 p-6 shadow-sm">
           {sent ? (
             <div className="text-center py-4 space-y-2">
               {emailSent ? (
                 <>
-                  <p className="text-emerald-400">Email sent to your inbox.</p>
-                  <p className="text-eva-muted text-sm">Check your inbox (and spam folder).</p>
+                  <p className="text-emerald-600 dark:text-emerald-400">Email sent to your inbox.</p>
+                  <p className="text-slate-600 dark:text-eva-muted text-sm">Check your inbox (and spam folder).</p>
                 </>
               ) : (
                 <>
-                  <p className="text-amber-400">Email could not be sent.</p>
+                  <p className="text-amber-700 dark:text-amber-400">Email could not be sent.</p>
                   {emailError && (
-                    <p className="text-red-400/90 text-sm bg-red-500/10 rounded-lg px-3 py-2 text-left">
+                    <p className="text-red-600 dark:text-red-400 text-sm bg-red-500/10 rounded-lg px-3 py-2 text-left">
                       {emailError}
                     </p>
                   )}
                 </>
               )}
               {resetUrl && (
-                <p className="text-sm mt-4 pt-4 border-t border-slate-700/40">
-                  <span className="text-slate-500">Use this link to reset: </span>
-                  <a href={resetUrl} className="text-cyan-400 hover:text-cyan-300 underline break-all">
+                <p className="text-sm mt-4 pt-4 border-t border-slate-200 dark:border-slate-700/40">
+                  <span className="text-slate-600 dark:text-slate-500">Use this link to reset: </span>
+                  <a href={resetUrl} className="text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 underline break-all">
                     Reset password
                   </a>
                 </p>
@@ -73,15 +73,15 @@ export default function ForgotPassword() {
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
-              {error && <div className="text-red-400 text-sm bg-red-500/10 rounded-lg px-4 py-2">{error}</div>}
+              {error && <div className="text-red-600 dark:text-red-400 text-sm bg-red-500/10 rounded-lg px-4 py-2">{error}</div>}
               <div>
-                <label className="block text-sm text-slate-400 mb-1">Email</label>
+                <label className="block text-sm text-slate-600 dark:text-slate-400 mb-1">Email</label>
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  className="w-full px-4 py-2.5 bg-slate-800 border border-slate-600 rounded-lg text-white focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                  className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
                 />
               </div>
               <button
@@ -94,8 +94,8 @@ export default function ForgotPassword() {
             </form>
           )}
         </div>
-        <p className="text-center text-eva-muted text-sm mt-6">
-          <Link to="/login" className="text-cyan-400 hover:text-cyan-300">← Back to sign in</Link>
+        <p className="text-center text-slate-600 dark:text-eva-muted text-sm mt-6">
+          <Link to="/login" className="text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300">← Back to sign in</Link>
         </p>
       </div>
     </div>

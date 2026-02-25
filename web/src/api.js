@@ -151,6 +151,7 @@ export const api = {
     return res.json();
   },
   processDocument: (id) => request(`/documents/${id}/process`, { method: 'POST' }),
+  getDocumentContent: (id) => request(`/documents/${id}/content`),
   crawlWebsite: (url) => request('/documents/crawl', { method: 'POST', body: JSON.stringify({ url }) }),
 
   // Gmail OAuth & Emails

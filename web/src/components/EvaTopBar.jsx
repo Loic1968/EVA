@@ -5,6 +5,26 @@
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 
+function ExternalLink({ href, children, className = '' }) {
+  const handleClick = (e) => {
+    if (e.button === 0 && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+      e.preventDefault();
+      window.open(href, '_blank', 'noopener,noreferrer');
+    }
+  };
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={handleClick}
+      className={`cursor-pointer touch-manipulation inline-flex items-center py-1.5 px-2 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors ${className}`}
+    >
+      {children}
+    </a>
+  );
+}
+
 function SunIcon() {
   return (
     <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
@@ -41,11 +61,9 @@ export default function EvaTopBar({ onMenuClick }) {
               </svg>
             </button>
           )}
-        <a
+        <ExternalLink
           href="https://halisoft.biz"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-3 hover:opacity-90 transition-opacity"
+          className="flex items-center gap-3 hover:opacity-90 transition-opacity -my-1.5 -mx-2 px-2 py-1.5 rounded-lg"
         >
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center text-white font-bold text-sm shrink-0">
             E
@@ -57,11 +75,11 @@ export default function EvaTopBar({ onMenuClick }) {
             <span className="text-slate-500 dark:text-slate-400 text-sm ml-1.5">·</span>
             <span className="text-sm text-cyan-500 dark:text-cyan-400 font-medium ml-1.5">EVA</span>
           </div>
-        </a>
+        </ExternalLink>
         </div>
 
         {/* Right: theme toggle + auth + links */}
-        <div className="flex items-center gap-2 sm:gap-6">
+        <div className="flex items-center gap-1 sm:gap-4 flex-wrap justify-end">
           <button
             onClick={toggleTheme}
             className="p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors touch-manipulation"
@@ -85,30 +103,24 @@ export default function EvaTopBar({ onMenuClick }) {
               )}
             </div>
           )}
-          <a
+          <ExternalLink
             href="https://halitrade.com/landing"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hidden sm:inline text-xs text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
+            className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white whitespace-nowrap"
           >
             HaliSoft Landing
-          </a>
-          <a
+          </ExternalLink>
+          <ExternalLink
             href="https://halisoft.biz"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hidden sm:inline text-xs text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
+            className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white whitespace-nowrap"
           >
             halisoft.biz
-          </a>
-          <a
+          </ExternalLink>
+          <ExternalLink
             href="https://halitrade.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hidden sm:inline text-xs text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
+            className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white whitespace-nowrap"
           >
             HaliTrade
-          </a>
+          </ExternalLink>
         </div>
       </nav>
     </div>

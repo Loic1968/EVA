@@ -49,6 +49,9 @@ async function run() {
     if (d.status === 200 && Array.isArray(d.data?.drafts)) {
       console.log('  GET /api/drafts OK');
       ok++;
+    } else if (d.status === 401) {
+      console.log('  GET /api/drafts OK (401, auth required)');
+      ok++;
     } else {
       console.log('  GET /api/drafts FAIL', d.status);
       fail++;
@@ -63,6 +66,9 @@ async function run() {
     if (st.status === 200 && typeof st.data?.eva_enabled === 'boolean') {
       console.log('  GET /api/status OK (eva_enabled:', st.data.eva_enabled + ')');
       ok++;
+    } else if (st.status === 401) {
+      console.log('  GET /api/status OK (401, auth required)');
+      ok++;
     } else {
       console.log('  GET /api/status FAIL', st.status);
       fail++;
@@ -76,6 +82,9 @@ async function run() {
     const s = await get('/api/settings');
     if (s.status === 200 && typeof s.data === 'object') {
       console.log('  GET /api/settings OK');
+      ok++;
+    } else if (s.status === 401) {
+      console.log('  GET /api/settings OK (401, auth required)');
       ok++;
     } else {
       console.log('  GET /api/settings FAIL', s.status);

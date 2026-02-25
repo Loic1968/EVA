@@ -171,22 +171,22 @@ export default function ChatRealtime() {
     <div className="flex flex-col items-center justify-center min-h-[calc(100dvh-8rem)] sm:min-h-[calc(100vh-8rem)] py-6">
       {status === 'idle' || status === 'error' ? (
         <div className="flex flex-col items-center gap-6">
-          <div className="w-24 h-24 rounded-full bg-slate-700/60 flex items-center justify-center">
+          <div className="w-24 h-24 rounded-full bg-slate-200 dark:bg-slate-700/60 flex items-center justify-center">
             <span className="text-4xl">📞</span>
           </div>
-          <h2 className="text-xl font-semibold text-white">Call EVA</h2>
-          <p className="text-slate-400 text-sm text-center max-w-xs">
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Call EVA</h2>
+          <p className="text-slate-600 dark:text-slate-400 text-sm text-center max-w-xs">
             Live voice conversation (like ChatGPT)
           </p>
           {audioDevices.length > 0 && (
             <div className="w-full max-w-xs">
-              <label className="block text-slate-500 text-xs mb-1">
+              <label className="block text-slate-500 dark:text-slate-400 text-xs mb-1">
                 🎧 Microphone (AirPods, etc.)
               </label>
               <select
                 value={selectedDeviceId}
                 onChange={(e) => setSelectedDeviceId(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-slate-800/80 border border-slate-600/60 text-slate-200 text-sm focus:outline-none focus:ring-1 focus:ring-cyan-400"
+                className="w-full px-3 py-2 rounded-lg bg-white dark:bg-slate-800/80 border border-slate-300 dark:border-slate-600/60 text-slate-900 dark:text-slate-200 text-sm focus:outline-none focus:ring-1 focus:ring-cyan-400"
               >
                 <option value="">Default</option>
                 {audioDevices.map((d) => (
@@ -207,8 +207,8 @@ export default function ChatRealtime() {
         </div>
       ) : status === 'connecting' ? (
         <div className="flex flex-col items-center gap-4">
-          <div className="w-16 h-16 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin" />
-          <p className="text-slate-400">Connecting…</p>
+          <div className="w-16 h-16 rounded-full border-2 border-cyan-500 dark:border-cyan-400 border-t-transparent animate-spin" />
+          <p className="text-slate-600 dark:text-slate-400">Connecting…</p>
         </div>
       ) : (
         <div className="flex flex-col w-full max-w-lg">
@@ -216,16 +216,16 @@ export default function ChatRealtime() {
             <div className="w-16 h-16 rounded-full bg-emerald-500/20 flex items-center justify-center">
               <span className="w-4 h-4 rounded-full bg-emerald-400 animate-pulse" />
             </div>
-            <p className="text-emerald-400 font-medium">Connected</p>
-            <p className="text-slate-500 text-sm font-mono">{formatDuration(callDuration)}</p>
+            <p className="text-emerald-600 dark:text-emerald-400 font-medium">Connected</p>
+            <p className="text-slate-600 dark:text-slate-500 text-sm font-mono">{formatDuration(callDuration)}</p>
           </div>
-          <div className="flex-1 rounded-xl bg-slate-800/60 border border-slate-700/40 p-4 max-h-64 overflow-y-auto space-y-3">
+          <div className="flex-1 rounded-xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/40 p-4 max-h-64 overflow-y-auto space-y-3">
             {transcript.length === 0 ? (
-              <p className="text-slate-500 text-sm text-center py-4">Speak…</p>
+              <p className="text-slate-600 dark:text-slate-500 text-sm text-center py-4">Speak…</p>
             ) : (
               transcript.map((item, i) => (
                 <div key={i} className={`flex ${item.role === 'user' ? 'justify-end' : ''}`}>
-                  <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 ${item.role === 'user' ? 'bg-cyan-500/20 text-cyan-100' : 'bg-slate-700/60 text-slate-200'}`}>
+                  <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 ${item.role === 'user' ? 'bg-cyan-500/25 text-cyan-900 dark:text-cyan-100' : 'bg-slate-200 dark:bg-slate-700/60 text-slate-800 dark:text-slate-200'}`}>
                     <div className="text-sm whitespace-pre-wrap">{item.text}</div>
                   </div>
                 </div>
@@ -243,7 +243,7 @@ export default function ChatRealtime() {
       )}
 
       {error && (
-        <div className="mt-4 px-4 py-2 rounded-lg bg-red-500/10 text-red-400 text-sm text-center max-w-sm">{error}</div>
+        <div className="mt-4 px-4 py-2 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 text-sm text-center max-w-sm">{error}</div>
       )}
     </div>
   );

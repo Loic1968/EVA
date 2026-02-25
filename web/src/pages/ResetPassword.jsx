@@ -30,49 +30,49 @@ export default function ResetPassword() {
 
   if (!token) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-eva-dark p-4">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-eva-dark p-4">
         <div className="text-center">
-          <p className="text-red-400">Invalid or expired link.</p>
-          <Link to="/forgot-password" className="text-cyan-400 hover:text-cyan-300 mt-4 inline-block">Request a new link</Link>
+          <p className="text-red-600 dark:text-red-400">Invalid or expired link.</p>
+          <Link to="/forgot-password" className="text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 mt-4 inline-block">Request a new link</Link>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-eva-dark p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-eva-dark p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center text-white font-bold text-xl mx-auto mb-3">E</div>
-          <h1 className="text-2xl font-semibold text-white">New password</h1>
+          <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">New password</h1>
         </div>
-        <div className="bg-eva-panel rounded-xl border border-slate-700/40 p-6">
+        <div className="bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 p-6 shadow-sm">
           <form onSubmit={handleSubmit} className="space-y-4">
-            {error && <div className="text-red-400 text-sm bg-red-500/10 rounded-lg px-4 py-2">{error}</div>}
+            {error && <div className="text-red-600 dark:text-red-400 text-sm bg-red-500/10 rounded-lg px-4 py-2">{error}</div>}
             <div>
-              <label className="block text-sm text-slate-400 mb-1">Email</label>
+              <label className="block text-sm text-slate-600 dark:text-slate-400 mb-1">Email</label>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="w-full px-4 py-2.5 bg-slate-800 border border-slate-600 rounded-lg text-white focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
               />
             </div>
             <div>
-              <label className="block text-sm text-slate-400 mb-1">New password</label>
+              <label className="block text-sm text-slate-600 dark:text-slate-400 mb-1">New password</label>
               <div className="relative">
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  className="w-full px-4 py-2.5 pr-10 bg-slate-800 border border-slate-600 rounded-lg text-white focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                  className="w-full px-4 py-2.5 pr-10 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword((s) => !s)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-1"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white p-1"
                   title={showPassword ? 'Hide' : 'Show'}
                 >
                   {showPassword ? (
@@ -92,8 +92,8 @@ export default function ResetPassword() {
             </button>
           </form>
         </div>
-        <p className="text-center text-eva-muted text-sm mt-6">
-          <Link to="/login" className="text-cyan-400 hover:text-cyan-300">← Back to sign in</Link>
+        <p className="text-center text-slate-600 dark:text-eva-muted text-sm mt-6">
+          <Link to="/login" className="text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300">← Back to sign in</Link>
         </p>
       </div>
     </div>

@@ -2,12 +2,12 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
 
-function StatCard({ label, value, sub, color = 'text-white', link }) {
+function StatCard({ label, value, sub, color = 'text-slate-900 dark:text-white', link }) {
   const content = (
-    <div className="bg-eva-panel rounded-xl border border-slate-700/40 p-5 hover:border-slate-600/60 transition-colors">
-      <div className="text-eva-muted text-xs font-medium uppercase tracking-wider">{label}</div>
+    <div className="bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 p-5 hover:border-slate-300 dark:hover:border-slate-600/60 transition-colors">
+      <div className="text-slate-500 dark:text-eva-muted text-xs font-medium uppercase tracking-wider">{label}</div>
       <div className={`mt-2 text-2xl font-semibold ${color}`}>{value}</div>
-      {sub && <div className="text-eva-muted text-xs mt-1">{sub}</div>}
+      {sub && <div className="text-slate-500 dark:text-eva-muted text-xs mt-1">{sub}</div>}
     </div>
   );
   return link ? <Link to={link}>{content}</Link> : content;
@@ -47,7 +47,7 @@ export default function Dashboard() {
     );
   }
 
-  if (error) return <div className="text-red-400 p-4">Error: {error}</div>;
+  if (error) return <div className="text-red-600 dark:text-red-400 p-4">Error: {error}</div>;
 
   const killSwitchOn = settings.kill_switch?.enabled === true;
   const shadowModeOn = settings.shadow_mode?.enabled === true;
@@ -59,8 +59,8 @@ export default function Dashboard() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-white">Dashboard</h1>
-          <p className="text-eva-muted text-sm mt-1">EVA Command Center — status and recent activity</p>
+          <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">Dashboard</h1>
+          <p className="text-slate-500 dark:text-eva-muted text-sm mt-1">EVA Command Center — status and recent activity</p>
         </div>
         <Link
           to="/voice"
@@ -78,11 +78,11 @@ export default function Dashboard() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className={`w-3 h-3 rounded-full ${killSwitchOn ? 'bg-amber-400' : shadowModeOn ? 'bg-cyan-400' : 'bg-emerald-400'} animate-pulse`} />
-            <span className={`font-medium ${killSwitchOn ? 'text-amber-300' : shadowModeOn ? 'text-cyan-300' : 'text-emerald-300'}`}>
+            <span className={`font-medium ${killSwitchOn ? 'text-amber-700 dark:text-amber-300' : shadowModeOn ? 'text-cyan-700 dark:text-cyan-300' : 'text-emerald-700 dark:text-emerald-300'}`}>
               {killSwitchOn ? 'Autonomous Mode: Paused' : shadowModeOn ? 'EVA Active — Shadow Mode' : 'EVA Active'}
             </span>
           </div>
-          <Link to="/settings" className="text-sm text-slate-400 hover:text-white transition-colors">
+          <Link to="/settings" className="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">
             Settings →
           </Link>
         </div>
@@ -90,43 +90,43 @@ export default function Dashboard() {
 
       {/* Stats grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard label="Conversations" value={stats?.conversations ?? 0} link="/chat" color="text-cyan-400" />
-        <StatCard label="Messages" value={stats?.messages ?? 0} sub="Total exchanged" color="text-blue-400" />
+        <StatCard label="Conversations" value={stats?.conversations ?? 0} link="/chat" color="text-cyan-600 dark:text-cyan-400" />
+        <StatCard label="Messages" value={stats?.messages ?? 0} sub="Total exchanged" color="text-blue-600 dark:text-blue-400" />
         <StatCard
           label="Drafts"
           value={totalDrafts}
           sub={pendingDrafts > 0 ? `${pendingDrafts} pending approval` : 'None pending'}
           link="/drafts"
-          color={pendingDrafts > 0 ? 'text-amber-400' : 'text-white'}
+          color={pendingDrafts > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-900 dark:text-white'}
         />
-        <StatCard label="Documents" value={stats?.documents ?? 0} sub={formatBytes(stats?.documents_size)} link="/documents" color="text-purple-400" />
+        <StatCard label="Documents" value={stats?.documents ?? 0} sub={formatBytes(stats?.documents_size)} link="/documents" color="text-purple-600 dark:text-purple-400" />
       </div>
 
       {/* Activity + quick actions */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Recent activity */}
-        <div className="lg:col-span-2 bg-eva-panel rounded-xl border border-slate-700/40 overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-700/40 flex items-center justify-between">
-            <h2 className="text-sm font-medium text-white">Recent Activity</h2>
-            <Link to="/audit" className="text-xs text-eva-accent hover:underline">View all →</Link>
+        <div className="lg:col-span-2 bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700/40 flex items-center justify-between">
+            <h2 className="text-sm font-medium text-slate-900 dark:text-white">Recent Activity</h2>
+            <Link to="/audit" className="text-xs text-cyan-600 dark:text-eva-accent hover:underline">View all →</Link>
           </div>
-          <div className="divide-y divide-slate-700/30">
+          <div className="divide-y divide-slate-200 dark:divide-slate-700/30">
             {logs.slice(0, 8).map((log) => (
               <div key={log.id} className="px-5 py-3 flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3 min-w-0">
                   <div className={`w-2 h-2 rounded-full shrink-0 ${
-                    log.action_type === 'query' ? 'bg-cyan-400' :
-                    log.action_type === 'file_uploaded' ? 'bg-purple-400' :
-                    log.action_type === 'draft_created' ? 'bg-amber-400' :
+                    log.action_type === 'query' ? 'bg-cyan-500' :
+                    log.action_type === 'file_uploaded' ? 'bg-purple-500' :
+                    log.action_type === 'draft_created' ? 'bg-amber-500' :
                     'bg-slate-500'
                   }`} />
-                  <span className="text-sm text-slate-300 truncate">{formatAction(log)}</span>
+                  <span className="text-sm text-slate-700 dark:text-slate-300 truncate">{formatAction(log)}</span>
                 </div>
-                <span className="text-xs text-eva-muted shrink-0">{timeAgo(log.created_at)}</span>
+                <span className="text-xs text-slate-500 dark:text-eva-muted shrink-0">{timeAgo(log.created_at)}</span>
               </div>
             ))}
             {logs.length === 0 && (
-              <div className="px-5 py-8 text-center text-eva-muted text-sm">
+              <div className="px-5 py-8 text-center text-slate-500 dark:text-eva-muted text-sm">
                 No activity yet. Start by talking to EVA!
               </div>
             )}
@@ -134,8 +134,8 @@ export default function Dashboard() {
         </div>
 
         {/* Phase status */}
-        <div className="bg-eva-panel rounded-xl border border-slate-700/40 p-5">
-          <h2 className="text-sm font-medium text-white mb-4">EVA Phases</h2>
+        <div className="bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 p-5">
+          <h2 className="text-sm font-medium text-slate-900 dark:text-white mb-4">EVA Phases</h2>
           <div className="space-y-4">
             {[
               { phase: 1, label: 'Memory Vault', desc: 'Archive & indexing', status: 'building', pct: 40 },
@@ -148,21 +148,21 @@ export default function Dashboard() {
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-2">
                     <span className={`text-xs font-mono px-1.5 py-0.5 rounded ${
-                      p.status === 'building' ? 'bg-cyan-500/20 text-cyan-400' : 'bg-slate-700 text-slate-500'
+                      p.status === 'building' ? 'bg-cyan-500/20 text-cyan-600 dark:text-cyan-400' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-500'
                     }`}>P{p.phase}</span>
-                    <span className="text-sm text-slate-300">{p.label}</span>
+                    <span className="text-sm text-slate-700 dark:text-slate-300">{p.label}</span>
                   </div>
-                  <span className="text-xs text-eva-muted">{p.pct}%</span>
+                  <span className="text-xs text-slate-500 dark:text-eva-muted">{p.pct}%</span>
                 </div>
-                <div className="h-1 bg-slate-700 rounded-full overflow-hidden">
+                <div className="h-1 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
                   <div
                     className={`h-full rounded-full transition-all ${
-                      p.status === 'building' ? 'bg-gradient-to-r from-cyan-500 to-blue-500' : 'bg-slate-700'
+                      p.status === 'building' ? 'bg-gradient-to-r from-cyan-500 to-blue-500' : 'bg-slate-200 dark:bg-slate-700'
                     }`}
                     style={{ width: `${p.pct}%` }}
                   />
                 </div>
-                <p className="text-[11px] text-eva-muted mt-0.5">{p.desc}</p>
+                <p className="text-[11px] text-slate-500 dark:text-eva-muted mt-0.5">{p.desc}</p>
               </div>
             ))}
           </div>

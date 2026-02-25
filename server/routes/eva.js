@@ -37,8 +37,6 @@ function evaDisabled(res) {
   });
 }
 
-const SHADOW_REPLY = "🔄 **Shadow Mode** — I'm observing and indexing your data (emails, documents) but not sending replies. Switch to **Active** in Settings to chat with me.";
-
 // List conversations
 router.get('/conversations', async (req, res, next) => {
   try {
@@ -150,17 +148,7 @@ router.post('/chat', async (req, res, next) => {
       return res.status(400).json({ error: 'message required after command' });
     }
 
-    const shadowOn = await getShadowMode(req.ownerId);
-    let result;
-    if (shadowOn) {
-      result = { reply: SHADOW_REPLY, model: null, tokens: { input: 0, output: 0 } };
-      await db.query(
-        `INSERT INTO eva.audit_logs (owner_id, action_type, channel, details) VALUES ($1, 'shadow_query', 'chat', $2)`,
-        [req.ownerId, JSON.stringify({ message: message.slice(0, 500), shadow_mode: true })]
-      );
-    } else {
-      result = await evaChat.reply(msgToSend, chatHistory, req.ownerId, mode);
-    }
+    const result = await evaChat.reply(msgToSend, chatHistory, req.ownerId, mode);
 
     // Persist messages if we have a conversation
     if (convId) {
@@ -259,38 +247,7 @@ router.post('/chat/stream', async (req, res, next) => {
       return res.status(400).json({ error: 'message required after command' });
     }
 
-    const shadowOn = await getShadowMode(req.ownerId);
-    let stream, model;
-    if (shadowOn) {
-      await db.query(
-        `INSERT INTO eva.audit_logs (owner_id, action_type, channel, details) VALUES ($1, 'shadow_query', 'chat', $2)`,
-        [req.ownerId, JSON.stringify({ message: message.slice(0, 500), shadow_mode: true })]
-      );
-      if (convId) {
-        await db.query(
-          `INSERT INTO eva.messages (conversation_id, owner_id, role, content) VALUES ($1, $2, 'user', $3)`,
-          [convId, req.ownerId, message.trim()]
-        );
-        await db.query(
-          `INSERT INTO eva.messages (conversation_id, owner_id, role, content, tokens_used) VALUES ($1, $2, 'assistant', $3, 0)`,
-          [convId, req.ownerId, SHADOW_REPLY]
-        );
-        await db.query(
-          `UPDATE eva.conversations SET updated_at = now(), title = COALESCE(NULLIF(title, ''), $3)
-           WHERE id = $1 AND owner_id = $2`,
-          [convId, req.ownerId, message.trim().slice(0, 100)]
-        );
-      }
-      res.setHeader('Content-Type', 'text/event-stream');
-      res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('Connection', 'keep-alive');
-      res.flushHeaders?.();
-      res.write(`data: ${JSON.stringify({ type: 'text', text: SHADOW_REPLY })}\n\n`);
-      res.write(`data: ${JSON.stringify({ type: 'done', reply: SHADOW_REPLY, model: null, tokens: { input: 0, output: 0 }, conversation_id: convId })}\n\n`);
-      return res.end();
-    }
-
-    ({ stream, model } = await evaChat.createReplyStream(msgToSend, chatHistory, req.ownerId, mode));
+    const { stream, model } = await evaChat.createReplyStream(msgToSend, chatHistory, req.ownerId, mode);
 
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
@@ -635,6 +592,25 @@ router.post('/documents/crawl', async (req, res, next) => {
     if (e.message?.includes('not allowed') || e.message?.includes('not found')) {
       return res.status(400).json({ error: e.message });
     }
+    next(e);
+  }
+});
+
+// Get indexed content of a document (extracted text)
+router.get('/documents/:id/content', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const r = await db.query(
+      'SELECT id, filename, content_text, status, processed_at FROM eva.documents WHERE id = $1 AND owner_id = $2',
+      [id, req.ownerId]
+    );
+    const doc = r.rows[0];
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
+    if (doc.status !== 'indexed' || !doc.content_text) {
+      return res.status(400).json({ error: 'Document not indexed yet', status: doc.status });
+    }
+    res.json({ id: doc.id, filename: doc.filename, content_text: doc.content_text, processed_at: doc.processed_at });
+  } catch (e) {
     next(e);
   }
 });

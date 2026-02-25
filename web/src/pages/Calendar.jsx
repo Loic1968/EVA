@@ -28,7 +28,8 @@ export default function Calendar() {
   const [syncing, setSyncing] = useState({ email: false, calendar: false });
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
-  const [viewMode, setViewMode] = useState('month'); // 'month' | 'agenda'
+  const [viewMode, setViewMode] = useState('agenda'); // 'month' | 'agenda' — agenda default for mobile
+  const [showCalendarDrawer, setShowCalendarDrawer] = useState(false);
   const [current, setCurrent] = useState(() => {
     const d = new Date();
     return { year: d.getFullYear(), month: d.getMonth() };
@@ -147,66 +148,69 @@ export default function Calendar() {
   const monthTitle = new Date(current.year, current.month).toLocaleDateString(locale, { month: 'long', year: 'numeric' });
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)] min-h-0 bg-slate-50 dark:bg-slate-900/50">
-      {/* Header */}
-      <div className="shrink-0 flex items-center justify-between gap-4 py-3 px-4 border-b border-slate-200 dark:border-slate-700/40 bg-white dark:bg-eva-panel">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={prevMonth}
-            className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400"
-            aria-label="Previous month"
-          >
-            ‹
-          </button>
-          <button
-            onClick={nextMonth}
-            className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400"
-            aria-label="Next month"
-          >
-            ›
-          </button>
-          <h1 className="text-xl font-semibold text-slate-900 dark:text-white capitalize min-w-[180px]">{monthTitle}</h1>
-          <button
-            onClick={goToday}
-            className="px-3 py-1.5 rounded-lg text-sm font-medium bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600"
-          >
-            Today
-          </button>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex rounded-lg overflow-hidden border border-slate-200 dark:border-slate-600">
-            <button
-              onClick={() => setViewMode('month')}
-              className={`px-4 py-2 text-sm font-medium ${viewMode === 'month' ? 'bg-cyan-500 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'}`}
-            >
-              Month
-            </button>
-            <button
-              onClick={() => setViewMode('agenda')}
-              className={`px-4 py-2 text-sm font-medium ${viewMode === 'agenda' ? 'bg-cyan-500 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'}`}
-            >
-              Agenda
+    <div className="flex flex-col h-[calc(100vh-4rem)] min-h-0 bg-slate-50 dark:bg-slate-900/50 overflow-hidden">
+      {/* Header — responsive: stack on mobile */}
+      <div className="shrink-0 py-3 px-3 sm:px-4 border-b border-slate-200 dark:border-slate-700/40 bg-white dark:bg-eva-panel">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <div className="flex items-center shrink-0">
+              <button onClick={prevMonth} className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 touch-manipulation" aria-label="Previous month">‹</button>
+              <button onClick={nextMonth} className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 touch-manipulation" aria-label="Next month">›</button>
+            </div>
+            <h1 className="text-base sm:text-xl font-semibold text-slate-900 dark:text-white capitalize truncate flex-1 min-w-0">{monthTitle}</h1>
+            <button onClick={goToday} className="shrink-0 min-w-[44px] min-h-[44px] px-3 flex items-center justify-center rounded-lg text-sm font-medium bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600 touch-manipulation">Today</button>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex rounded-lg overflow-hidden border border-slate-200 dark:border-slate-600 shrink-0">
+              <button onClick={() => setViewMode('month')} className={`min-h-[44px] px-3 sm:px-4 py-2 text-sm font-medium touch-manipulation ${viewMode === 'month' ? 'bg-cyan-500 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'}`}>Month</button>
+              <button onClick={() => setViewMode('agenda')} className={`min-h-[44px] px-3 sm:px-4 py-2 text-sm font-medium touch-manipulation ${viewMode === 'agenda' ? 'bg-cyan-500 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'}`}>Agenda</button>
+            </div>
+            <button onClick={syncCalendar} disabled={syncing.calendar || !hasGmail} className="min-h-[44px] px-3 sm:px-4 py-2 rounded-lg bg-cyan-500/20 text-cyan-600 dark:text-eva-accent hover:bg-cyan-500/30 disabled:opacity-50 text-sm font-medium touch-manipulation">{syncing.calendar ? '…' : 'Sync'}</button>
+            <a href="/sources" className="min-h-[44px] px-3 sm:px-4 py-2 flex items-center rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-300 dark:hover:bg-slate-600 text-sm font-medium touch-manipulation">Sources</a>
+            {/* Mobile: Calendars filter button */}
+            <button onClick={() => setShowCalendarDrawer(true)} className="lg:hidden min-h-[44px] px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-sm font-medium touch-manipulation">
+              Calendars
             </button>
           </div>
-          <button
-            onClick={syncCalendar}
-            disabled={syncing.calendar || !hasGmail}
-            className="px-4 py-2 rounded-lg bg-cyan-500/20 text-cyan-600 dark:text-eva-accent hover:bg-cyan-500/30 disabled:opacity-50 text-sm font-medium"
-          >
-            {syncing.calendar ? 'Syncing…' : 'Sync'}
-          </button>
-          <a href="/sources" className="px-4 py-2 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-300 dark:hover:bg-slate-600 text-sm font-medium">
-            Sources
-          </a>
         </div>
       </div>
 
       {error && <div className="shrink-0 text-red-600 dark:text-red-400 text-sm bg-red-500/10 px-4 py-2">{error}</div>}
       {success && <div className="shrink-0 text-emerald-600 dark:text-emerald-400 text-sm bg-emerald-500/10 px-4 py-2">{success}</div>}
 
+      {/* Mobile calendar filter drawer */}
+      {showCalendarDrawer && (
+        <>
+          <div className="fixed inset-0 bg-black/40 z-[55] lg:hidden" onClick={() => setShowCalendarDrawer(false)} />
+          <div className="fixed left-0 top-0 bottom-0 w-64 max-w-[85vw] bg-white dark:bg-eva-panel border-r border-slate-200 dark:border-slate-700/40 z-[60] flex flex-col shadow-xl lg:hidden">
+            <div className="p-3 border-b border-slate-200 dark:border-slate-700/40 flex items-center justify-between">
+              <span className="text-sm font-medium text-slate-900 dark:text-white">Calendars</span>
+              <button onClick={() => setShowCalendarDrawer(false)} className="p-2 rounded text-slate-500 hover:text-slate-900 dark:hover:text-white">✕</button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
+              <button onClick={() => { setFilterAccount(null); setShowCalendarDrawer(false); }} className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 ${!filterAccount ? 'bg-cyan-500/20 text-cyan-600 dark:text-eva-accent' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/50'}`}>
+                <span className="w-2 h-2 rounded-full bg-cyan-400" /> All
+              </button>
+              {gmailAccounts.map((a) => {
+                const count = allEvents.filter((e) => e.gmail_account_id === a.id).length;
+                const isActive = filterAccount === a.id;
+                return (
+                  <button key={a.id} onClick={() => { setFilterAccount(a.id); setShowCalendarDrawer(false); }} className={`w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-2 truncate ${isActive ? 'bg-cyan-500/20 text-cyan-600 dark:text-eva-accent' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/50'}`} title={a.gmail_address}>
+                    <span className="w-2 h-2 rounded-full bg-blue-400 shrink-0" />
+                    <span className="truncate flex-1">{a.gmail_address}</span>
+                    {count > 0 && <span className="text-xs text-slate-500">{count}</span>}
+                  </button>
+                );
+              })}
+              {!hasGmail && <p className="px-3 py-4 text-sm text-slate-500"><a href="/sources" className="text-cyan-600 hover:underline">Connect Gmail</a></p>}
+            </div>
+          </div>
+        </>
+      )}
+
       <div className="flex flex-1 min-h-0">
-        {/* Sidebar */}
-        <aside className="w-52 shrink-0 border-r border-slate-200 dark:border-slate-700/40 bg-white dark:bg-eva-panel flex flex-col">
+        {/* Sidebar — hidden on mobile (drawer instead) */}
+        <aside className="hidden lg:flex w-52 shrink-0 border-r border-slate-200 dark:border-slate-700/40 bg-white dark:bg-eva-panel flex-col">
           <div className="p-3 border-b border-slate-200 dark:border-slate-700/40">
             <h2 className="text-xs font-medium text-slate-500 dark:text-eva-muted uppercase tracking-wider">Calendars</h2>
           </div>
@@ -281,7 +285,7 @@ export default function Calendar() {
                   return (
                     <div
                       key={key}
-                      className={`bg-white dark:bg-eva-panel flex flex-col min-h-[80px] ${!isCurrentMonth ? 'opacity-50' : ''}`}
+                      className={`bg-white dark:bg-eva-panel flex flex-col min-h-[60px] sm:min-h-[80px] ${!isCurrentMonth ? 'opacity-50' : ''}`}
                     >
                       <div
                         className={`shrink-0 py-1 px-2 text-xs font-medium ${isToday ? 'bg-cyan-500 text-white rounded-full w-6 h-6 flex items-center justify-center' : 'text-slate-600 dark:text-slate-400'}`}

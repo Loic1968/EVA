@@ -56,12 +56,12 @@ export default function EvaTopBar({ onMenuClick }) {
           )}
         <ExternalLink
           href="https://halisoft.biz"
-          className="flex items-center gap-3 hover:opacity-90 transition-opacity -my-1.5 -mx-2 px-2 py-1.5 rounded-lg"
+          className="flex items-center gap-2 sm:gap-3 hover:opacity-90 transition-opacity -my-1.5 -mx-2 px-2 py-1.5 rounded-lg min-w-[44px] min-h-[44px] touch-manipulation"
         >
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center text-white font-bold text-sm shrink-0">
             E
           </div>
-          <div>
+          <div className="hidden sm:block">
             <span className="font-bold text-base text-slate-900 dark:text-white">
               Hali<span className="text-[#3B82F6]">Soft</span>
             </span>
@@ -71,11 +71,11 @@ export default function EvaTopBar({ onMenuClick }) {
         </ExternalLink>
         </div>
 
-        {/* Right: theme toggle + auth + links */}
-        <div className="flex items-center gap-1 sm:gap-4 flex-wrap justify-end">
+        {/* Right: theme toggle + auth + links (hide external links on mobile) */}
+        <div className="flex items-center gap-1 sm:gap-2 md:gap-4 flex-wrap justify-end">
           <button
             onClick={toggleTheme}
-            className="p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors touch-manipulation"
+            className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors touch-manipulation"
             aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
             title={darkMode ? 'Clair' : 'Sombre'}
           >
@@ -96,24 +96,26 @@ export default function EvaTopBar({ onMenuClick }) {
               )}
             </div>
           )}
-          <ExternalLink
-            href="https://halitrade.com/landing"
-            className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white whitespace-nowrap"
-          >
-            HaliSoft Landing
-          </ExternalLink>
-          <ExternalLink
-            href="https://halisoft.biz"
-            className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white whitespace-nowrap"
-          >
-            halisoft.biz
-          </ExternalLink>
-          <ExternalLink
-            href="https://halitrade.com"
-            className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white whitespace-nowrap"
-          >
-            HaliTrade
-          </ExternalLink>
+          <span className="hidden md:flex md:items-center md:gap-1">
+            <ExternalLink
+              href="https://halitrade.com/landing"
+              className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white whitespace-nowrap"
+            >
+              HaliSoft Landing
+            </ExternalLink>
+            <ExternalLink
+              href="https://halisoft.biz"
+              className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white whitespace-nowrap"
+            >
+              halisoft.biz
+            </ExternalLink>
+            <ExternalLink
+              href="https://halitrade.com"
+              className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white whitespace-nowrap"
+            >
+              HaliTrade
+            </ExternalLink>
+          </span>
         </div>
       </nav>
     </div>

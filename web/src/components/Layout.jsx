@@ -31,7 +31,7 @@ export default function Layout({ children }) {
   const closeMobile = () => setMobileOpen(false);
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-eva-dark">
+    <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-eva-dark overflow-x-hidden">
       <EvaTopBar onMenuClick={() => setMobileOpen(true)} />
       <div className="flex flex-1 min-h-0">
       {/* Mobile overlay */}

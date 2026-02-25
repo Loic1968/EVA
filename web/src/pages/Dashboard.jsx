@@ -57,14 +57,14 @@ export default function Dashboard() {
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">Dashboard</h1>
+          <h1 className="text-xl sm:text-2xl font-semibold text-slate-900 dark:text-white">Dashboard</h1>
           <p className="text-slate-500 dark:text-eva-muted text-sm mt-1">EVA Command Center — status and recent activity</p>
         </div>
         <Link
           to="/voice"
-          className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-medium rounded-lg hover:from-cyan-400 hover:to-blue-500 transition-all shadow-lg shadow-cyan-500/20"
+          className="inline-flex items-center justify-center gap-2 px-5 py-3 min-h-[44px] bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-medium rounded-lg hover:from-cyan-400 hover:to-blue-500 transition-all shadow-lg shadow-cyan-500/20 touch-manipulation"
         >
           <span>🎤</span> Parler à EVA
         </Link>

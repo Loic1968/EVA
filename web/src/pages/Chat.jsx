@@ -242,7 +242,7 @@ export default function Chat() {
   };
 
   return (
-    <div className="flex h-[calc(100vh-5rem)] min-h-[300px] gap-0 -m-4 sm:-m-6">
+    <div className="flex h-[calc(100vh-5rem)] min-h-[300px] gap-0 -mx-4 -mt-4 sm:-mx-6 sm:-mt-6 overflow-hidden">
       {/* Sidebar — slide-over like ChatGPT (z-[60] below topbar z-[100]) */}
       {showSidebar && (
         <>
@@ -303,8 +303,8 @@ export default function Chat() {
             {shadowMode && <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/25 text-cyan-600 dark:text-cyan-400 font-medium">Shadow</span>}
           </span>
           <div className="flex items-center gap-1">
-            <Link to="/chat/realtime" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 hover:bg-cyan-500/30 text-sm font-medium" title={lang === 'fr' ? 'Appeler EVA (voix temps réel)' : 'Voice call (Realtime)'}>
-              🎤 {lang === 'fr' ? 'Appel vocal' : 'Voice call'}
+            <Link to="/chat/realtime" className="flex items-center gap-1.5 px-3 py-2 min-h-[44px] rounded-lg bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 hover:bg-cyan-500/30 text-sm font-medium touch-manipulation" title={lang === 'fr' ? 'Appeler EVA (voix temps réel)' : 'Voice call (Realtime)'}>
+              🎤 <span className="hidden sm:inline">{lang === 'fr' ? 'Appel vocal' : 'Voice call'}</span>
             </Link>
             {voiceOutput.supported && (
               <button onClick={() => setAutoPlayVoice(!autoPlayVoice)} className={`p-2 rounded-lg ${autoPlayVoice ? 'text-cyan-600 dark:text-cyan-400 bg-cyan-500/10' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-400'}`} title={autoPlayVoice ? (lang === 'fr' ? 'Réponse vocale activée' : 'Voice reply on') : (lang === 'fr' ? 'Réponse vocale désactivée' : 'Voice reply off')}>🔊</button>

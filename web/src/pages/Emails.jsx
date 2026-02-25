@@ -138,8 +138,8 @@ export default function Emails() {
   const syncLabel = syncStatus === 'active' ? 'Synchronisé' : syncStatus === 'syncing' ? 'Synchronisation…' : syncStatus === 'error' ? 'Erreur' : syncStatus === 'pending' ? 'En attente' : null;
 
   return (
-    <div className="flex flex-col h-[calc(100vh-8rem)]">
-      <div className="flex-shrink-0 mb-4 flex items-start justify-between gap-4">
+    <div className="flex flex-col min-h-[calc(100vh-8rem)] sm:h-[calc(100vh-8rem)] overflow-hidden">
+      <div className="flex-shrink-0 mb-4 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">Boîte mail</h1>
           <p className="text-slate-600 dark:text-eva-muted text-sm mt-1">
@@ -171,7 +171,7 @@ export default function Emails() {
           href="https://mail.google.com/mail/?view=cm"
           target="_blank"
           rel="noopener noreferrer"
-          className="flex-shrink-0 px-4 py-2.5 bg-cyan-500 dark:bg-eva-accent text-white rounded-lg text-sm font-medium hover:bg-cyan-600 dark:hover:bg-cyan-400 transition-colors flex items-center gap-2"
+          className="flex-shrink-0 min-h-[44px] px-4 py-2.5 flex items-center justify-center bg-cyan-500 dark:bg-eva-accent text-white rounded-lg text-sm font-medium hover:bg-cyan-600 dark:hover:bg-cyan-400 transition-colors gap-2 touch-manipulation"
         >
           <span>✏️</span> Nouvel email
         </a>
@@ -244,9 +244,9 @@ export default function Emails() {
         </button>
       </form>
 
-      {/* Split: liste | détail */}
-      <div className="flex-1 flex gap-4 min-h-0">
-        <div className={`bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 overflow-hidden flex flex-col ${selectedEmail ? 'w-[380px] flex-shrink-0' : 'flex-1'}`}>
+      {/* Split: liste | détail — on mobile, detail overlays list when selected */}
+      <div className="flex-1 flex gap-4 min-h-0 overflow-hidden">
+        <div className={`bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 overflow-hidden flex flex-col ${selectedEmail ? 'w-full md:w-[380px] flex-shrink-0 hidden md:flex' : 'flex-1 min-w-0'}`}>
       {loading ? (
         <div className="flex items-center justify-center h-32">
           <div className="flex gap-1">
@@ -332,8 +332,8 @@ export default function Emails() {
         )}
         </div>
 
-        {/* Panneau détail */}
-        <div className={`flex-1 bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 overflow-hidden flex flex-col min-w-0 ${!selectedEmail ? 'hidden' : ''}`}>
+        {/* Panneau détail — full-width on mobile when selected */}
+        <div className={`flex-1 bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 overflow-hidden flex flex-col min-w-0 ${!selectedEmail ? 'hidden' : 'flex'}`}>
           {detailLoading ? (
             <div className="flex justify-center items-center flex-1">
               <div className="flex gap-1"><div className="w-2 h-2 rounded-full bg-eva-accent eva-dot" /><div className="w-2 h-2 rounded-full bg-eva-accent eva-dot" /><div className="w-2 h-2 rounded-full bg-eva-accent eva-dot" /></div>
@@ -341,7 +341,8 @@ export default function Emails() {
           ) : selectedEmail ? (
             <>
               <div className="p-4 border-b border-slate-200 dark:border-slate-700/40 flex-shrink-0">
-                <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start justify-between gap-2 sm:gap-4">
+                  <button onClick={() => setSelectedEmail(null)} className="md:hidden shrink-0 p-2 min-w-[44px] min-h-[44px] flex items-center justify-center text-slate-500 hover:text-slate-900 dark:hover:text-white rounded-lg touch-manipulation" aria-label="Retour">←</button>
                   <div className="min-w-0 flex-1">
                     <h2 className="text-lg font-medium text-slate-900 dark:text-white truncate">{selectedEmail.subject || '(sans objet)'}</h2>
                     <p className="text-sm text-slate-600 dark:text-eva-muted mt-0.5">De: <span className="text-slate-700 dark:text-slate-300">{selectedEmail.from_name ? `${selectedEmail.from_name} <${selectedEmail.from_email}>` : selectedEmail.from_email}</span></p>

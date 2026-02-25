@@ -153,12 +153,12 @@ export default function DataSources() {
           </div>
           <div className="divide-y divide-slate-200 dark:divide-slate-700/30">
             {gmailAccounts.map((acct) => (
-              <div key={acct.id} className="px-5 py-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
+              <div key={acct.id} className="px-4 sm:px-5 py-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
                     <span className="text-xs font-medium px-2 py-1 rounded bg-red-500/20 text-red-600 dark:text-red-400">Gmail</span>
-                    <div>
-                      <span className="text-sm text-slate-900 dark:text-white">{acct.gmail_address}</span>
+                    <div className="min-w-0 flex-1">
+                      <span className="text-sm text-slate-900 dark:text-white block truncate">{acct.gmail_address}</span>
                       <span className={'ml-2 text-xs px-2 py-0.5 rounded-full ' + (
                         acct.sync_status === 'active' ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' :
                         acct.sync_status === 'syncing' ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400' :
@@ -167,17 +167,17 @@ export default function DataSources() {
                       )}>{acct.sync_status}</span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 shrink-0">
                     <button
                       onClick={() => syncGmail(acct.id)}
                       disabled={syncing[acct.id]}
-                      className="text-xs px-3 py-1.5 rounded bg-cyan-500/20 text-cyan-600 dark:text-eva-accent hover:bg-cyan-500/30 dark:hover:bg-eva-accent/30 disabled:opacity-50 transition-colors"
+                      className="min-h-[44px] px-3 py-2 rounded text-sm bg-cyan-500/20 text-cyan-600 dark:text-eva-accent hover:bg-cyan-500/30 disabled:opacity-50 transition-colors touch-manipulation"
                     >
                       {syncing[acct.id] ? 'Syncing...' : 'Sync Now'}
                     </button>
                     <button
                       onClick={() => disconnectGmail(acct.id)}
-                      className="text-xs px-3 py-1.5 rounded bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
+                      className="min-h-[44px] px-3 py-2 rounded text-sm bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors touch-manipulation"
                     >
                       Déconnecter
                     </button>

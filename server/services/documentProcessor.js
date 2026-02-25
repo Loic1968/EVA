@@ -5,45 +5,13 @@ const fs = require('fs');
 const path = require('path');
 const db = require('../db');
 
-const MIN_TEXT_LENGTH_FOR_OCR_FALLBACK = 20;
-
 async function extractPdfFromBuffer(buffer) {
   try {
     const pdf = require('pdf-parse');
     const data = await pdf(buffer);
-    const text = (data?.text || '').trim();
-    if (text && text.length >= MIN_TEXT_LENGTH_FOR_OCR_FALLBACK) return text;
-    // Fallback: OCR for scanned/image-only PDFs
-    return extractPdfViaOcr(buffer);
+    return (data?.text || '').trim() || null;
   } catch (e) {
     console.warn('[DocumentProcessor] PDF extraction failed:', e.message);
-    return extractPdfViaOcr(buffer);
-  }
-}
-
-async function extractPdfViaOcr(buffer) {
-  try {
-    const mod = await import('pdf-img-convert');
-    const convert = mod.convert || mod.default;
-    const { createWorker } = require('tesseract.js');
-    const pageImages = await convert(buffer, { scale: 2 });
-    if (!pageImages || pageImages.length === 0) return null;
-    const worker = await createWorker('eng');
-    const texts = [];
-    try {
-      for (let i = 0; i < pageImages.length; i++) {
-        const imgBuf = Buffer.from(pageImages[i]);
-        const { data: { text } } = await worker.recognize(imgBuf);
-        if (text && text.trim()) texts.push(text.trim());
-      }
-      await worker.terminate();
-      return texts.join('\n\n') || null;
-    } catch (e) {
-      await worker.terminate();
-      throw e;
-    }
-  } catch (e) {
-    console.warn('[DocumentProcessor] PDF OCR fallback failed:', e.message);
     return null;
   }
 }
@@ -157,7 +125,7 @@ async function processDocument(documentId, ownerId) {
     } else {
       await db.query(
         "UPDATE eva.documents SET status = 'error', metadata = metadata || $1 WHERE id = $2",
-        [JSON.stringify({ error: 'No text extracted. OCR was attempted. File may be corrupted or in an unsupported format.' }), documentId]
+        [JSON.stringify({ error: 'No text extracted. Document may be scanned (image-only PDF). Use PDFs with selectable text.' }), documentId]
       );
     }
     return text;

@@ -36,6 +36,7 @@ Run the EVA schema on the **same** PostgreSQL instance as Halisoft:
 psql "$DATABASE_URL" -f eva/migrations/001_create_eva_schema.sql
 psql "$DATABASE_URL" -f eva/migrations/003_add_calendar_events.sql
 psql "$DATABASE_URL" -f eva/migrations/004_add_document_file_data.sql   # Required for document upload
+psql "$DATABASE_URL" -f eva/migrations/006_add_memory_items.sql        # For learning (corrections, preferences)
 ```
 
 ### 2. Backend

@@ -53,15 +53,36 @@ async function main() {
     console.log('\nStockage:', storage.rows[0]);
 
     // Derniers documents
-    const recent = await client.query(`
-      SELECT id, owner_id, filename, status, created_at,
-        (file_data IS NOT NULL AND length(file_data) > 0) as has_file_data
-      FROM eva.documents
-      ORDER BY created_at DESC
-      LIMIT 5
+    const hasContentCol = await client.query(`
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'eva' AND table_name = 'documents' AND column_name = 'content_text'
     `);
-    console.log('\n5 derniers documents:');
+    const recentCols = hasContentCol.rows.length > 0
+      ? 'id, owner_id, filename, status, created_at, (file_data IS NOT NULL AND length(file_data) > 0) as has_file_data, (content_text IS NOT NULL AND length(content_text) > 0) as has_content, COALESCE(length(content_text), 0) as content_len'
+      : 'id, owner_id, filename, status, created_at, (file_data IS NOT NULL AND length(file_data) > 0) as has_file_data';
+    const recent = await client.query(`
+      SELECT ${recentCols} FROM eva.documents ORDER BY created_at DESC LIMIT 5
+    `);
+    console.log('\n5 derniers documents (has_content = visible par EVA):');
     console.table(recent.rows);
+
+    if (hasContentCol.rows.length === 0) {
+      console.log('\n⚠️  Colonne content_text absente. Run: psql "$DATABASE_URL" -f eva/migrations/004_add_document_file_data.sql');
+    }
+
+    // Stats par status
+    const byStatus = await client.query(`
+      SELECT status, COUNT(*) as n FROM eva.documents GROUP BY status ORDER BY n DESC
+    `);
+    console.log('\nDocuments par status (indexed = EVA peut les voir):');
+    console.table(byStatus.rows);
+
+    const indexedCount = parseInt(byStatus.rows.find((r) => r.status === 'indexed')?.n || '0', 10);
+    if (indexedCount === 0 && parseInt(total.rows[0].n, 10) > 0) {
+      console.log('\n⚠️  Aucun document indexé. EVA ne voit pas les documents.');
+      console.log('   → Vérifiez ANTHROPIC_API_KEY pour extraire les PDFs/images.');
+      console.log('   → Page Documents > bouton "Re-index all" pour relancer.');
+    }
   } finally {
     client.release();
     await pool.end();

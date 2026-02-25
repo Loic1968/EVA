@@ -17,12 +17,27 @@ const FACT_EXTRACTION_SYSTEM = `You extract structured facts from documents with
 5. Keys: snake_case, descriptive. date_of_birth, passport_number, flight_departure_date, flight_arrival_date, flight_departure_time, flight_arrival_time, route, invoice_due_date, invoice_number, supplier_name, total_amount, etc.
 6. Omit null/empty. Output only facts you are certain about.`;
 
+function inferDocTypeFromContent(text) {
+  if (!text || text.length < 50) return '';
+  const head = text.slice(0, 3000).toLowerCase();
+  if (/---\s*identity\s*document\s*---|date\s+de\s+naissance|date\s+of\s+birth|passport|passeport|nationalit[eé]|document\s+number/i.test(head)) return 'id_document';
+  if (/---\s*flight\s*dates\s*---|departure\s+date|arrival\s+date|boarding|embarquement/i.test(head)) return 'billet';
+  if (/---\s*document\s*key\s*data\s*---|invoice|facture|due\s+date|[eé]ch[eé]ance/i.test(head)) return 'invoice_contract';
+  return '';
+}
+
 function buildFactExtractionPrompt(text, filename = '', docType = '') {
+  const inferred = inferDocTypeFromContent(text);
+  const effectiveType = inferred || docType; // Prefer content-based detection (handles "scan.pdf" = passport)
   let ctx = '';
   if (filename) ctx += `\nFilename: ${filename}`;
-  if (docType) ctx += `\nDocument type: ${docType}`;
+  if (effectiveType) ctx += `\nDocument type: ${effectiveType}`;
+  let mandatory = '';
+  if (effectiveType === 'id_document') {
+    mandatory = `\n\nCRITICAL — This is an identity document (passport, ID). You MUST extract: date_of_birth (from "Date de naissance" or "Date of birth"), passport_number or document_number, nationality, full_name, document_expiry_date. Look for the --- IDENTITY DOCUMENT --- block or equivalent. Never omit date_of_birth if it appears.`;
+  }
   return `${FACT_EXTRACTION_SYSTEM}
-${ctx}
+${ctx}${mandatory}
 
 Extract all structured facts from the document below. Output ONLY valid JSON. No markdown, no explanation.
 Keys: snake_case. Values: exact strings as printed. One JSON object.`;
@@ -30,37 +45,77 @@ Keys: snake_case. Values: exact strings as printed. One JSON object.`;
 
 const REJECT_VALUES = /^(n\/?a|unknown|—|–|-|none|\.{3}|\.\.\.)$/i;
 
+const DEFAULT_MAX_CHARS = 150000; // Full-doc indexation (was 50K)
+const CHUNK_SIZE = 120000;
+const CHUNK_OVERLAP = 15000; // Overlap to avoid cutting facts
+
+async function extractFromChunk(client, chunk, filename, docType, chunkIndex) {
+  const prompt = buildFactExtractionPrompt(chunk, filename, docType);
+  if (chunkIndex > 0) {
+    prompt += `\n[Document part ${chunkIndex + 1} — extract facts from this section only]`;
+  }
+  const response = await client.messages.create({
+    model: process.env.EVA_CHAT_MODEL || 'claude-sonnet-4-20250514',
+    max_tokens: 2048,
+    messages: [{ role: 'user', content: `${prompt}\n\n--- DOCUMENT ---\n${chunk}\n--- END ---` }],
+  });
+  const textBlock = response.content?.find((b) => b.type === 'text');
+  const raw = (textBlock?.text || '').trim();
+  if (!raw) return [];
+  const jsonStr = raw.replace(/^```json?\s*|\s*```$/g, '').trim();
+  const obj = JSON.parse(jsonStr);
+  const facts = [];
+  for (const [k, v] of Object.entries(obj)) {
+    if (v != null && typeof v === 'string') {
+      const value = v.trim().slice(0, 2000);
+      const keyNormalized = k.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+      if (value.length >= 2 && keyNormalized.length >= 2 && !REJECT_VALUES.test(value) && !/^[\s\-\.]+$/.test(value)) {
+        facts.push({ key: keyNormalized, value });
+      }
+    }
+  }
+  return facts;
+}
+
+function chunkText(text, chunkSize = CHUNK_SIZE, overlap = CHUNK_OVERLAP) {
+  const chunks = [];
+  let start = 0;
+  while (start < text.length) {
+    const end = Math.min(start + chunkSize, text.length);
+    chunks.push(text.slice(start, end));
+    if (end >= text.length) break;
+    start = end - overlap;
+  }
+  return chunks;
+}
+
 async function extractFactsViaAI(text, options = {}) {
   const { filename = '', docType = '' } = options;
   const key = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
   if (!key || !text || typeof text !== 'string') return [];
-  const trimmed = text.trim().slice(0, 50000);
-  if (trimmed.length < 10) return [];
+  const maxChars = Number(process.env.EVA_FACT_EXTRACTION_MAX_CHARS) || DEFAULT_MAX_CHARS;
+  const fullText = text.trim().slice(0, 500000); // Cap at storage limit
+  if (fullText.length < 10) return [];
   try {
     const Anthropic = require('@anthropic-ai/sdk');
     const client = new Anthropic({ apiKey: key.trim() });
-    const prompt = buildFactExtractionPrompt(trimmed, filename, docType);
-    const response = await client.messages.create({
-      model: process.env.EVA_CHAT_MODEL || 'claude-sonnet-4-20250514',
-      max_tokens: 2048,
-      messages: [{ role: 'user', content: `${prompt}\n\n--- DOCUMENT ---\n${trimmed}\n--- END ---` }],
-    });
-    const textBlock = response.content?.find((b) => b.type === 'text');
-    const raw = (textBlock?.text || '').trim();
-    if (!raw) return [];
-    const jsonStr = raw.replace(/^```json?\s*|\s*```$/g, '').trim();
-    const obj = JSON.parse(jsonStr);
-    const facts = [];
-    for (const [k, v] of Object.entries(obj)) {
-      if (v != null && typeof v === 'string') {
-        const value = v.trim().slice(0, 2000);
-        const keyNormalized = k.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
-        if (value.length >= 2 && keyNormalized.length >= 2 && !REJECT_VALUES.test(value) && !/^[\s\-\.]+$/.test(value)) {
-          facts.push({ key: keyNormalized, value });
+    const seenKeys = new Set();
+    const allFacts = [];
+    if (fullText.length <= maxChars) {
+      const facts = await extractFromChunk(client, fullText, filename, docType, 0);
+      return facts;
+    }
+    const chunks = chunkText(fullText.slice(0, maxChars), CHUNK_SIZE, CHUNK_OVERLAP);
+    for (let i = 0; i < chunks.length; i++) {
+      const facts = await extractFromChunk(client, chunks[i], filename, docType, i);
+      for (const f of facts) {
+        if (!seenKeys.has(f.key)) {
+          seenKeys.add(f.key);
+          allFacts.push(f);
         }
       }
     }
-    return facts;
+    return allFacts;
   } catch (e) {
     if (process.env.EVA_DEBUG === 'true') {
       console.warn('[FactsService] AI extraction failed:', e.message);

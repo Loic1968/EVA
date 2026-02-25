@@ -134,12 +134,13 @@ const ALWAYS_INJECT_RECENT = true;
 const CALENDAR_TOOLS = [
   {
     name: 'save_memory',
-    description: 'Save a fact you learned. Use when user shares preferences, corrections, dates, names. category=preference for "je préfère X", category=correction when user says "c\'est faux" or "non c\'est Y" — corrections have highest priority.',
+    description: 'Save a fact you learned. Use when user shares preferences, corrections, dates, names. category=correction when user says "c\'est faux" or "non c\'est Y". Provide key as canonical snake_case identifier (e.g. date_of_birth, next_flight_shanghai, passport_number) — use whatever key best describes the fact.',
     input_schema: {
       type: 'object',
       properties: {
-        fact: { type: 'string', description: 'The fact to remember' },
-        category: { type: 'string', description: 'Optional: correction (when user corrects you), preference, travel, contact, general' },
+        fact: { type: 'string', description: 'The fact to remember (value)' },
+        key: { type: 'string', description: 'Optional canonical key (snake_case). Infer from content: date_of_birth, supplier_name, invoice_amount, etc.' },
+        category: { type: 'string', description: 'Optional: correction (highest), preference, travel, contact, general' },
       },
       required: ['fact'],
     },
@@ -168,9 +169,24 @@ async function executeTool(ownerId, name, input) {
     try {
       const category = input.category || 'general';
       const kind = category === 'preference' ? 'preference' : category === 'correction' ? 'correction' : 'fact';
-      const key = memoryItems.slugify(input.fact);
+      const key = (input.key && input.key.trim()) ? memoryItems.slugify(input.key) : memoryItems.slugify(input.fact);
       await memoryItems.addMemoryItem(ownerId, kind, key, input.fact);
       const id = await memoryService.addMemory(ownerId, input.fact, category);
+      // Wire to eva.facts when structured memory enabled — learn from live discussion
+      if (ownerId && process.env.EVA_STRUCTURED_MEMORY === 'true') {
+        try {
+          const factsService = require('./services/factsService');
+          if (kind === 'correction') {
+            await factsService.addCorrection(ownerId, key, input.fact);
+          } else if (kind === 'preference') {
+            await factsService.addRemember(ownerId, key, input.fact);
+          } else {
+            await factsService.upsertFactSafe(ownerId, key, input.fact, 'conversation', null, 30);
+          }
+        } catch (e) {
+          console.warn('[EVA Chat] save_memory → facts failed:', e.message);
+        }
+      }
       return id ? { ok: true, id } : { ok: true };
     } catch (err) {
       return { error: err.message };
@@ -203,42 +219,9 @@ async function executeTool(ownerId, name, input) {
  * @param {string|null} [mode] – BRIEF_ME | DRAFT_REVIEW | EXECUTE_GUARDED
  * @returns {Promise<{reply:string, model:string, tokens:{input:number,output:number}}>}
  */
-// Map question keywords to fact keys for direct lookup (conflict protection)
-const FACT_KEY_PATTERNS = [
-  { keys: ['date_of_birth'], regex: /(?:date\s+de\s+naissance|birth\s*(?:date)?|date\s+of\s+birth|d\.o\.b\.?)/i },
-  { keys: ['passport_number'], regex: /(?:num[eé]ro\s*(?:passeport|passport)?|passport\s*number)/i },
-  { keys: ['nationality'], regex: /(?:nationalit[eé]|nationality)/i },
-  { keys: ['visa_expiry_date'], regex: /(?:visa\s*expir|date\s+d['']expiration)/i },
-  { keys: ['next_flight_shanghai', 'flight_departure_date', 'flight_arrival_date'], regex: /(?:vol\s+shanghai|flight\s+shanghai|pvg|mon\s+vol)/i },
-  { keys: ['invoice_due_date'], regex: /(?:[eé]ch[eé]ance|due\s+date|date\s+d[''][eé]ch[eé]ance)/i },
-];
-
 async function reply(userMessage, history = [], ownerId = null, mode = null) {
   const client = getClient();
   const model = process.env.EVA_CHAT_MODEL || 'claude-sonnet-4-20250514';
-
-  // Step 5: Direct fact lookup when EVA_STRUCTURED_MEMORY=true — prevent hallucination
-  if (ownerId && process.env.EVA_STRUCTURED_MEMORY === 'true') {
-    try {
-      const factsService = require('./services/factsService');
-      const msg = (userMessage || '').trim().toLowerCase();
-      for (const { keys, regex } of FACT_KEY_PATTERNS) {
-        if (!regex.test(msg)) continue;
-        for (const key of keys) {
-          const fact = await factsService.getFactByKey(ownerId, key);
-          if (fact && (fact.confidence || 0.8) >= 0.8) {
-            return {
-              reply: fact.value,
-              model,
-              tokens: { input: 0, output: 0 },
-            };
-          }
-        }
-      }
-    } catch (err) {
-      console.warn('[EVA Chat] Direct fact lookup failed:', err.message);
-    }
-  }
 
   // Build email context: search on keywords, or inject recent when ALWAYS_INJECT
   let emailContext = '';

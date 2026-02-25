@@ -39,53 +39,52 @@ async function extractPdfFromBuffer(buffer, filename = '') {
   }
 }
 
-const ID_DOCUMENT_PROMPT = `This is an identity document (passport, ID card, driving license). Extract EVERY visible field.
+const ID_DOCUMENT_PROMPT = `Identity document (passport, ID card, driving license). Extract EVERY visible field with character-level accuracy.
 
-REQUIRED: Add at the start this structured block with the EXACT values from the document:
+REQUIRED structured block at start — copy values EXACTLY as printed (no reformatting):
 --- IDENTITY DOCUMENT ---
-Full name / Nom complet: [exact as shown]
-Date of birth / Date de naissance: [exact date, e.g. 15 mars 1985 or 15/03/1985]
+Full name / Nom complet: [verbatim]
+Date of birth / Date de naissance: [exact: 15 mars 1985 or 15/03/1985 — as written]
 Place of birth / Lieu de naissance: [if visible]
-Document number / Numéro: [passport/ID number]
+Document number / Numéro: [exact digits/letters]
 Nationality / Nationalité: [exact]
 Expiry date / Date d'expiration: [exact]
 Issue date / Date de délivrance: [if visible]
 Sex / Sexe: [M/F if visible]
 --- END ---
-Then the full extracted text in order. Be PRECISE: dates, numbers, spellings must match the document exactly. Do NOT omit any field. Date de naissance is CRITICAL — extract it.`;
+Then full text. CRITICAL: 1 vs 01, mars vs mars — match the document character-for-character. Do NOT normalize dates.`;
 
-const INVOICE_CONTRACT_PROMPT = `This is an invoice, quote, or contract. Extract EVERY field.
+const INVOICE_CONTRACT_PROMPT = `Invoice, quote, or contract. Extract every field with exact values.
 
-Add at the start:
 --- DOCUMENT KEY DATA ---
-Date / Date: [exact]
-Reference / N°: [invoice, order, contract number]
-Supplier / Client: [name]
-Amounts: [all amounts, VAT, totals — exact numbers]
-Due date / Date échéance: [if visible]
+Date / Date: [exact as printed]
+Reference / N°: [invoice, order, contract number — exact]
+Supplier / Client: [exact name]
+Amounts: [exact numbers, decimals, currency symbols]
+Due date / Date échéance: [exact if visible]
 --- END ---
-Then the full extracted text. No omissions. Every date, amount, and reference must be captured.`;
+Then full text. Preserve decimal places, currency format, date format. No rounding or reformatting.`;
 
-const BILLET_PROMPT = `Extract ALL text from this document. Add at the start:
+const BILLET_PROMPT = `Flight/travel document. Extract with precision.
+
 --- FLIGHT DATES ---
-Departure date: [exact day + month from document]
-Departure time: [local time]
-Arrival date: [exact day + month]
-Arrival time: [local time]
-Route: [e.g. DXB-PVG]
+Departure date: [exact day + month — 1 vs 01, mars vs March as written]
+Departure time: [exact local time]
+Arrival date: [exact — may differ from departure if overnight]
+Arrival time: [exact]
+Route: [e.g. DXB-PVG — exact codes]
 --- END ---
-Then the full extracted text. Be precise: 01 vs 02, 1 vs 2 mars — these differ.`;
+Then full text. CRITICAL: 2 mars vs 1er mars vs 02/03 — these differ. Copy exactly.`;
 
-const DEFAULT_EXTRACT_PROMPT = `Extract EVERY piece of text from this document. Nothing can be omitted.
+const DEFAULT_EXTRACT_PROMPT = `Extract EVERY piece of text with maximum accuracy. Character-for-character where legible.
 
 RULES:
-- Extract ALL dates (dates de naissance, expiration, livraison, facturation, etc.)
-- Extract ALL amounts (montants, prix, totaux, TVA)
-- Extract ALL names (personnes, sociétés, adresses)
-- Extract ALL reference numbers (facture, commande, contrat, passport)
-- Preserve exact spelling and formatting. 01 vs 02, mars vs mars — be precise.
-- If scanned/handwritten: transcribe fully. If tables: extract row by row.
-- Output: full extracted text in reading order. No summaries. No omissions.`;
+- Dates: exact format (15 mars 1985, 15/03/1985, 02-03-26 — as printed)
+- Amounts: exact decimals, currency, no rounding
+- Names/numbers: exact spelling and digits
+- Tables: row by row, no omission
+- If illegible: indicate [illegible] rather than guessing
+- Output: full text in reading order. No summaries.`;
 
 async function extractViaClaude(buffer, filename = '', docType, mediaType) {
   const key = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
@@ -232,7 +231,11 @@ async function processDocument(documentId, ownerId) {
       if (process.env.EVA_STRUCTURED_MEMORY === 'true') {
         try {
           const factsService = require('./factsService');
-          const n = await factsService.extractAndUpsertFromDocument(ownerId, documentId, text);
+          const docType = detectDocumentType(doc.filename || '');
+          const n = await factsService.extractAndUpsertFromDocument(ownerId, documentId, text, {
+            filename: doc.filename || '',
+            docType: docType || 'general',
+          });
           if (n > 0 && process.env.EVA_DEBUG === 'true') {
             console.log(`[DocumentProcessor] Extracted ${n} facts from doc ${documentId}`);
           }

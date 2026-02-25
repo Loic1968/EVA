@@ -2,80 +2,71 @@
  * EVA Facts Service — structured key-value memory from documents and corrections.
  * Gated by EVA_STRUCTURED_MEMORY=true.
  * Priority: correction=100 > remember=50 > document=10. Higher overrides lower.
+ * Uses Claude for fact extraction (no regex fallback).
  */
 const db = require('../db');
 
 const PRIORITY = { correction: 100, remember: 50, document: 10, system: 5 };
 const DOCUMENT_PRIORITY = 10;
 
-// Regex patterns for document fact extraction (simple, no OCR heavy logic)
-const PATTERNS = [
-  // --- IDENTITY DOCUMENT --- block (Claude output)
-  {
-    key: 'date_of_birth',
-    regex: /(?:Date\s+of\s+birth|Date\s+de\s+naissance)[:\s]+([^\n]+)/i,
-    clean: (v) => v.trim().slice(0, 64),
-  },
-  {
-    key: 'passport_number',
-    regex: /(?:Document\s+number|Num[eé]ro|Passport\s*(?:no\.?|number)?)[:\s]+([A-Z0-9]{6,20})/i,
-    clean: (v) => v.trim().slice(0, 32),
-  },
-  {
-    key: 'nationality',
-    regex: /(?:Nationality|Nationalit[eé])[:\s]+([^\n]+)/i,
-    clean: (v) => v.trim().slice(0, 64),
-  },
-  {
-    key: 'visa_expiry_date',
-    regex: /(?:Expiry\s+date|Date\s+d['']expiration|Visa\s+expir)[:\s]+([^\n]+)/i,
-    clean: (v) => v.trim().slice(0, 64),
-  },
-  // --- FLIGHT DATES --- block
-  {
-    key: 'next_flight_shanghai',
-    regex: /(?:Route[:\s]+.*?PVG|PVG|Shanghai).*?(?:Departure\s+date|Arrival\s+date)[:\s]+([^\n]+)/is,
-    clean: (v) => v.trim().slice(0, 64),
-  },
-  {
-    key: 'flight_departure_date',
-    regex: /Departure\s+date[:\s]+([^\n]+)/i,
-    clean: (v) => v.trim().slice(0, 64),
-  },
-  {
-    key: 'flight_arrival_date',
-    regex: /Arrival\s+date[:\s]+([^\n]+)/i,
-    clean: (v) => v.trim().slice(0, 64),
-  },
-  // --- DOCUMENT KEY DATA --- (invoice due date)
-  {
-    key: 'invoice_due_date',
-    regex: /(?:Due\s+date|Date\s+[eé]ch[eé]ance|Date\s+d[''][eé]ch[eé]ance)[:\s]+([^\n]+)/i,
-    clean: (v) => v.trim().slice(0, 64),
-  },
-  // Fallback: date de naissance anywhere
-  {
-    key: 'date_of_birth',
-    regex: /(?:date\s+de\s+naissance|birth\s*date)[:\s]+(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}|\d{1,2}\s+(?:janvier|f[eé]vrier|mars|avril|mai|juin|juillet|ao[uû]t|septembre|octobre|novembre|d[eé]cembre)\s+\d{2,4})/i,
-    clean: (v) => v.trim().slice(0, 64),
-  },
-];
+const FACT_EXTRACTION_SYSTEM = `You extract structured facts from documents with maximum precision. Rules:
+1. EXACT transcription: Copy values character-for-character. "15 mars 1985" not "15/03/1985". "2 mars" not "02/03". Preserve slashes, dots, spaces as written.
+2. Distinguish fields: flight_departure_date ≠ flight_arrival_date. document_expiry_date ≠ visa_expiry_date. Use separate keys.
+3. No inference: Only extract what is clearly legible. If ambiguous, omit.
+4. No normalization: Do not convert dates, amounts, or names. Output exactly as printed.
+5. Keys: snake_case, descriptive. date_of_birth, passport_number, flight_departure_date, flight_arrival_date, flight_departure_time, flight_arrival_time, route, invoice_due_date, invoice_number, supplier_name, total_amount, etc.
+6. Omit null/empty. Output only facts you are certain about.`;
 
-function extractFactsFromText(text) {
-  if (!text || typeof text !== 'string') return [];
-  const facts = [];
-  const seen = new Set();
-  for (const { key, regex, clean } of PATTERNS) {
-    const m = text.match(regex);
-    if (m && m[1]) {
-      const value = clean(m[1]);
-      if (value && value.length >= 2 && !seen.has(key)) {
-        seen.add(key);
-        facts.push({ key, value });
+function buildFactExtractionPrompt(text, filename = '', docType = '') {
+  let ctx = '';
+  if (filename) ctx += `\nFilename: ${filename}`;
+  if (docType) ctx += `\nDocument type: ${docType}`;
+  return `${FACT_EXTRACTION_SYSTEM}
+${ctx}
+
+Extract all structured facts from the document below. Output ONLY valid JSON. No markdown, no explanation.
+Keys: snake_case. Values: exact strings as printed. One JSON object.`;
+}
+
+const REJECT_VALUES = /^(n\/?a|unknown|—|–|-|none|\.{3}|\.\.\.)$/i;
+
+async function extractFactsViaAI(text, options = {}) {
+  const { filename = '', docType = '' } = options;
+  const key = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
+  if (!key || !text || typeof text !== 'string') return [];
+  const trimmed = text.trim().slice(0, 50000);
+  if (trimmed.length < 10) return [];
+  try {
+    const Anthropic = require('@anthropic-ai/sdk');
+    const client = new Anthropic({ apiKey: key.trim() });
+    const prompt = buildFactExtractionPrompt(trimmed, filename, docType);
+    const response = await client.messages.create({
+      model: process.env.EVA_CHAT_MODEL || 'claude-sonnet-4-20250514',
+      max_tokens: 2048,
+      messages: [{ role: 'user', content: `${prompt}\n\n--- DOCUMENT ---\n${trimmed}\n--- END ---` }],
+    });
+    const textBlock = response.content?.find((b) => b.type === 'text');
+    const raw = (textBlock?.text || '').trim();
+    if (!raw) return [];
+    const jsonStr = raw.replace(/^```json?\s*|\s*```$/g, '').trim();
+    const obj = JSON.parse(jsonStr);
+    const facts = [];
+    for (const [k, v] of Object.entries(obj)) {
+      if (v != null && typeof v === 'string') {
+        const value = v.trim().slice(0, 2000);
+        const keyNormalized = k.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+        if (value.length >= 2 && keyNormalized.length >= 2 && !REJECT_VALUES.test(value) && !/^[\s\-\.]+$/.test(value)) {
+          facts.push({ key: keyNormalized, value });
+        }
       }
     }
+    return facts;
+  } catch (e) {
+    if (process.env.EVA_DEBUG === 'true') {
+      console.warn('[FactsService] AI extraction failed:', e.message);
+    }
+    return [];
   }
-  return facts;
 }
 
 async function upsertFactSafe(ownerId, key, value, sourceType, sourceId, priority) {
@@ -152,9 +143,9 @@ async function deleteFact(ownerId, key) {
   }
 }
 
-async function extractAndUpsertFromDocument(ownerId, documentId, text) {
+async function extractAndUpsertFromDocument(ownerId, documentId, text, options = {}) {
   if (!process.env.EVA_STRUCTURED_MEMORY || process.env.EVA_STRUCTURED_MEMORY !== 'true') return 0;
-  const facts = extractFactsFromText(text);
+  const facts = await extractFactsViaAI(text, options);
   let count = 0;
   for (const { key, value } of facts) {
     const id = await upsertFactSafe(ownerId, key, value, 'document', documentId, DOCUMENT_PRIORITY);
@@ -172,7 +163,7 @@ async function addRemember(ownerId, key, value) {
 }
 
 module.exports = {
-  extractFactsFromText,
+  extractFactsViaAI,
   upsertFactSafe,
   getFacts,
   getFactByKey,

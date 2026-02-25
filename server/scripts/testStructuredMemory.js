@@ -2,11 +2,11 @@
 /**
  * Test script for EVA structured memory (eva.facts).
  * Run: EVA_STRUCTURED_MEMORY=true node server/scripts/testStructuredMemory.js
- * Requires: DATABASE_URL or EVA_DATABASE_URL, eva.facts table (migration 007)
+ * Requires: DATABASE_URL, eva.facts table (migration 007), ANTHROPIC_API_KEY
  *
  * Test flow:
  * 1) Insert fact date_of_birth
- * 2) Ask EVA (direct fact lookup — no LLM)
+ * 2) Ask EVA (LLM uses injected facts)
  * 3) "Restart" context (new request)
  * 4) Ask again
  * 5) Confirm same answer

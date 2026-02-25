@@ -56,8 +56,13 @@ export default function Documents() {
     try {
       const r = await api.reindexDocuments();
       await load();
-      if (r.fail > 0) setError(`Re-indexed: ${r.ok} OK, ${r.fail} failed`);
-      else if (r.ok > 0) setSuccess(`Re-indexed ${r.ok} documents with AI.`);
+      if (r.status === 'started') {
+        setSuccess(r.message || 'Re-indexing in background. Refresh in a few minutes.');
+      } else if (r.fail > 0) {
+        setError(`Re-indexed: ${r.ok} OK, ${r.fail} failed`);
+      } else if (r.ok > 0) {
+        setSuccess(`Re-indexed ${r.ok} documents with AI.`);
+      }
     } catch (e) {
       setError(e?.body?.error || e?.message || 'Re-index failed');
     } finally {

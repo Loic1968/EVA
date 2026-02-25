@@ -615,6 +615,36 @@ router.put('/settings/:key', async (req, res, next) => {
   }
 });
 
+// Current location (so EVA knows "where am I")
+router.get('/me/location', async (req, res, next) => {
+  try {
+    const memoryItems = require('../services/memoryItemsService');
+    const item = await memoryItems.getByKey(req.ownerId, 'current_location');
+    res.json({ location: item?.value || null });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.put('/me/location', async (req, res, next) => {
+  try {
+    const { city } = req.body || {};
+    const value = (typeof city === 'string' ? city : req.body?.value || '').trim();
+    if (!value) return res.status(400).json({ error: 'city or value required' });
+    const memoryItems = require('../services/memoryItemsService');
+    await memoryItems.addMemoryItem(req.ownerId, 'preference', 'current_location', value);
+    if (process.env.EVA_STRUCTURED_MEMORY === 'true') {
+      try {
+        const factsService = require('../services/factsService');
+        await factsService.addRemember(req.ownerId, 'current_location', value);
+      } catch (_) {}
+    }
+    res.json({ location: value });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // ════════════════════════════════════════════════════════════════
 // DATA SOURCES (ingestion registrations)
 // ════════════════════════════════════════════════════════════════
@@ -814,11 +844,28 @@ router.get('/documents/:id/content', async (req, res, next) => {
 });
 
 // Re-index all documents for owner (upgrade to AI extraction)
+// Runs async to avoid 502 timeout — processing many docs can take minutes
 router.post('/documents/reindex', async (req, res, next) => {
   try {
     const docProcessor = require('../services/documentProcessor');
-    const result = await docProcessor.reindexAllDocuments(req.ownerId);
-    res.json(result);
+    const ownerId = req.ownerId;
+    const countResult = await db.query('SELECT COUNT(*) AS n FROM eva.documents WHERE owner_id = $1', [ownerId]);
+    const total = parseInt(countResult.rows[0]?.n || 0, 10);
+    const eta = total > 0 ? ` (~${Math.ceil(total * 15 / 60)} min for ${total} doc${total > 1 ? 's' : ''})` : '';
+    const message = total > 0
+      ? `Re-indexing ${total} document${total > 1 ? 's' : ''} in background. Each takes ~10–30 s.${eta} Refresh the list when done.`
+      : 'No documents to re-index.';
+    res.status(202).json({ status: 'started', message, total });
+    if (total > 0) {
+      setImmediate(async () => {
+        try {
+          const result = await docProcessor.reindexAllDocuments(ownerId);
+          console.log(`[EVA] Reindex completed for owner ${ownerId}:`, result);
+        } catch (e) {
+          console.error('[EVA] Reindex failed:', e.message);
+        }
+      });
+    }
   } catch (e) {
     next(e);
   }

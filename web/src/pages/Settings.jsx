@@ -1,12 +1,26 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 
+// Reverse geocode via Nominatim (OSM). Requires User-Agent per usage policy.
+async function reverseGeocode(lat, lon) {
+  const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`;
+  const res = await fetch(url, {
+    headers: { 'User-Agent': 'EVA-Halisoft/1.0 (location-settings)' },
+  });
+  const data = await res.json();
+  const addr = data?.address || {};
+  return addr.city || addr.town || addr.village || addr.municipality || addr.county || data?.display_name || null;
+}
+
 export default function Settings() {
   const [settings, setSettings] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [location, setLocationState] = useState('');
+  const [locationLoading, setLocationLoading] = useState(false);
+  const [locationError, setLocationError] = useState(null);
 
   useEffect(() => {
     api.getSettings()
@@ -14,6 +28,62 @@ export default function Settings() {
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    api.getLocation()
+      .then(({ location }) => setLocationState(location || ''))
+      .catch(() => setLocationState(''));
+  }, []);
+
+  const saveLocation = async () => {
+    const city = location?.trim();
+    if (!city) return;
+    setLocationLoading(true);
+    setLocationError(null);
+    try {
+      await api.setLocation(city);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      setLocationError(e.message);
+    } finally {
+      setLocationLoading(false);
+    }
+  };
+
+  const useGpsLocation = () => {
+    setLocationLoading(true);
+    setLocationError(null);
+    if (!navigator.geolocation) {
+      setLocationError('Geolocation not supported');
+      setLocationLoading(false);
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          const city = await reverseGeocode(pos.coords.latitude, pos.coords.longitude);
+          if (city) {
+            setLocationState(city);
+            await api.setLocation(city);
+            setSaved(true);
+            setTimeout(() => setSaved(false), 2000);
+          } else {
+            setLocationError('Could not determine city from coordinates');
+          }
+        } catch (e) {
+          setLocationError(e.message || 'Reverse geocoding failed');
+        } finally {
+          setLocationLoading(false);
+        }
+      },
+      (err) => {
+        setLocationError(err.message || 'Location access denied');
+        setLocationLoading(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
 
   const setShadowMode = async (enabled) => {
     setSaving(true);
@@ -149,6 +219,43 @@ export default function Settings() {
           {saving && <span className="text-slate-500 dark:text-eva-muted text-sm">Saving...</span>}
           {saved && <span className="text-emerald-600 dark:text-emerald-400 text-sm">Saved</span>}
         </div>
+      </div>
+
+      {/* Location */}
+      <div className="bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 p-6 max-w-2xl">
+        <h2 className="text-lg font-medium text-slate-900 dark:text-white mb-2">Location</h2>
+        <p className="text-slate-500 dark:text-eva-muted text-sm mb-4">
+          Your city or area helps EVA answer questions like &quot;Where am I?&quot; or &quot;What time is it there?&quot;
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="text"
+            value={location}
+            onChange={(e) => setLocationState(e.target.value)}
+            placeholder="e.g. Dubai, Paris"
+            disabled={locationLoading}
+            className="bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-2 text-slate-900 dark:text-white focus:ring-2 focus:ring-cyan-500 focus:border-transparent disabled:opacity-50 min-w-[180px]"
+          />
+          <button
+            type="button"
+            onClick={saveLocation}
+            disabled={locationLoading || !location?.trim()}
+            className="px-4 py-2 rounded-lg bg-slate-600 text-white hover:bg-slate-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Save
+          </button>
+          <button
+            type="button"
+            onClick={useGpsLocation}
+            disabled={locationLoading}
+            className="px-4 py-2 rounded-lg bg-cyan-600 text-white hover:bg-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Use GPS
+          </button>
+        </div>
+        {locationError && <p className="text-red-600 dark:text-red-400 text-sm mt-2">{locationError}</p>}
+        {locationLoading && <span className="text-slate-500 dark:text-eva-muted text-sm mt-2">Getting location...</span>}
+        {saved && <span className="text-emerald-600 dark:text-emerald-400 text-sm mt-2">Saved</span>}
       </div>
 
       {/* Sync Frequency */}

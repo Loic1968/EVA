@@ -137,6 +137,10 @@ export const api = {
   getSettings: () => request('/settings'),
   setSetting: (key, value) => request(`/settings/${key}`, { method: 'PUT', body: JSON.stringify(value) }),
 
+  // Location (for EVA: "where am I")
+  getLocation: () => request('/me/location'),
+  setLocation: (city) => request('/me/location', { method: 'PUT', body: JSON.stringify({ city }) }),
+
   // Data sources
   getDataSources: () => request('/data-sources'),
   addDataSource: (body) => request('/data-sources', { method: 'POST', body: JSON.stringify(body) }),

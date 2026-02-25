@@ -8,6 +8,7 @@ const memoryItems = require('./memoryItemsService');
 
 /** Question patterns → fact keys to try (in order). Keys are snake_case. */
 const QUESTION_TO_KEYS = [
+  { pattern: /où\s*je\s*suis|où\s*suis-je|where\s*am\s*i|ma\s*position|my\s*location|tu\s*sais\s*où\s*je\s*suis/i, keys: ['current_location', 'location'] },
   { pattern: /date\s*de\s*naissance|ma\s*date\s*de\s*naissance|birth\s*date|dob|date\s*of\s*birth/i, keys: ['date_of_birth'] },
   { pattern: /lieu\s*de\s*naissance|place\s*of\s*birth|où\s*je\s*suis\s*né|where\s*(?:i\s*was\s*)?born/i, keys: ['place_of_birth', 'lieu_de_naissance'] },
   { pattern: /vol|flight|billet|departure|départ|décollage|prochain\s*vol/i, keys: ['flight_departure_date', 'flight_arrival_date', 'vol_date', 'next_flight'] },

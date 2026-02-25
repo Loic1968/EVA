@@ -25,6 +25,16 @@ export default function Drafts() {
     }
   };
 
+  const sendDraft = async (id) => {
+    try {
+      setError(null);
+      await api.sendDraft(id);
+      await load();
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -97,6 +107,11 @@ export default function Drafts() {
                       className="px-3 py-1.5 rounded-lg bg-slate-600/80 text-white text-sm hover:bg-slate-500 transition-colors"
                     >Reject</button>
                   </>
+                ) : d.status === 'approved' ? (
+                  <button
+                    onClick={() => sendDraft(d.id)}
+                    className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-500 transition-colors"
+                  >Send via Gmail</button>
                 ) : (
                   <span className={`text-xs px-2.5 py-1 rounded-full ${
                     d.status === 'sent' ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' :

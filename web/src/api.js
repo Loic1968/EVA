@@ -74,16 +74,16 @@ export const api = {
     }).then((r) => (r.ok ? r.json() : Promise.reject(new Error('Unauthorized')))),
 
   // Chat (non-streaming)
-  chat: (message, history, conversation_id) =>
-    request('/chat', { method: 'POST', body: JSON.stringify({ message, history, conversation_id }) }),
+  chat: (message, history, conversation_id, document_ids) =>
+    request('/chat', { method: 'POST', body: JSON.stringify({ message, history, conversation_id, document_ids }) }),
 
   // Chat stream (SSE) — returns async iterable of { type, text?, reply?, ... }
-  chatStream: async function* (message, history, conversation_id) {
+  chatStream: async function* (message, history, conversation_id, document_ids) {
     const url = `${API_BASE.replace(/\/$/, '')}/chat/stream`;
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-      body: JSON.stringify({ message, history, conversation_id }),
+      body: JSON.stringify({ message, history, conversation_id, document_ids }),
     });
     if (res.status === 401) { onAuthFailure(); throw new Error('Session expired'); }
     if (!res.ok) {
@@ -128,6 +128,7 @@ export const api = {
   getDrafts: (params) => request('/drafts?' + new URLSearchParams(params || {})),
   createDraft: (body) => request('/drafts', { method: 'POST', body: JSON.stringify(body) }),
   updateDraft: (id, body) => request(`/drafts/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  sendDraft: (id) => request(`/drafts/${id}/send`, { method: 'POST' }),
 
   // Audit logs
   getAuditLogs: (params) => request('/audit-logs?' + new URLSearchParams(params || {})),

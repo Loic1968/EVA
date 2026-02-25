@@ -88,11 +88,21 @@ function DocumentReader({ doc, onClose }) {
           {mode === 'file' && canViewFile && fileBlob && (
             <>
               {ft === PDF_TYPE && (
-                <iframe
-                  src={fileBlob}
-                  title={doc.filename}
-                  className="w-full h-[70vh] min-h-[400px] rounded-lg border border-slate-200 dark:border-slate-700/40"
-                />
+                <>
+                  <a
+                    href={fileBlob}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-cyan-600 dark:text-cyan-400 hover:underline mb-2 inline-block"
+                  >
+                    Open in new tab
+                  </a>
+                  <iframe
+                    src={fileBlob}
+                    title={doc.filename}
+                    className="w-full h-[70vh] min-h-[400px] rounded-lg border border-slate-200 dark:border-slate-700/40"
+                  />
+                </>
               )}
               {IMAGE_TYPES.includes(ft) && (
                 <img src={fileBlob} alt={doc.filename} className="max-w-full h-auto rounded-lg border border-slate-200 dark:border-slate-700/40" />

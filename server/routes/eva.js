@@ -12,6 +12,7 @@ const googleOAuth = require('../services/googleOAuth');
 const gmailSync = require('../services/gmailSync');
 const calendarSync = require('../services/calendarSync');
 const { getKillSwitch, getShadowMode, getAutonomousMode, getStyleProfile } = require('../services/settingsService');
+const gmailSend = require('../services/gmailSend');
 
 const { verifyAuth } = require('../middleware/auth');
 router.use(verifyAuth);
@@ -107,9 +108,30 @@ router.post('/chat', async (req, res, next) => {
     const killOn = await getKillSwitch(req.ownerId);
     if (killOn) return res.status(503).json({ error: 'EVA paused (kill switch)', kill_switch: true });
 
-    const { message, history, conversation_id } = req.body || {};
+    const { message, history, conversation_id, document_ids } = req.body || {};
     if (!message || typeof message !== 'string') {
       return res.status(400).json({ error: 'message (string) required' });
+    }
+
+    let attachedDocuments = [];
+    if (Array.isArray(document_ids) && document_ids.length > 0 && req.ownerId) {
+      const docProcessor = require('../services/documentProcessor');
+      for (const docId of document_ids) {
+        const id = Number(docId);
+        if (!id) continue;
+        const r = await db.query(
+          'SELECT id, filename, content_text, status FROM eva.documents WHERE id = $1 AND owner_id = $2',
+          [id, req.ownerId]
+        );
+        const doc = r.rows[0];
+        if (!doc) continue;
+        if (!doc.content_text && ['uploaded', 'processing', 'error'].includes(doc.status)) {
+          try { await docProcessor.processDocument(id, req.ownerId); } catch (_) {}
+          const up = await db.query('SELECT content_text FROM eva.documents WHERE id = $1', [id]);
+          doc.content_text = up.rows[0]?.content_text || '';
+        }
+        attachedDocuments.push({ id: doc.id, filename: doc.filename, content_text: doc.content_text });
+      }
     }
 
     const parsed = evaChat.parseCommand(message.trim());
@@ -201,7 +223,7 @@ router.post('/chat', async (req, res, next) => {
       }
     }
     if (!result) {
-      result = await evaChat.reply(msgToSend, chatHistory, req.ownerId, mode);
+      result = await evaChat.reply(msgToSend, chatHistory, req.ownerId, mode, { attachedDocuments });
     }
 
     // Persist messages if we have a conversation
@@ -263,9 +285,30 @@ router.post('/chat/stream', async (req, res, next) => {
     const killOn = await getKillSwitch(req.ownerId);
     if (killOn) return res.status(503).json({ error: 'EVA paused (kill switch)', kill_switch: true });
 
-    const { message, history, conversation_id } = req.body || {};
+    const { message, history, conversation_id, document_ids } = req.body || {};
     if (!message || typeof message !== 'string') {
       return res.status(400).json({ error: 'message (string) required' });
+    }
+
+    let attachedDocumentsStream = [];
+    if (Array.isArray(document_ids) && document_ids.length > 0 && req.ownerId) {
+      const docProcessor = require('../services/documentProcessor');
+      for (const docId of document_ids) {
+        const id = Number(docId);
+        if (!id) continue;
+        const r = await db.query(
+          'SELECT id, filename, content_text, status FROM eva.documents WHERE id = $1 AND owner_id = $2',
+          [id, req.ownerId]
+        );
+        const doc = r.rows[0];
+        if (!doc) continue;
+        if (!doc.content_text && ['uploaded', 'processing', 'error'].includes(doc.status)) {
+          try { await docProcessor.processDocument(id, req.ownerId); } catch (_) {}
+          const up = await db.query('SELECT content_text FROM eva.documents WHERE id = $1', [id]);
+          doc.content_text = up.rows[0]?.content_text || '';
+        }
+        attachedDocumentsStream.push({ id: doc.id, filename: doc.filename, content_text: doc.content_text });
+      }
     }
 
     const parsedStream = evaChat.parseCommand(message.trim());
@@ -361,7 +404,7 @@ router.post('/chat/stream', async (req, res, next) => {
         const preAnswer = await preAnswerService.tryPreAnswer(req.ownerId, msgToSend);
         if (preAnswer) result = { reply: preAnswer.reply, model: 'pre-answer', tokens: { input: 0, output: 0 } };
       }
-      if (!result) result = await evaChat.reply(msgToSend, chatHistory, req.ownerId, mode);
+      if (!result) result = await evaChat.reply(msgToSend, chatHistory, req.ownerId, mode, { attachedDocuments: attachedDocumentsStream });
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
@@ -478,7 +521,7 @@ router.post('/chat/stream', async (req, res, next) => {
 router.get('/drafts', async (req, res, next) => {
   try {
     const { status, limit = 50 } = req.query;
-    let q = 'SELECT id, channel, thread_id, subject_or_preview, body, confidence_score, status, sent_at, created_at FROM eva.drafts WHERE owner_id = $1';
+    let q = 'SELECT id, channel, thread_id, subject_or_preview, body, to_emails, confidence_score, status, sent_at, created_at FROM eva.drafts WHERE owner_id = $1';
     const params = [req.ownerId];
     if (status) {
       params.push(status);
@@ -500,17 +543,17 @@ router.post('/drafts', async (req, res, next) => {
     const shadowOn = await getShadowMode(req.ownerId);
     if (shadowOn) return res.status(403).json({ error: 'Drafts disabled in Shadow Mode', shadow_mode: true });
 
-    const { channel, thread_id, subject_or_preview, body, confidence_score } = req.body;
+    const { channel, thread_id, subject_or_preview, body, confidence_score, to_emails } = req.body;
     if (!channel || body == null) {
       return res.status(400).json({ error: 'channel and body required' });
     }
     const autonomousOn = await getAutonomousMode(req.ownerId);
     const initialStatus = autonomousOn ? 'approved' : 'pending';
     const r = await db.query(
-      `INSERT INTO eva.drafts (owner_id, channel, thread_id, subject_or_preview, body, confidence_score, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
-       RETURNING id, channel, thread_id, subject_or_preview, body, confidence_score, status, created_at`,
-      [req.ownerId, channel, thread_id || null, subject_or_preview || null, body, confidence_score != null ? Number(confidence_score) : null, initialStatus]
+      `INSERT INTO eva.drafts (owner_id, channel, thread_id, subject_or_preview, body, confidence_score, status, to_emails)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING id, channel, thread_id, subject_or_preview, body, confidence_score, status, to_emails, created_at`,
+      [req.ownerId, channel, thread_id || null, subject_or_preview || null, body, confidence_score != null ? Number(confidence_score) : null, initialStatus, to_emails || null]
     );
     res.status(201).json(r.rows[0]);
   } catch (e) {
@@ -547,6 +590,43 @@ router.patch('/drafts/:id', async (req, res, next) => {
     );
     if (!r.rows[0]) return res.status(404).json({ error: 'Draft not found' });
     res.json(r.rows[0]);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post('/drafts/:id/send', async (req, res, next) => {
+  try {
+    const killOn = await getKillSwitch(req.ownerId);
+    if (killOn) return res.status(503).json({ error: 'EVA paused (kill switch)', kill_switch: true });
+    const shadowOn = await getShadowMode(req.ownerId);
+    if (shadowOn) return res.status(403).json({ error: 'Cannot send in Shadow Mode', shadow_mode: true });
+
+    const r = await db.query(
+      `SELECT id, channel, thread_id, subject_or_preview, body, to_emails, status
+       FROM eva.drafts WHERE owner_id = $1 AND id = $2`,
+      [req.ownerId, req.params.id]
+    );
+    const draft = r.rows[0];
+    if (!draft) return res.status(404).json({ error: 'Draft not found' });
+    if (draft.status === 'sent') return res.status(400).json({ error: 'Draft already sent' });
+    if (draft.status === 'rejected') return res.status(400).json({ error: 'Cannot send rejected draft' });
+    if (draft.status !== 'approved' && draft.status !== 'pending') {
+      return res.status(400).json({ error: 'Draft must be approved before sending' });
+    }
+
+    const result = await gmailSend.sendDraft(req.ownerId, draft);
+
+    await db.query(
+      `UPDATE eva.drafts SET status = 'sent', sent_at = now(), updated_at = now() WHERE id = $1`,
+      [draft.id]
+    );
+    await db.query(
+      `INSERT INTO eva.audit_logs (owner_id, action_type, channel, details) VALUES ($1, 'draft_sent', $2, $3)`,
+      [req.ownerId, draft.channel, JSON.stringify({ draft_id: draft.id, message_id: result.messageId, thread_id: result.threadId })]
+    );
+
+    res.json({ ok: true, message_id: result.messageId, thread_id: result.threadId });
   } catch (e) {
     next(e);
   }

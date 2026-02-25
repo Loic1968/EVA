@@ -20,8 +20,10 @@ export default function Chat() {
   const [evaEnabled, setEvaEnabled] = useState(true);
   const [streamingContent, setStreamingContent] = useState('');
   const [autoPlayVoice, setAutoPlayVoice] = useState(true);
+  const [attachedFiles, setAttachedFiles] = useState([]);
   const lang = navigator.language?.startsWith('fr') ? 'fr' : 'en';
   const bottomRef = useRef(null);
+  const fileInputRef = useRef(null);
   const inputRef = useRef(null);
   const spokenEndRef = useRef(0);
   const speakingRef = useRef(false);
@@ -127,10 +129,12 @@ export default function Chat() {
 
   const send = useCallback(async (overrideText) => {
     const text = (overrideText ?? input).toString().trim();
-    if (!text || loading) return;
+    if ((!text && attachedFiles.length === 0) || loading) return;
 
     setInput('');
     setError(null);
+    const filesToSend = [...attachedFiles];
+    setAttachedFiles([]);
     setStreamingContent('');
     spokenEndRef.current = 0;
     speakingRef.current = false;
@@ -140,7 +144,7 @@ export default function Chat() {
     let convId = activeConvId;
     if (!convId) {
       try {
-        const conv = await api.createConversation(text.slice(0, 80));
+        const conv = await api.createConversation((text || 'Document').slice(0, 80));
         convId = conv.id;
         setActiveConvId(convId);
       } catch (e) {
@@ -149,14 +153,31 @@ export default function Chat() {
       }
     }
 
-    setMessages((m) => [...m, { role: 'user', content: text, created_at: new Date().toISOString() }]);
+    const displayText = text || (filesToSend.length ? (lang === 'fr' ? 'J\'ai partagé un document. Analyse-le.' : 'I shared a document. Please analyze it.') : '');
+    setMessages((m) => [...m, { role: 'user', content: displayText, created_at: new Date().toISOString() }]);
     setLoading(true);
 
+    let documentIds = [];
+    if (filesToSend.length > 0) {
+      try {
+        for (const file of filesToSend) {
+          const doc = await api.uploadDocument(file);
+          if (doc?.id) documentIds.push(doc.id);
+        }
+      } catch (upErr) {
+        setError(upErr.message || 'Upload failed');
+        setLoading(false);
+        setMessages((m) => m.slice(0, -1));
+        return;
+      }
+    }
+
+    const msgForEva = text || (documentIds.length ? (lang === 'fr' ? 'Analyse ce document que je viens de partager.' : 'Analyze this document I just shared.') : '');
     let accumulated = '';
     try {
       let usedStream = false;
       try {
-        for await (const event of api.chatStream(text, [], convId)) {
+        for await (const event of api.chatStream(msgForEva, [], convId, documentIds)) {
           usedStream = true;
           if (event.type === 'chunk' && event.text) {
             accumulated += event.text;
@@ -183,7 +204,7 @@ export default function Chat() {
         }
       } catch (streamErr) {
         if (usedStream) throw streamErr;
-        const { reply, reset, conversation_id } = await api.chat(text, [], convId);
+        const { reply, reset, conversation_id } = await api.chat(msgForEva, [], convId, documentIds);
         streamingTextRef.current = reply || '';
         streamDoneRef.current = true;
         if (reset && conversation_id) {
@@ -240,6 +261,15 @@ export default function Chat() {
       send();
     }
   };
+
+  const onFileSelect = (e) => {
+    const files = Array.from(e.target.files || []);
+    const allowed = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'text/plain'];
+    const valid = files.filter((f) => allowed.includes(f.type) || /\.(pdf|jpg|jpeg|png|webp|gif|txt)$/i.test(f.name));
+    setAttachedFiles((prev) => [...prev, ...valid].slice(0, 5));
+    e.target.value = '';
+  };
+  const removeAttachment = (i) => setAttachedFiles((prev) => prev.filter((_, j) => j !== i));
 
   return (
     <div className="flex h-[calc(100vh-5rem)] min-h-[300px] gap-0 -mx-4 -mt-4 sm:-mx-6 sm:-mt-6 overflow-hidden">
@@ -382,7 +412,27 @@ export default function Chat() {
         {/* Input — hold mic to talk, release to send */}
         <div className="p-4 border-t border-slate-200 dark:border-slate-700/40 shrink-0 bg-white dark:bg-transparent">
           <div className="max-w-2xl mx-auto">
+            {attachedFiles.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-2">
+                {attachedFiles.map((f, i) => (
+                  <span key={i} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 text-sm">
+                    {f.name}
+                    <button type="button" onClick={() => removeAttachment(i)} className="hover:text-red-500" aria-label="Remove">×</button>
+                  </span>
+                ))}
+              </div>
+            )}
             <div className="flex gap-2 items-end">
+              <input ref={fileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.gif,.txt,application/pdf,image/*,text/plain" multiple className="hidden" onChange={onFileSelect} />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={loading || attachedFiles.length >= 5}
+                className="shrink-0 w-12 h-12 rounded-xl flex items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700/60 hover:text-cyan-600 dark:hover:text-cyan-400 disabled:opacity-40 transition-colors"
+                title={lang === 'fr' ? 'Joindre un document ou une image' : 'Attach document or image'}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
+              </button>
               {voiceInput.supported && (
                 <button
                   type="button"
@@ -425,7 +475,7 @@ export default function Chat() {
                 />
                 <button
                   onClick={send}
-                  disabled={loading || !input.trim() || !evaEnabled || voiceInput.isListening || voiceInput.isTranscribing}
+                  disabled={loading || (!input.trim() && attachedFiles.length === 0) || !evaEnabled || voiceInput.isListening || voiceInput.isTranscribing}
                   className="absolute right-2 bottom-2 p-1.5 rounded-lg text-slate-500 dark:text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-400 hover:bg-cyan-500/10 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-slate-500 dark:disabled:hover:text-slate-400 transition-colors"
                   title={lang === 'fr' ? 'Envoyer' : 'Send'}
                 >

@@ -167,6 +167,20 @@ const CALENDAR_TOOLS = [
       required: ['title', 'start'],
     },
   },
+  {
+    name: 'create_draft',
+    description: 'Create an email draft for the user to review and send. Use when the user asks to reply to an email, write an email, or draft a message. Provide body (required), to_emails (recipient), subject (or Re: for replies). For replies, set thread_id if you know the Gmail thread ID from the email context.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        body: { type: 'string', description: 'Email body (plain text)' },
+        to_emails: { type: 'string', description: 'Recipient email(s), comma-separated (e.g. "pierre@example.com")' },
+        subject: { type: 'string', description: 'Subject line (e.g. "Re: Meeting next week")' },
+        thread_id: { type: 'string', description: 'Gmail thread ID for replies (if known from email context)' },
+      },
+      required: ['body'],
+    },
+  },
 ];
 
 async function executeTool(ownerId, name, input) {
@@ -199,6 +213,44 @@ async function executeTool(ownerId, name, input) {
       return { error: err.message };
     }
   }
+  if (name === 'create_draft') {
+    const db = require('./db');
+    const { getKillSwitch, getShadowMode, getAutonomousMode } = require('./services/settingsService');
+    try {
+      if (!ownerId) return { error: 'Must be logged in to create drafts' };
+      const killOn = await getKillSwitch(ownerId);
+      if (killOn) return { error: 'EVA is paused (kill switch)' };
+      const shadowOn = await getShadowMode(ownerId);
+      if (shadowOn) return { error: 'Drafts disabled in Shadow Mode' };
+      const body = (input.body || '').trim();
+      if (!body) return { error: 'body is required' };
+      const autonomousOn = await getAutonomousMode(ownerId);
+      const initialStatus = autonomousOn ? 'approved' : 'pending';
+      const r = await db.query(
+        `INSERT INTO eva.drafts (owner_id, channel, thread_id, subject_or_preview, body, to_emails, status)
+         VALUES ($1, 'email', $2, $3, $4, $5, $6)
+         RETURNING id, status, subject_or_preview`,
+        [
+          ownerId,
+          (input.thread_id || '').trim() || null,
+          (input.subject || '').trim() || null,
+          body,
+          (input.to_emails || '').trim() || null,
+          initialStatus,
+        ]
+      );
+      const draft = r.rows[0];
+      return {
+        ok: true,
+        id: draft.id,
+        status: draft.status,
+        subject: draft.subject_or_preview,
+        message: draft.status === 'approved' ? 'Draft created (pre-approved). User can send from Drafts page.' : 'Draft created. User will review in Drafts page.',
+      };
+    } catch (err) {
+      return { error: err.message };
+    }
+  }
   if (name !== 'create_calendar_event') return { error: 'Unknown tool' };
   const calSync = getCalendarSync();
   if (!calSync?.createEvent) return { error: 'Calendar not available' };
@@ -224,9 +276,10 @@ async function executeTool(ownerId, name, input) {
  * @param {Array<{role:'user'|'assistant',content:string}>} [history]
  * @param {number|null} [ownerId] – owner ID for email context lookup
  * @param {string|null} [mode] – BRIEF_ME | DRAFT_REVIEW | EXECUTE_GUARDED
+ * @param {{ attachedDocuments?: Array<{id:number, filename:string, content_text:string}> }} [opts]
  * @returns {Promise<{reply:string, model:string, tokens:{input:number,output:number}}>}
  */
-async function reply(userMessage, history = [], ownerId = null, mode = null) {
+async function reply(userMessage, history = [], ownerId = null, mode = null, opts = {}) {
   const client = getClient();
   const model = process.env.EVA_CHAT_MODEL || 'claude-sonnet-4-20250514';
 
@@ -234,7 +287,9 @@ async function reply(userMessage, history = [], ownerId = null, mode = null) {
   if (process.env.EVA_SMART_CONTEXT === 'true' && ownerId) {
     const contextBuilder = require('./contextBuilder');
     const { context } = await contextBuilder.buildContext({ ownerId, userMessage, history });
-    systemPrompt = EVA_SYSTEM + (context || '');
+    const attached = (opts.attachedDocuments || []).map((d) => `**${d.filename}:**\n${(d.content_text || '').slice(0, 80000) || '(no text)'}`).join('\n\n');
+    const attachedBlock = attached ? `\n\n## Attached by user (analyse first)\n${attached}\n` : '';
+    systemPrompt = EVA_SYSTEM + attachedBlock + (context || '');
   } else {
   // Build email context: search on keywords, or inject recent when ALWAYS_INJECT
   let emailContext = '';
@@ -249,7 +304,7 @@ async function reply(userMessage, history = [], ownerId = null, mode = null) {
             : await sync.getRecentEmails(ownerId, 5);
           if (emailResults.length > 0) {
             emailContext = '\n\n## Emails (Memory Vault — inbox, sent, drafts)\n';
-            emailContext += 'Use these emails to answer questions about messages, who said what, etc. If the answer is here, cite it. If not, say you don\'t have that info.\n\n';
+            emailContext += 'Use these emails to answer questions about messages, who said what, etc. If the answer is here, cite it. If not, say you don\'t have that info. For create_draft replies, use thread_id when available.\n\n';
             emailResults.forEach((e, i) => {
               const isSent = Array.isArray(e.labels) ? e.labels.includes('SENT') : (e.labels && /"SENT"|'SENT'/.test(String(e.labels)));
               emailContext += `**Email ${i + 1}:**\n`;
@@ -257,6 +312,7 @@ async function reply(userMessage, history = [], ownerId = null, mode = null) {
                 ? `- To: ${Array.isArray(e.to_emails) ? e.to_emails.join(', ') : e.to_emails || '—'}\n`
                 : `- From: ${e.from_name ? `${e.from_name} <${e.from_email}>` : e.from_email}\n`;
               emailContext += `- Subject: ${e.subject}\n`;
+              if (e.thread_id) emailContext += `- thread_id: ${e.thread_id}\n`;
               emailContext += `- Date: ${new Date(e.received_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}\n`;
               emailContext += `- Preview: ${(e.body_preview || e.snippet || '').slice(0, 300)}\n\n`;
             });
@@ -266,6 +322,17 @@ async function reply(userMessage, history = [], ownerId = null, mode = null) {
     } catch (err) {
       console.warn('[EVA Chat] Email context lookup failed:', err.message);
     }
+  }
+
+  // Attached documents (user uploaded in chat) — highest priority, always inject
+  let attachedDocContext = '';
+  const attachedDocs = opts.attachedDocuments || [];
+  if (attachedDocs.length > 0) {
+    attachedDocContext = '\n\n## Attached documents (user just shared — analyse these first)\n';
+    attachedDocs.forEach((d, i) => {
+      const text = (d.content_text || '').slice(0, 80000);
+      attachedDocContext += `**${d.filename || `Document ${i + 1}`}:**\n${text || '(no text extracted yet)'}\n\n`;
+    });
   }
 
   // Build document context: search on keywords or always inject recent (skip if minimal — évite hallucination)
@@ -396,7 +463,7 @@ async function reply(userMessage, history = [], ownerId = null, mode = null) {
     }
   }
 
-  systemPrompt = EVA_SYSTEM + structuredFactsContext + memoryContext + emailContext + documentContext + calendarContext;
+  systemPrompt = EVA_SYSTEM + attachedDocContext + structuredFactsContext + memoryContext + emailContext + documentContext + calendarContext;
   }
   // P4: Style / voice profile injection
   if (ownerId) {
@@ -509,7 +576,7 @@ async function createReplyStream(userMessage, history = [], ownerId = null, mode
             : await sync.getRecentEmails(ownerId, 5);
           if (emailResults.length > 0) {
             emailContext = '\n\n## Emails (Memory Vault — inbox, sent, drafts)\n';
-            emailContext += 'Use these emails to answer. Cite sender, date, subject when relevant.\n\n';
+            emailContext += 'Use these emails to answer. Cite sender, date, subject when relevant. For create_draft replies, use thread_id when available.\n\n';
             emailResults.forEach((e, i) => {
               const isSent = Array.isArray(e.labels) ? e.labels.includes('SENT') : (e.labels && /"SENT"|'SENT'/.test(String(e.labels)));
               emailContext += `**Email ${i + 1}:**\n`;
@@ -517,6 +584,7 @@ async function createReplyStream(userMessage, history = [], ownerId = null, mode
                 ? `- To: ${Array.isArray(e.to_emails) ? e.to_emails.join(', ') : e.to_emails || '—'}\n`
                 : `- From: ${e.from_name ? `${e.from_name} <${e.from_email}>` : e.from_email}\n`;
               emailContext += `- Subject: ${e.subject}\n`;
+              if (e.thread_id) emailContext += `- thread_id: ${e.thread_id}\n`;
               emailContext += `- Date: ${new Date(e.received_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}\n`;
               emailContext += `- Preview: ${(e.body_preview || e.snippet || '').slice(0, 300)}\n\n`;
             });
@@ -681,7 +749,7 @@ async function createReplyStream(userMessage, history = [], ownerId = null, mode
   return { stream, model };
 }
 
-/** True when we need reply() with tools (calendar or save_memory) — stream has no tools */
+/** True when we need reply() with tools (calendar, save_memory, create_draft) — stream has no tools */
 function needsCalendarTools(message) {
   if (!message || typeof message !== 'string') return false;
   const m = message.trim();
@@ -689,7 +757,8 @@ function needsCalendarTools(message) {
     || (/\bvol\b.*\b(shanghai|pvg|dubai)\b|\b(flight|vol)\b.*\bcalendrier\b/i.test(m));
   const memoryIntent = /retiens?\s+(que|ça)|note\s+(que|ça)|souviens?-toi|je\s+pr[eé]f[eè]re|j'aime\s+(pas\s+)?[a-z]|mon\s+(pr[eé]f[eè]rence|vol|meeting)\s+est|remember\s+that|note\s+that|i\s+prefer/i.test(m);
   const correctionIntent = /c'est\s+faux|non\s+c'est\s+le|corrige|tu\s+as\s+faux|rev[eé]rifie|je\s+te\s+corrige/i.test(m);
-  return calendarIntent || memoryIntent || correctionIntent;
+  const draftIntent = /r[eé]dig(e|er)?\s+(une?\s+)?(r[eé]ponse|email|mail)|r[eé]ponds?\s+(à|a)\s+(cet|ce)\s+email|draft\s+(a\s+)?reply|write\s+(an?\s+)?(email|reply)|envoie?\s+(une?\s+)?(r[eé]ponse|email)|r[eé]ponse\s+à\s+(cet|ce)\s+mail/i.test(m);
+  return calendarIntent || memoryIntent || correctionIntent || draftIntent;
 }
 
 module.exports = { reply, createReplyStream, parseCommand, getClient, EVA_SYSTEM, MODE_HINTS, needsCalendarTools };

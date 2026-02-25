@@ -43,6 +43,8 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       connectSrc: ["'self'", "https://api.openai.com", "wss://api.openai.com"],
       mediaSrc: ["'self'", "blob:", "https://api.openai.com"],
+      frameSrc: ["'self'", "blob:"],
+      objectSrc: ["'self'", "blob:"],
       scriptSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],

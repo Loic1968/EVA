@@ -48,4 +48,15 @@ async function getStyleProfile(ownerId) {
   return text ? text.trim() : null;
 }
 
-module.exports = { getSetting, getKillSwitch, getShadowMode, getAutonomousMode, getStyleProfile };
+/** @returns {Promise<{enabled:boolean, leadMinutes:number[]}>} notification preferences */
+async function getNotificationPreferences(ownerId) {
+  const s = await getSetting(ownerId, 'notification_preferences');
+  if (!s || typeof s !== 'object') {
+    return { enabled: true, leadMinutes: [15, 60, 1440] };
+  }
+  const lead = s.leadMinutes || s.lead_minutes;
+  const arr = Array.isArray(lead) ? lead.map(Number).filter((n) => Number.isFinite(n) && n > 0) : [15, 60, 1440];
+  return { enabled: s.enabled !== false, leadMinutes: arr.length ? arr : [15, 60, 1440] };
+}
+
+module.exports = { getSetting, getKillSwitch, getShadowMode, getAutonomousMode, getStyleProfile, getNotificationPreferences };

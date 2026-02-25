@@ -108,4 +108,38 @@ async function sendDraft(ownerId, draft) {
   };
 }
 
-module.exports = { sendDraft, resolveRecipient };
+/**
+ * Send a direct email (for notifications, reminders). Uses primary Gmail account.
+ * @param {number} ownerId
+ * @param {{ to: string, subject: string, body: string }}
+ */
+async function sendEmail(ownerId, { to, subject, body }) {
+  const acct = await getPrimaryGmailAccount(ownerId);
+  if (!acct) throw new Error('No Gmail account connected.');
+
+  let accessToken = acct.access_token;
+  if (acct.expires_at && new Date(acct.expires_at) < new Date()) {
+    const newCreds = await googleOAuth.refreshAccessToken(acct.refresh_token);
+    accessToken = newCreds.access_token;
+    await db.query(
+      `UPDATE eva.gmail_accounts SET access_token = $1, expires_at = $2, token_updated_at = now() WHERE id = $3`,
+      [newCreds.access_token, new Date(newCreds.expiry_date), acct.id]
+    );
+  }
+
+  const gmail = googleOAuth.getGmailClient(accessToken, acct.refresh_token);
+  const raw = buildRawMessage({
+    from: acct.gmail_address,
+    to: to || acct.gmail_address,
+    subject: subject || '(no subject)',
+    body: body || '',
+  });
+
+  const result = await gmail.users.messages.send({
+    userId: 'me',
+    requestBody: { raw },
+  });
+  return { messageId: result.data.id };
+}
+
+module.exports = { sendDraft, resolveRecipient, sendEmail };

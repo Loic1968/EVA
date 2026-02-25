@@ -145,6 +145,39 @@ export default function Settings() {
     }
   };
 
+  const setNotificationPrefs = async (enabled, leadMinutes) => {
+    setSaving(true);
+    setSaved(false);
+    try {
+      await api.setSetting('notification_preferences', {
+        enabled: enabled ?? settings.notification_preferences?.enabled,
+        leadMinutes: leadMinutes ?? settings.notification_preferences?.leadMinutes ?? [15, 60, 1440],
+        updated_at: new Date().toISOString(),
+      });
+      setSettings((s) => ({
+        ...s,
+        notification_preferences: {
+          enabled: enabled ?? s.notification_preferences?.enabled,
+          leadMinutes: leadMinutes ?? s.notification_preferences?.leadMinutes ?? [15, 60, 1440],
+        },
+      }));
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+  const toggleLead = (min) => {
+    const current = settings.notification_preferences?.leadMinutes ?? [15, 60, 1440];
+    const next = current.includes(min)
+      ? current.filter((m) => m !== min)
+      : [...current, min].sort((a, b) => a - b);
+    if (next.length === 0) return;
+    setNotificationPrefs(null, next);
+  };
+
   const setEmailSyncDays = async (days) => {
     setSaving(true);
     setSaved(false);
@@ -324,6 +357,49 @@ export default function Settings() {
             <option value={60}>1 hour</option>
             <option value={120}>2 hours</option>
           </select>
+          {saving && <span className="text-slate-500 dark:text-eva-muted text-sm">Saving...</span>}
+          {saved && <span className="text-emerald-600 dark:text-emerald-400 text-sm">Saved</span>}
+        </div>
+      </div>
+
+      {/* Notifications */}
+      <div className="bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 p-6 max-w-2xl">
+        <h2 className="text-lg font-medium text-slate-900 dark:text-white mb-2">Notifications</h2>
+        <p className="text-slate-500 dark:text-eva-muted text-sm mb-4">
+          EVA sends email reminders for upcoming calendar events. Sync Google Calendar in Data Sources first.
+        </p>
+        <div className="flex flex-wrap items-center gap-4">
+          <button
+            onClick={() => setNotificationPrefs(settings.notification_preferences?.enabled !== false ? false : true)}
+            disabled={saving}
+            className={`px-4 py-2 rounded-lg font-medium ${
+              settings.notification_preferences?.enabled !== false
+                ? 'bg-cyan-600 text-white hover:bg-cyan-500'
+                : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
+            } disabled:opacity-50`}
+          >
+            {settings.notification_preferences?.enabled !== false ? 'Notifications ON' : 'Notifications OFF'}
+          </button>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-slate-600 dark:text-slate-400">Remind me:</span>
+            {[15, 60, 1440].map((m) => {
+              const label = m < 60 ? `${m} min before` : m < 1440 ? `1 h before` : '24 h before';
+              const active = (settings.notification_preferences?.leadMinutes ?? [15, 60, 1440]).includes(m);
+              return (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => toggleLead(m)}
+                  disabled={saving}
+                  className={`text-sm px-3 py-1.5 rounded-lg ${
+                    active ? 'bg-cyan-500/20 text-cyan-600 dark:text-cyan-400' : 'bg-slate-200 dark:bg-slate-700 text-slate-500'
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
           {saving && <span className="text-slate-500 dark:text-eva-muted text-sm">Saving...</span>}
           {saved && <span className="text-emerald-600 dark:text-emerald-400 text-sm">Saved</span>}
         </div>

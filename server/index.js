@@ -165,4 +165,14 @@ app.listen(PORT, HOST, () => {
   } else {
     console.log('[EVA] Gmail sync worker skipped (EVA_GOOGLE_CLIENT_ID / GOOGLE_CLIENT_ID not set)');
   }
+
+  // Notification worker — calendar reminders
+  if (hasGmail) {
+    try {
+      const notificationWorker = require('./workers/notificationWorker');
+      notificationWorker.start();
+    } catch (err) {
+      console.warn('[EVA] Notification worker failed to start:', err.message);
+    }
+  }
 });

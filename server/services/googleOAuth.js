@@ -8,6 +8,8 @@ const SCOPES = [
   'https://www.googleapis.com/auth/gmail.readonly',
   'https://www.googleapis.com/auth/gmail.send',
   'https://www.googleapis.com/auth/gmail.compose',
+  'https://www.googleapis.com/auth/calendar.readonly',
+  'https://www.googleapis.com/auth/calendar.events',
   'https://www.googleapis.com/auth/userinfo.email',
 ];
 
@@ -71,6 +73,18 @@ function getGmailClient(accessToken, refreshToken) {
 }
 
 /**
+ * Return an authenticated Google Calendar API client.
+ */
+function getCalendarClient(accessToken, refreshToken) {
+  const client = getOAuth2Client();
+  client.setCredentials({
+    access_token: accessToken,
+    refresh_token: refreshToken,
+  });
+  return google.calendar({ version: 'v3', auth: client });
+}
+
+/**
  * Get the authenticated user's email address.
  */
 async function getUserEmail(accessToken, refreshToken) {
@@ -96,6 +110,7 @@ module.exports = {
   exchangeCode,
   refreshAccessToken,
   getGmailClient,
+  getCalendarClient,
   getUserEmail,
   revokeToken,
 };

@@ -7,9 +7,10 @@ const db = require('../db');
 const path = require('path');
 const fs = require('fs');
 
-// Gmail services
+// Gmail & Calendar services
 const googleOAuth = require('../services/googleOAuth');
 const gmailSync = require('../services/gmailSync');
+const calendarSync = require('../services/calendarSync');
 const { getKillSwitch, getShadowMode } = require('../services/settingsService');
 
 const { verifyAuth } = require('../middleware/auth');
@@ -850,6 +851,38 @@ router.get('/gmail/emails', async (req, res, next) => {
       return res.json({ emails: [], total: 0 });
     }
     console.error('[EVA /gmail/emails]', e.message);
+    next(e);
+  }
+});
+
+// ════════════════════════════════════════════════════════════════
+// CALENDAR (Google Calendar via same OAuth as Gmail)
+// ════════════════════════════════════════════════════════════════
+
+// Sync calendar for all connected Gmail accounts
+router.post('/calendar/sync', async (req, res, next) => {
+  try {
+    const result = await calendarSync.syncCalendarForAllAccounts(req.ownerId);
+    res.json({ status: 'synced', ...result });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// List calendar events
+router.get('/calendar/events', async (req, res, next) => {
+  try {
+    const { limit = 50, days = 14 } = req.query;
+    const events = await calendarSync.getUpcomingEvents(
+      req.ownerId,
+      Math.min(Number(limit) || 50, 100),
+      Math.min(Number(days) || 14, 90)
+    );
+    res.json({ events });
+  } catch (e) {
+    if (/relation "eva\.calendar_events" does not exist/i.test(String(e.message))) {
+      return res.json({ events: [] });
+    }
     next(e);
   }
 });

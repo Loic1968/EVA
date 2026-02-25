@@ -8,6 +8,7 @@ const nav = [
   { to: '/voice', label: 'Real-Time (Voice)', icon: '🎤', highlight: true },
   { to: '/dashboard', label: 'Dashboard', icon: '◉' },
   { to: '/chat', label: 'Chat EVA', icon: '◈' },
+  { to: '/calendar', label: 'Calendar', icon: '📅' },
   { to: '/emails', label: 'Emails', icon: '✉' },
   { to: '/drafts', label: 'Drafts', icon: '◇' },
   { to: '/documents', label: 'Documents', icon: '◆' },

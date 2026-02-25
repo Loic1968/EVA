@@ -175,6 +175,10 @@ export const api = {
     return request(`/gmail/emails?${p}`);
   },
 
+  // Calendar (Google Calendar via same OAuth as Gmail)
+  syncCalendar: () => request('/calendar/sync', { method: 'POST' }),
+  getCalendarEvents: (params) => request('/calendar/events?' + new URLSearchParams(params || {})),
+
   // Confidence summary
   getConfidenceSummary: () => request('/confidence-summary'),
 

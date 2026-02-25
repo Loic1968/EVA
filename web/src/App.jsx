@@ -13,6 +13,7 @@ import SignUp from './pages/SignUp';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import Emails from './pages/Emails';
+import Calendar from './pages/Calendar';
 import { useAuth } from './context/AuthContext';
 
 function LoadingScreen() {
@@ -49,6 +50,7 @@ function AppRoutes() {
         <Route path="/chat/realtime" element={<ChatRealtime />} />
         <Route path="/voice" element={<ChatRealtime />} />
         <Route path="/chat" element={<Chat />} />
+        <Route path="/calendar" element={<Calendar />} />
         <Route path="/emails" element={<Emails />} />
         <Route path="/drafts" element={<Drafts />} />
         <Route path="/documents" element={<Documents />} />

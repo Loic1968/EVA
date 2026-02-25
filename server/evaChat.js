@@ -5,8 +5,9 @@
  */
 const Anthropic = require('@anthropic-ai/sdk');
 
-// Lazy-load gmailSync to avoid circular dependency issues at startup
+// Lazy-load gmailSync and calendarSync to avoid circular dependency issues at startup
 let gmailSync = null;
+let calendarSync = null;
 function getGmailSync() {
   if (!gmailSync) {
     try {
@@ -16,6 +17,16 @@ function getGmailSync() {
     }
   }
   return gmailSync;
+}
+function getCalendarSync() {
+  if (!calendarSync) {
+    try {
+      calendarSync = require('./services/calendarSync');
+    } catch (e) {
+      console.warn('[EVA Chat] Calendar sync not available:', e.message);
+    }
+  }
+  return calendarSync;
 }
 
 /** Mode commands: /brief, /draft, /execute (server-side parsed) */
@@ -63,8 +74,8 @@ You are EVA, a Personal AI Digital Twin for Loic Hennocq, Founder & CEO of HaliS
 
 ## What You Cannot Do (Be Honest)
 - **No vision**: You have NO access to webcam, screen share, or any visual input. Never claim to see anything.
-- **No calendar app**: You have NO direct access to Google Calendar or agenda apps. BUT flight confirmations and billets uploaded as documents ARE in the Memory Vault — search the documents below for flight times, Shanghai, dates.
-- **No fake context**: Never invent data. If the answer is not in emails or documents, say so clearly.
+- **Calendar**: Google Calendar events are injected below when available. Use them to answer questions about meetings, schedule, agenda. Flight confirmations and billets in documents are also in the Memory Vault.
+- **No fake context**: Never invent data. If the answer is not in emails, documents, or calendar, say so clearly.
 
 ## What You Never Do
 - Never pretend to have sent an email or message when you haven't.
@@ -83,6 +94,9 @@ const EMAIL_KEYWORDS = /email|mail|envoy[eé]|re[çc]u|message|from|sent|wrote|[
 
 // Keywords for travel/documents (vol, billet, Shanghai, document uploadé)
 const DOCUMENT_KEYWORDS = /vol|billet|avion|train|Shanghai|PVG|voyage|travel|flight|lundi|mardi|mercredi|jeudi|vendredi|semaine|document|fichier|upload|upload[eé]/i;
+
+// Keywords for calendar (agenda, meeting, rendez-vous, schedule)
+const CALENDAR_KEYWORDS = /agenda|calendrier|calendar|meeting|rendez-vous|rdv|r[eé]union|schedule|plann|event|[eé]v[eé]nement|prochain|lundi|mardi|mercredi|jeudi|vendredi|demain|aujourd'hui|this week/i;
 
 // Always inject recent context for owner (not just on keyword match) - helps comprehension
 const ALWAYS_INJECT_RECENT = true;
@@ -154,7 +168,34 @@ async function reply(userMessage, history = [], ownerId = null, mode = null) {
     }
   }
 
-  let systemPrompt = EVA_SYSTEM + emailContext + documentContext;
+  // Calendar context: upcoming events when keywords match or always inject
+  let calendarContext = '';
+  if (ownerId) {
+    try {
+      const calSync = getCalendarSync();
+      if (calSync) {
+        const shouldInject = ALWAYS_INJECT_RECENT || CALENDAR_KEYWORDS.test(userMessage);
+        if (shouldInject) {
+          const events = await calSync.getUpcomingEvents(ownerId, 10, 14);
+          if (events.length > 0) {
+            calendarContext = '\n\n## Calendar (upcoming events)\n';
+            calendarContext += 'Use these to answer questions about meetings, schedule, agenda.\n\n';
+            events.forEach((ev, i) => {
+              const start = new Date(ev.start_at);
+              const fmt = ev.is_all_day
+                ? start.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+                : start.toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+              calendarContext += `**Event ${i + 1}:** ${ev.title || '(no title)'} | ${fmt}${ev.location ? ` @ ${ev.location}` : ''}\n`;
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[EVA Chat] Calendar context lookup failed:', err.message);
+    }
+  }
+
+  let systemPrompt = EVA_SYSTEM + emailContext + documentContext + calendarContext;
   if (mode && MODE_HINTS[mode]) {
     systemPrompt += `\n\n## Current Mode: ${mode}\n${MODE_HINTS[mode]}`;
   }
@@ -257,7 +298,34 @@ async function createReplyStream(userMessage, history = [], ownerId = null, mode
     }
   }
 
-  let systemPrompt = EVA_SYSTEM + emailContext + documentContext;
+  // Calendar context in stream mode
+  let calendarContextStream = '';
+  if (ownerId) {
+    try {
+      const calSync = getCalendarSync();
+      if (calSync) {
+        const shouldInject = ALWAYS_INJECT_RECENT || CALENDAR_KEYWORDS.test(userMessage);
+        if (shouldInject) {
+          const events = await calSync.getUpcomingEvents(ownerId, 10, 14);
+          if (events.length > 0) {
+            calendarContextStream = '\n\n## Calendar (upcoming events)\n';
+            calendarContextStream += 'Use these to answer questions about meetings, schedule, agenda.\n\n';
+            events.forEach((ev, i) => {
+              const start = new Date(ev.start_at);
+              const fmt = ev.is_all_day
+                ? start.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+                : start.toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+              calendarContextStream += `**Event ${i + 1}:** ${ev.title || '(no title)'} | ${fmt}${ev.location ? ` @ ${ev.location}` : ''}\n`;
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[EVA Chat] Calendar context lookup failed:', err.message);
+    }
+  }
+
+  let systemPrompt = EVA_SYSTEM + emailContext + documentContext + calendarContextStream;
   if (mode && MODE_HINTS[mode]) {
     systemPrompt += `\n\n## Current Mode: ${mode}\n${MODE_HINTS[mode]}`;
   }

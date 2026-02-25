@@ -95,6 +95,26 @@ async function buildInstructionsWithContext(ownerId) {
         });
       }
     }
+
+    // Calendar — upcoming events
+    let calendarSync = null;
+    try {
+      calendarSync = require('../services/calendarSync');
+    } catch (_) {}
+    if (calendarSync?.getUpcomingEvents) {
+      const events = await calendarSync.getUpcomingEvents(owner.id, 12, 14);
+      if (events.length > 0) {
+        console.log(`[EVA Realtime] Injected ${events.length} calendar events`);
+        instructions += '\n---\n## CALENDAR (upcoming meetings, schedule)\n\n';
+        events.forEach((ev, i) => {
+          const start = new Date(ev.start_at);
+          const fmt = ev.is_all_day
+            ? start.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })
+            : start.toLocaleString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+          instructions += `[Event ${i + 1}] ${ev.title || '(no title)'} | ${fmt}${ev.location ? ` @ ${ev.location}` : ''}\n`;
+        });
+      }
+    }
   } catch (err) {
     console.warn('[EVA Realtime] Context injection failed:', err.message);
   }

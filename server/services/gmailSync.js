@@ -108,17 +108,20 @@ async function syncEmails(ownerId, gmailAccountId) {
       [gmailAccountId]
     );
 
-    // 8. Update data_sources (last_sync_at, updated_at, record_count)
+    // 8. Update data_sources (last_sync_at, record_count) — no updated_at (schema may not have it)
     const countResult = await db.query(
       'SELECT count(*) as cnt FROM eva.emails WHERE gmail_account_id = $1',
       [gmailAccountId]
     );
-    await db.query(
-      `UPDATE eva.data_sources
-       SET last_sync_at = now(), updated_at = now(), record_count = $1
-       WHERE owner_id = $2 AND source_type = 'gmail'`,
-      [parseInt(countResult.rows[0].cnt, 10), ownerId]
-    );
+    const acctRow = await db.query('SELECT gmail_address FROM eva.gmail_accounts WHERE id = $1', [gmailAccountId]);
+    const gmailAddr = acctRow.rows[0]?.gmail_address;
+    if (gmailAddr) {
+      await db.query(
+        `UPDATE eva.data_sources SET last_sync_at = now(), record_count = $1
+         WHERE owner_id = $2 AND source_type = 'gmail' AND external_id = $3`,
+        [parseInt(countResult.rows[0].cnt, 10), ownerId, gmailAddr]
+      );
+    }
 
     console.log(`[Gmail Sync] Synced ${newCount} new emails for account ${gmailAccountId}`);
     return { total: allMessageIds.length, new: newCount };

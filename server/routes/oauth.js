@@ -47,7 +47,7 @@ async function gmailCallback(req, res, next) {
     );
     if (existing.rows.length > 0) {
       await db.query(
-        `UPDATE eva.data_sources SET config = $1, updated_at = now() WHERE owner_id = $2 AND source_type = 'gmail' AND external_id = $3`,
+        `UPDATE eva.data_sources SET config = $1 WHERE owner_id = $2 AND source_type = 'gmail' AND external_id = $3`,
         [configJson, ownerId, gmailAddress]
       );
     } else {

@@ -39,8 +39,14 @@ export default function Chat() {
     } catch (_) {}
   }, []);
 
+  const [evaDisabledReason, setEvaDisabledReason] = useState(null);
   useEffect(() => {
-    api.status().then((r) => setEvaEnabled(r.eva_enabled !== false)).catch(() => setEvaEnabled(false));
+    api.status()
+      .then((r) => {
+        setEvaEnabled(r.eva_enabled !== false);
+        setEvaDisabledReason(r.eva_enabled === false ? (r.error || 'ANTHROPIC_API_KEY not set') : null);
+      })
+      .catch(() => setEvaEnabled(false));
   }, []);
 
   useEffect(() => {
@@ -265,8 +271,11 @@ export default function Chat() {
       {/* Main chat — ChatGPT-like centered layout */}
       <div className="flex-1 flex flex-col min-w-0 max-w-3xl mx-auto w-full">
         {!evaEnabled && (
-          <div className="px-4 py-2 bg-amber-500/20 border-b border-amber-500/30 text-center">
-            <p className="text-amber-200 text-sm">EVA is disabled.</p>
+          <div className="px-4 py-3 bg-amber-500/20 border-b border-amber-500/30 text-center">
+            <p className="text-amber-200 text-sm font-medium">EVA is disabled.</p>
+            {evaDisabledReason && (
+              <p className="text-amber-300/80 text-xs mt-0.5">{evaDisabledReason}</p>
+            )}
           </div>
         )}
 

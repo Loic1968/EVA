@@ -175,6 +175,9 @@ export default function Settings() {
             <p className="text-eva-muted text-sm mt-2">
               Instantly pause all autonomous EVA operations. When paused, EVA will not send any drafts, respond to messages, or take any action without your explicit approval.
             </p>
+            <p className="text-eva-muted text-xs mt-1">
+              <strong>ACTIVE</strong>: EVA responds to chat and can act. <strong>Shadow Mode</strong> (planned): EVA observes and learns from your activity without taking actions.
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-3 mt-4">

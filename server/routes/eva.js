@@ -14,8 +14,14 @@ const gmailSync = require('../services/gmailSync');
 const { verifyAuth } = require('../middleware/auth');
 router.use(verifyAuth);
 
+// EVA chat enabled when Claude API key is set; otherwise chat returns 503
+const EVA_ENABLED = !!(process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY);
+
 router.get('/status', (req, res) => {
-  res.json({ eva_enabled: EVA_ENABLED });
+  res.json({
+    eva_enabled: EVA_ENABLED,
+    ...(EVA_ENABLED ? {} : { error: 'Set ANTHROPIC_API_KEY (or CLAUDE_API_KEY) in Render → Environment.' }),
+  });
 });
 
 // ════════════════════════════════════════════════════════════════
@@ -24,7 +30,10 @@ router.get('/status', (req, res) => {
 const evaChat = require('../evaChat');
 
 function evaDisabled(res) {
-  res.status(503).json({ error: 'EVA is currently disabled', eva_enabled: false });
+  res.status(503).json({
+    error: 'EVA is currently disabled. Set ANTHROPIC_API_KEY (or CLAUDE_API_KEY) in Render → Environment.',
+    eva_enabled: false,
+  });
 }
 
 // List conversations

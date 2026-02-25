@@ -86,6 +86,14 @@ export default function EvaTopBar({ onMenuClick }) {
             </div>
           )}
           <a
+            href="https://halitrade.com/landing"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hidden sm:inline text-xs text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
+          >
+            HaliSoft Landing
+          </a>
+          <a
             href="https://halisoft.biz"
             target="_blank"
             rel="noopener noreferrer"

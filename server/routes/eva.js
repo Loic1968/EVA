@@ -10,6 +10,7 @@ const fs = require('fs');
 // Gmail services
 const googleOAuth = require('../services/googleOAuth');
 const gmailSync = require('../services/gmailSync');
+const { getKillSwitch, getShadowMode } = require('../services/settingsService');
 
 const { verifyAuth } = require('../middleware/auth');
 router.use(verifyAuth);
@@ -35,6 +36,8 @@ function evaDisabled(res) {
     eva_enabled: false,
   });
 }
+
+const SHADOW_REPLY = "🔄 **Shadow Mode** — I'm observing and indexing your data (emails, documents) but not sending replies. Switch to **Active** in Settings to chat with me.";
 
 // List conversations
 router.get('/conversations', async (req, res, next) => {
@@ -102,6 +105,8 @@ router.delete('/conversations/:id', async (req, res, next) => {
 router.post('/chat', async (req, res, next) => {
   try {
     if (!EVA_ENABLED) return evaDisabled(res);
+    const killOn = await getKillSwitch(req.ownerId);
+    if (killOn) return res.status(503).json({ error: 'EVA paused (kill switch)', kill_switch: true });
 
     const { message, history, conversation_id } = req.body || {};
     if (!message || typeof message !== 'string') {
@@ -145,7 +150,17 @@ router.post('/chat', async (req, res, next) => {
       return res.status(400).json({ error: 'message required after command' });
     }
 
-    const result = await evaChat.reply(msgToSend, chatHistory, req.ownerId, mode);
+    const shadowOn = await getShadowMode(req.ownerId);
+    let result;
+    if (shadowOn) {
+      result = { reply: SHADOW_REPLY, model: null, tokens: { input: 0, output: 0 } };
+      await db.query(
+        `INSERT INTO eva.audit_logs (owner_id, action_type, channel, details) VALUES ($1, 'shadow_query', 'chat', $2)`,
+        [req.ownerId, JSON.stringify({ message: message.slice(0, 500), shadow_mode: true })]
+      );
+    } else {
+      result = await evaChat.reply(msgToSend, chatHistory, req.ownerId, mode);
+    }
 
     // Persist messages if we have a conversation
     if (convId) {
@@ -195,6 +210,8 @@ router.post('/chat', async (req, res, next) => {
 router.post('/chat/stream', async (req, res, next) => {
   try {
     if (!EVA_ENABLED) return evaDisabled(res);
+    const killOn = await getKillSwitch(req.ownerId);
+    if (killOn) return res.status(503).json({ error: 'EVA paused (kill switch)', kill_switch: true });
 
     const { message, history, conversation_id } = req.body || {};
     if (!message || typeof message !== 'string') {
@@ -242,7 +259,38 @@ router.post('/chat/stream', async (req, res, next) => {
       return res.status(400).json({ error: 'message required after command' });
     }
 
-    const { stream, model } = await evaChat.createReplyStream(msgToSend, chatHistory, req.ownerId, mode);
+    const shadowOn = await getShadowMode(req.ownerId);
+    let stream, model;
+    if (shadowOn) {
+      await db.query(
+        `INSERT INTO eva.audit_logs (owner_id, action_type, channel, details) VALUES ($1, 'shadow_query', 'chat', $2)`,
+        [req.ownerId, JSON.stringify({ message: message.slice(0, 500), shadow_mode: true })]
+      );
+      if (convId) {
+        await db.query(
+          `INSERT INTO eva.messages (conversation_id, owner_id, role, content) VALUES ($1, $2, 'user', $3)`,
+          [convId, req.ownerId, message.trim()]
+        );
+        await db.query(
+          `INSERT INTO eva.messages (conversation_id, owner_id, role, content, tokens_used) VALUES ($1, $2, 'assistant', $3, 0)`,
+          [convId, req.ownerId, SHADOW_REPLY]
+        );
+        await db.query(
+          `UPDATE eva.conversations SET updated_at = now(), title = COALESCE(NULLIF(title, ''), $3)
+           WHERE id = $1 AND owner_id = $2`,
+          [convId, req.ownerId, message.trim().slice(0, 100)]
+        );
+      }
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.flushHeaders?.();
+      res.write(`data: ${JSON.stringify({ type: 'text', text: SHADOW_REPLY })}\n\n`);
+      res.write(`data: ${JSON.stringify({ type: 'done', reply: SHADOW_REPLY, model: null, tokens: { input: 0, output: 0 }, conversation_id: convId })}\n\n`);
+      return res.end();
+    }
+
+    ({ stream, model } = await evaChat.createReplyStream(msgToSend, chatHistory, req.ownerId, mode));
 
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
@@ -326,6 +374,11 @@ router.get('/drafts', async (req, res, next) => {
 
 router.post('/drafts', async (req, res, next) => {
   try {
+    const killOn = await getKillSwitch(req.ownerId);
+    if (killOn) return res.status(503).json({ error: 'EVA paused (kill switch)', kill_switch: true });
+    const shadowOn = await getShadowMode(req.ownerId);
+    if (shadowOn) return res.status(403).json({ error: 'Drafts disabled in Shadow Mode', shadow_mode: true });
+
     const { channel, thread_id, subject_or_preview, body, confidence_score } = req.body;
     if (!channel || body == null) {
       return res.status(400).json({ error: 'channel and body required' });
@@ -345,7 +398,13 @@ router.post('/drafts', async (req, res, next) => {
 router.patch('/drafts/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { status, body } = req.body;
+    const { status, body } = req.body || {};
+    if (status === 'sent') {
+      const killOn = await getKillSwitch(req.ownerId);
+      if (killOn) return res.status(503).json({ error: 'EVA paused (kill switch)', kill_switch: true });
+      const shadowOn = await getShadowMode(req.ownerId);
+      if (shadowOn) return res.status(403).json({ error: 'Cannot send drafts in Shadow Mode', shadow_mode: true });
+    }
     const updates = [];
     const params = [req.ownerId, id];
     if (status) {

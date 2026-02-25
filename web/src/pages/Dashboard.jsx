@@ -50,6 +50,7 @@ export default function Dashboard() {
   if (error) return <div className="text-red-400 p-4">Error: {error}</div>;
 
   const killSwitchOn = settings.kill_switch?.enabled === true;
+  const shadowModeOn = settings.shadow_mode?.enabled === true;
   const totalDrafts = stats ? Object.values(stats.drafts || {}).reduce((a, b) => a + b, 0) : 0;
   const pendingDrafts = stats?.drafts?.pending || 0;
 
@@ -70,12 +71,15 @@ export default function Dashboard() {
       </div>
 
       {/* Status banner */}
-      <div className={`rounded-xl p-4 border ${killSwitchOn ? 'bg-amber-500/10 border-amber-500/30' : 'bg-emerald-500/10 border-emerald-500/30'}`}>
+      <div className={`rounded-xl p-4 border ${
+        killSwitchOn ? 'bg-amber-500/10 border-amber-500/30' :
+        shadowModeOn ? 'bg-cyan-500/10 border-cyan-500/30' : 'bg-emerald-500/10 border-emerald-500/30'
+      }`}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className={`w-3 h-3 rounded-full ${killSwitchOn ? 'bg-amber-400' : 'bg-emerald-400'} animate-pulse`} />
-            <span className={`font-medium ${killSwitchOn ? 'text-amber-300' : 'text-emerald-300'}`}>
-              {killSwitchOn ? 'Autonomous Mode: Paused' : 'EVA Active — Shadow Mode'}
+            <div className={`w-3 h-3 rounded-full ${killSwitchOn ? 'bg-amber-400' : shadowModeOn ? 'bg-cyan-400' : 'bg-emerald-400'} animate-pulse`} />
+            <span className={`font-medium ${killSwitchOn ? 'text-amber-300' : shadowModeOn ? 'text-cyan-300' : 'text-emerald-300'}`}>
+              {killSwitchOn ? 'Autonomous Mode: Paused' : shadowModeOn ? 'EVA Active — Shadow Mode' : 'EVA Active'}
             </span>
           </div>
           <Link to="/settings" className="text-sm text-slate-400 hover:text-white transition-colors">

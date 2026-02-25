@@ -15,6 +15,21 @@ export default function Settings() {
       .finally(() => setLoading(false));
   }, []);
 
+  const setShadowMode = async (enabled) => {
+    setSaving(true);
+    setSaved(false);
+    try {
+      await api.setSetting('shadow_mode', { enabled, updated_at: new Date().toISOString() });
+      setSettings((s) => ({ ...s, shadow_mode: { enabled } }));
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const setKillSwitch = async (enabled) => {
     setSaving(true);
     setSaved(false);
@@ -105,6 +120,7 @@ export default function Settings() {
   if (error) return <div className="text-red-400 p-4">Error: {error}</div>;
 
   const killSwitchOn = settings.kill_switch?.enabled === true;
+  const shadowModeOn = settings.shadow_mode?.enabled === true;
 
   return (
     <div className="space-y-8">
@@ -175,9 +191,6 @@ export default function Settings() {
             <p className="text-eva-muted text-sm mt-2">
               Instantly pause all autonomous EVA operations. When paused, EVA will not send any drafts, respond to messages, or take any action without your explicit approval.
             </p>
-            <p className="text-eva-muted text-xs mt-1">
-              <strong>ACTIVE</strong>: EVA responds to chat and can act. <strong>Shadow Mode</strong> (planned): EVA observes and learns from your activity without taking actions.
-            </p>
           </div>
         </div>
         <div className="flex items-center gap-3 mt-4">
@@ -192,6 +205,42 @@ export default function Settings() {
           >
             {killSwitchOn ? 'Resume EVA' : 'Pause EVA'}
           </button>
+          {saving && <span className="text-eva-muted text-sm">Saving...</span>}
+          {saved && <span className="text-emerald-400 text-sm">Saved</span>}
+        </div>
+      </div>
+
+      {/* Shadow Mode */}
+      <div className={`rounded-xl border p-6 max-w-2xl transition-colors ${
+        shadowModeOn ? 'bg-cyan-500/5 border-cyan-500/30' : 'bg-eva-panel border-slate-700/40'
+      }`}>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-medium text-white flex items-center gap-2">
+              Shadow Mode
+              <span className={`text-xs px-2 py-0.5 rounded-full ${shadowModeOn ? 'bg-cyan-500/20 text-cyan-400' : 'bg-slate-600/40 text-slate-500'}`}>
+                {shadowModeOn ? 'ON' : 'OFF'}
+              </span>
+            </h2>
+            <p className="text-eva-muted text-sm mt-2">
+              EVA observes and indexes your data (emails, documents) but does not send replies, drafts, or take any action. Ideal for building memory while staying in control.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 mt-4">
+          <button
+            onClick={() => setShadowMode(!shadowModeOn)}
+            disabled={saving || killSwitchOn}
+            className={`px-5 py-2.5 rounded-lg font-medium transition-all ${
+              shadowModeOn
+                ? 'bg-slate-600 text-white hover:bg-slate-500'
+                : 'bg-cyan-600 text-white hover:bg-cyan-500'
+            } disabled:opacity-50`}
+            title={killSwitchOn ? 'Resume EVA first' : ''}
+          >
+            {shadowModeOn ? 'Disable Shadow Mode' : 'Enable Shadow Mode'}
+          </button>
+          {killSwitchOn && <span className="text-eva-muted text-xs">Resume EVA first</span>}
           {saving && <span className="text-eva-muted text-sm">Saving...</span>}
           {saved && <span className="text-emerald-400 text-sm">Saved</span>}
         </div>

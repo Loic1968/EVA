@@ -6,6 +6,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const { getKillSwitch, getShadowMode } = require('../services/settingsService');
 
 const OPENAI_KEY = (process.env.OPENAI_API_KEY || '').trim();
 const REALTIME_ENABLED = !!OPENAI_KEY;
@@ -104,6 +105,11 @@ router.get('/token', async (req, res, next) => {
     if (!REALTIME_ENABLED) {
       return res.status(503).json({ error: 'Realtime API disabled. Set OPENAI_API_KEY.' });
     }
+    const killOn = await getKillSwitch(req.ownerId);
+    if (killOn) return res.status(503).json({ error: 'EVA paused (kill switch)', kill_switch: true });
+    const shadowOn = await getShadowMode(req.ownerId);
+    if (shadowOn) return res.status(503).json({ error: 'Voice disabled in Shadow Mode', shadow_mode: true });
+
     const { instructions, transcriptionLang, turnEagerness } = await buildInstructionsWithContext(req.ownerId);
 
     const model = process.env.EVA_REALTIME_MODEL || 'gpt-4o-realtime-preview';

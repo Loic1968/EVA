@@ -1,7 +1,8 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import EvaTopBar from './EvaTopBar';
 import { useAuth } from '../context/AuthContext';
+import { api } from '../api';
 
 const nav = [
   { to: '/voice', label: 'Real-Time (Voice)', icon: '🎤', highlight: true },
@@ -18,8 +19,13 @@ const nav = [
 export default function Layout({ children }) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [evaStatus, setEvaStatus] = useState(null); // null=loading, true=active, false=offline
   const { user, logout, requireAuth } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    api.status().then((r) => setEvaStatus(r.eva_enabled !== false)).catch(() => setEvaStatus(false));
+  }, []);
 
   const closeMobile = () => setMobileOpen(false);
 
@@ -48,6 +54,12 @@ export default function Layout({ children }) {
               <div>
                 <h1 className="text-base font-semibold text-slate-900 dark:text-white leading-tight">EVA</h1>
                 <p className="text-[10px] text-slate-500 dark:text-eva-muted leading-tight">Digital Twin</p>
+                {evaStatus !== null && (
+                  <span className={`inline-flex items-center gap-1 mt-1 text-[10px] ${evaStatus ? 'text-emerald-500' : 'text-amber-500'}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${evaStatus ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                    {evaStatus ? 'Active' : 'Offline'}
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -55,18 +67,18 @@ export default function Layout({ children }) {
             <button onClick={() => setCollapsed(true)} className="hidden lg:block text-slate-500 dark:text-eva-muted hover:text-slate-900 dark:hover:text-white text-xs">‹‹</button>
           )}
           {mobileOpen && (
-            <button onClick={closeMobile} className="lg:hidden text-slate-500 dark:text-eva-muted hover:text-slate-900 dark:hover:text-white text-sm p-1">✕</button>
+            <button onClick={closeMobile} className="lg:hidden text-slate-500 dark:text-eva-muted hover:text-slate-900 dark:hover:text-white text-sm p-2 min-w-[44px] min-h-[44px] touch-manipulation" aria-label="Close menu">✕</button>
           )}
         </div>
         <nav className="p-2 flex-1 space-y-0.5">
-          {nav.map(({ to, label, icon, highlight }) => (
+          {        nav.map(({ to, label, icon, highlight }) => (
             <NavLink
               key={to}
               to={to}
               onClick={closeMobile}
               title={collapsed && !mobileOpen ? label : undefined}
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${
+                `flex items-center gap-3 px-3 py-2.5 min-h-[44px] rounded-lg text-sm transition-all touch-manipulation ${
                   isActive ? 'bg-cyan-100 dark:bg-eva-accent/15 text-cyan-700 dark:text-eva-accent font-medium' :
                   highlight ? 'text-cyan-500 dark:text-cyan-400 hover:bg-cyan-50 dark:hover:bg-cyan-500/20 hover:text-cyan-600 dark:hover:text-cyan-300 font-medium' :
                   'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700/40 hover:text-slate-900 dark:hover:text-slate-200'

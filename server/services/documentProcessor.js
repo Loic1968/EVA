@@ -204,26 +204,39 @@ async function processDocument(documentId, ownerId) {
   }
 }
 
+// Stopwords to skip when building OR-query (French + English)
+const SEARCH_STOPWORDS = new Set(['a', 'à', 'le', 'la', 'les', 'un', 'une', 'des', 'du', 'de', 'et', 'ou', 'pour', 'avec', 'mon', 'ma', 'mes', 'son', 'sa', 'ses', 'notre', 'votre', 'leur', 'quelle', 'quels', 'quelle', 'quelles', 'est', 'sont', 'the', 'is', 'are', 'my', 'your', 'our', 'to', 'for', 'with', 'at', 'in', 'on']);
+
 function searchDocuments(ownerId, queryText, limit = 5) {
   const q = (queryText || '').trim();
   if (!q || q.length < 2) return Promise.resolve([]);
 
   const safeQuery = q.replace(/'/g, "''");
   const likePattern = '%' + q.replace(/[%_\\]/g, (c) => '\\' + c) + '%';
+
+  // Extract meaningful words (2+ chars) for OR-query — "vol lundi shanghai" finds flight docs
+  const words = q.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/)
+    .filter((w) => w.length >= 2 && !SEARCH_STOPWORDS.has(w));
+  const orTerms = [...new Set(words)].slice(0, 6).map((w) => w.replace(/'/g, "''").replace(/[^a-z0-9\u00e0-\u00ff]/g, ''));
+
+  let cond = 'content_text ILIKE $2 ESCAPE \'\\\'';
+  if (orTerms.length > 0) {
+    const tsParts = orTerms.map((t, i) => `to_tsvector('simple', content_text) @@ plainto_tsquery('simple', $${i + 3})`).join(' OR ');
+    cond = `(${tsParts}) OR ${cond}`;
+  }
+
+  const params = [ownerId, likePattern, ...orTerms, limit];
   return db
     .query(
-      `SELECT id, filename, file_type, left(content_text, 2000) AS content_preview, created_at
+      `SELECT id, filename, content_text, file_type, left(content_text, 3000) AS content_preview, created_at
        FROM eva.documents
        WHERE owner_id = $1
          AND content_text IS NOT NULL
          AND content_text != ''
-         AND (
-           to_tsvector('simple', content_text) @@ plainto_tsquery('simple', $2)
-           OR content_text ILIKE $3 ESCAPE '\\'
-         )
+         AND ${cond}
        ORDER BY created_at DESC
-       LIMIT $4`,
-      [ownerId, safeQuery, likePattern, limit]
+       LIMIT $${params.length}`,
+      params
     )
     .then((r) => r.rows)
     .catch((e) => {

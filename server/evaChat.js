@@ -62,9 +62,9 @@ You are EVA, a Personal AI Digital Twin for Loic Hennocq, Founder & CEO of HaliS
 - Always suggest next steps when relevant.
 
 ## What You Cannot Do (Be Honest)
-- **No vision**: You have NO access to webcam, screen share, or any visual input. You cannot "see" slides, presentations, documents on screen, or anything in the user's environment. Never claim to see anything.
-- **No calendar**: You have NO access to agenda, calendar, or meetings. If asked about schedule, say you don't have that access and suggest sharing details.
-- **No fake context**: Never invent or fabricate data (emails, slides, meetings) you don't have. If you lack information, say so clearly.
+- **No vision**: You have NO access to webcam, screen share, or any visual input. Never claim to see anything.
+- **No calendar app**: You have NO direct access to Google Calendar or agenda apps. BUT flight confirmations and billets uploaded as documents ARE in the Memory Vault — search the documents below for flight times, Shanghai, dates.
+- **No fake context**: Never invent data. If the answer is not in emails or documents, say so clearly.
 
 ## What You Never Do
 - Never pretend to have sent an email or message when you haven't.
@@ -82,7 +82,7 @@ function getClient() {
 const EMAIL_KEYWORDS = /email|mail|envoy[eé]|re[çc]u|message|from|sent|wrote|[eé]crit|r[eé]pondu|contact[eé]|inbox|courrier|correspondance|dernier|dit|demand[eé]|r[eé]ponse|qui m'a|pierre|jean|paul|marie/i;
 
 // Keywords for travel/documents (vol, billet, Shanghai, document uploadé)
-const DOCUMENT_KEYWORDS = /vol|billet|avion|train|Shanghai|voyage|travel|flight|semaine prochaine|document|fichier|upload|upload[eé]/i;
+const DOCUMENT_KEYWORDS = /vol|billet|avion|train|Shanghai|PVG|voyage|travel|flight|lundi|mardi|mercredi|jeudi|vendredi|semaine|document|fichier|upload|upload[eé]/i;
 
 // Always inject recent context for owner (not just on keyword match) - helps comprehension
 const ALWAYS_INJECT_RECENT = true;
@@ -138,13 +138,14 @@ async function reply(userMessage, history = [], ownerId = null, mode = null) {
       const shouldInject = ALWAYS_INJECT_RECENT || DOCUMENT_KEYWORDS.test(userMessage);
       if (shouldInject) {
         const docResults = DOCUMENT_KEYWORDS.test(userMessage)
-          ? await docProcessor.searchDocuments(ownerId, userMessage, 5)
+          ? await docProcessor.searchDocuments(ownerId, userMessage, 8)
           : await docProcessor.getRecentDocuments(ownerId, 5);
         if (docResults.length > 0) {
           documentContext = '\n\n## Documents (Memory Vault)\n';
-          documentContext += 'Use these for flights, tickets, travel, etc. If the answer is here, give it. If not, say you don\'t have that info.\n\n';
+          documentContext += 'Use these for flights, tickets, billets, Shanghai, travel. If the answer is here, give it and cite the document.\n\n';
           docResults.forEach((d, i) => {
-            documentContext += `**${d.filename}:**\n${(d.content_text || '').slice(0, 1000)}\n\n`;
+            const text = (d.content_text || d.content_preview || '').slice(0, 2500);
+            documentContext += `**${d.filename}:**\n${text}\n\n`;
           });
         }
       }
@@ -246,7 +247,7 @@ async function createReplyStream(userMessage, history = [], ownerId = null, mode
           documentContext = '\n\n## Documents (Memory Vault)\n';
           documentContext += 'Use these for flights, tickets, invoices, travel, etc. If the answer is here, give it. Cite the document.\n\n';
           docResults.forEach((d, i) => {
-            const text = (d.content_text || d.content_preview || '').slice(0, 1500);
+            const text = (d.content_text || d.content_preview || '').slice(0, 2500);
             documentContext += `**${d.filename}:**\n${text}\n\n`;
           });
         }

@@ -62,8 +62,10 @@ You are EVA, a Personal AI Digital Twin for Loic Hennocq, Founder & CEO of HaliS
 ## About Loic & HaliSoft
 - Trade finance, invoice factoring. 20+ years tech + international business. Ex-Incomlend. HaliSoft = onboarding platform for factoring.
 
-## Capabilities (Memory Vault + Gmail + Documents)
-- Emails and documents are injected below. USE THEM to answer. Cite sender, date, subject when relevant.
+## Capabilities (Memory Vault + Gmail + Documents + Calendar)
+- **When sections appear below**: You CAN read and use them. ## Emails = search there. ## Documents = flight confirmations, billets, invoices. ## Calendar = upcoming events. Never say "je n'ai pas accès" when data is listed — you CAN see it.
+- **When sections are empty**: Say "calendrier non synchronisé" or "aucun document dans le Memory Vault" — invite the user to sync/upload.
+- SEARCH emails + documents first for flight confirmations, Shanghai, travel. If found → use create_calendar_event.
 - If asked about something not in the data, say you don't have it.
 
 ## Communication Style
@@ -74,7 +76,7 @@ You are EVA, a Personal AI Digital Twin for Loic Hennocq, Founder & CEO of HaliS
 
 ## What You Cannot Do (Be Honest)
 - **No vision**: You have NO access to webcam, screen share, or any visual input. Never claim to see anything.
-- **Calendar**: Google Calendar events are injected below when available. Use them to answer questions about meetings, schedule, agenda. Flight confirmations and billets in documents are also in the Memory Vault.
+- **Calendar**: You CAN read events when ## Calendar appears below. You CAN add events via create_calendar_event. For "add my flight Shanghai" — search docs/emails for Shanghai, PVG, flight; if found use tool; if not, ask for date/time/title. NEVER say you cannot add to calendar.
 - **No fake context**: Never invent data. If the answer is not in emails, documents, or calendar, say so clearly.
 
 ## What You Never Do
@@ -95,11 +97,50 @@ const EMAIL_KEYWORDS = /email|mail|envoy[eé]|re[çc]u|message|from|sent|wrote|[
 // Keywords for travel/documents (vol, billet, Shanghai, document uploadé)
 const DOCUMENT_KEYWORDS = /vol|billet|avion|train|Shanghai|PVG|voyage|travel|flight|lundi|mardi|mercredi|jeudi|vendredi|semaine|document|fichier|upload|upload[eé]/i;
 
-// Keywords for calendar (agenda, meeting, rendez-vous, schedule)
-const CALENDAR_KEYWORDS = /agenda|calendrier|calendar|meeting|rendez-vous|rdv|r[eé]union|schedule|plann|event|[eé]v[eé]nement|prochain|lundi|mardi|mercredi|jeudi|vendredi|demain|aujourd'hui|this week/i;
+// Keywords for calendar (agenda, meeting, vol, rendez-vous, schedule)
+const CALENDAR_KEYWORDS = /agenda|calendrier|calendar|meeting|rendez-vous|rdv|r[eé]union|schedule|plann|event|[eé]v[eé]nement|prochain|vol|lundi|mardi|mercredi|jeudi|vendredi|demain|aujourd'hui|this week|add.*(to|au)|ajout(e|er).*(au|to)/i;
 
 // Always inject recent context for owner (not just on keyword match) - helps comprehension
 const ALWAYS_INJECT_RECENT = true;
+
+const CALENDAR_TOOLS = [
+  {
+    name: 'create_calendar_event',
+    description: 'Add an event to the user\'s Google Calendar. Use when the user asks to add a flight, meeting, appointment, or any calendar event. Extract date/time from emails or documents when available.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Event title (e.g. "Vol Shanghai PVG", "Meeting with Pierre")' },
+        start: { type: 'string', description: 'Start date-time in ISO 8601 format (e.g. 2026-03-15T14:00:00+04:00) or date for all-day (2026-03-15)' },
+        end: { type: 'string', description: 'End date-time ISO 8601, or same as start for 1h default' },
+        description: { type: 'string', description: 'Optional description or flight details' },
+        location: { type: 'string', description: 'Optional location (e.g. PVG, Dubai office)' },
+      },
+      required: ['title', 'start'],
+    },
+  },
+];
+
+async function executeCalendarTool(ownerId, name, input) {
+  if (name !== 'create_calendar_event') return { error: 'Unknown tool' };
+  const calSync = getCalendarSync();
+  if (!calSync?.createEvent) return { error: 'Calendar not available' };
+  try {
+    if (!input.title || !input.start) return { error: 'title and start required' };
+    const end = input.end || input.start;
+    const result = await calSync.createEvent(ownerId, {
+      title: input.title,
+      summary: input.title,
+      start: input.start,
+      end,
+      description: input.description || '',
+      location: input.location || '',
+    });
+    return { ok: true, id: result.id, htmlLink: result.htmlLink, summary: result.summary };
+  } catch (err) {
+    return { error: err.message };
+  }
+}
 
 /**
  * @param {string} userMessage
@@ -154,13 +195,15 @@ async function reply(userMessage, history = [], ownerId = null, mode = null) {
         const docResults = DOCUMENT_KEYWORDS.test(userMessage)
           ? await docProcessor.searchDocuments(ownerId, userMessage, 8)
           : await docProcessor.getRecentDocuments(ownerId, 5);
+        documentContext = '\n\n## Documents (Memory Vault)\n';
         if (docResults.length > 0) {
-          documentContext = '\n\n## Documents (Memory Vault)\n';
           documentContext += 'Use these for flights, tickets, billets, Shanghai, travel. If the answer is here, give it and cite the document.\n\n';
           docResults.forEach((d, i) => {
             const text = (d.content_text || d.content_preview || '').slice(0, 2500);
             documentContext += `**${d.filename}:**\n${text}\n\n`;
           });
+        } else {
+          documentContext += '(No documents found. User can upload in Documents page.)\n';
         }
       }
     } catch (err) {
@@ -177,16 +220,18 @@ async function reply(userMessage, history = [], ownerId = null, mode = null) {
         const shouldInject = ALWAYS_INJECT_RECENT || CALENDAR_KEYWORDS.test(userMessage);
         if (shouldInject) {
           const events = await calSync.getUpcomingEvents(ownerId, 10, 14);
+          calendarContext = '\n\n## Calendar (upcoming events)\n';
           if (events.length > 0) {
-            calendarContext = '\n\n## Calendar (upcoming events)\n';
             calendarContext += 'Use these to answer questions about meetings, schedule, agenda.\n\n';
             events.forEach((ev, i) => {
               const start = new Date(ev.start_at);
               const fmt = ev.is_all_day
                 ? start.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
                 : start.toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-              calendarContext += `**Event ${i + 1}:** ${ev.title || '(no title)'} | ${fmt}${ev.location ? ` @ ${ev.location}` : ''}\n`;
+              calendarContext += `**Event ${i + 1}:** ${ev.title || '(no title)'} | ${fmt}${ev.location ? ` @ ${ev.location}` : ''}${ev.gmail_address ? ` [${ev.gmail_address}]` : ''}\n`;
             });
+          } else {
+            calendarContext += '(No events — sync Google Calendar in Settings > Data Sources to see upcoming events.)\n';
           }
         }
       }
@@ -215,11 +260,44 @@ async function reply(userMessage, history = [], ownerId = null, mode = null) {
     max_tokens: 2048,
     system: systemPrompt,
     messages,
+    tools: ownerId ? CALENDAR_TOOLS : [],
   };
   if (useThinking) {
     createOptions.thinking = { type: 'enabled', budget_tokens: 2048 };
   }
-  const response = await client.messages.create(createOptions);
+
+  let response;
+  let currentMessages = [...messages];
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
+  const maxToolRounds = 3;
+  let round = 0;
+
+  while (round < maxToolRounds) {
+    response = await client.messages.create({ ...createOptions, messages: currentMessages });
+    totalInputTokens += response.usage?.input_tokens || 0;
+    totalOutputTokens += response.usage?.output_tokens || 0;
+
+    const toolUseBlocks = (response.content || []).filter((b) => b.type === 'tool_use');
+    if (toolUseBlocks.length === 0) break;
+
+    const toolResults = [];
+    for (const block of toolUseBlocks) {
+      const result = await executeCalendarTool(ownerId, block.name, block.input || {});
+      toolResults.push({
+        type: 'tool_result',
+        tool_use_id: block.id,
+        content: JSON.stringify(result),
+      });
+    }
+
+    currentMessages = [
+      ...currentMessages,
+      { role: 'assistant', content: response.content },
+      { role: 'user', content: toolResults },
+    ];
+    round++;
+  }
 
   const textBlock = response.content?.find((b) => b.type === 'text');
   const replyText = textBlock ? textBlock.text : 'No response.';
@@ -228,8 +306,8 @@ async function reply(userMessage, history = [], ownerId = null, mode = null) {
     reply: replyText,
     model: response.model || model,
     tokens: {
-      input: response.usage?.input_tokens || 0,
-      output: response.usage?.output_tokens || 0,
+      input: totalInputTokens || response.usage?.input_tokens || 0,
+      output: totalOutputTokens || response.usage?.output_tokens || 0,
     },
   };
 }
@@ -284,13 +362,15 @@ async function createReplyStream(userMessage, history = [], ownerId = null, mode
         const docResults = DOCUMENT_KEYWORDS.test(userMessage)
           ? await docProcessor.searchDocuments(ownerId, userMessage, 5)
           : await docProcessor.getRecentDocuments(ownerId, 5);
+        documentContext = '\n\n## Documents (Memory Vault)\n';
         if (docResults.length > 0) {
-          documentContext = '\n\n## Documents (Memory Vault)\n';
           documentContext += 'Use these for flights, tickets, invoices, travel, etc. If the answer is here, give it. Cite the document.\n\n';
           docResults.forEach((d, i) => {
             const text = (d.content_text || d.content_preview || '').slice(0, 2500);
             documentContext += `**${d.filename}:**\n${text}\n\n`;
           });
+        } else {
+          documentContext += '(No documents found. User can upload in Documents page.)\n';
         }
       }
     } catch (err) {
@@ -307,16 +387,18 @@ async function createReplyStream(userMessage, history = [], ownerId = null, mode
         const shouldInject = ALWAYS_INJECT_RECENT || CALENDAR_KEYWORDS.test(userMessage);
         if (shouldInject) {
           const events = await calSync.getUpcomingEvents(ownerId, 10, 14);
+          calendarContextStream = '\n\n## Calendar (upcoming events)\n';
           if (events.length > 0) {
-            calendarContextStream = '\n\n## Calendar (upcoming events)\n';
             calendarContextStream += 'Use these to answer questions about meetings, schedule, agenda.\n\n';
             events.forEach((ev, i) => {
               const start = new Date(ev.start_at);
               const fmt = ev.is_all_day
                 ? start.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
                 : start.toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-              calendarContextStream += `**Event ${i + 1}:** ${ev.title || '(no title)'} | ${fmt}${ev.location ? ` @ ${ev.location}` : ''}\n`;
+              calendarContextStream += `**Event ${i + 1}:** ${ev.title || '(no title)'} | ${fmt}${ev.location ? ` @ ${ev.location}` : ''}${ev.gmail_address ? ` [${ev.gmail_address}]` : ''}\n`;
             });
+          } else {
+            calendarContextStream += '(No events — sync Google Calendar in Settings > Data Sources to see upcoming events.)\n';
           }
         }
       }
@@ -349,4 +431,12 @@ async function createReplyStream(userMessage, history = [], ownerId = null, mode
   return { stream, model };
 }
 
-module.exports = { reply, createReplyStream, parseCommand, getClient, EVA_SYSTEM, MODE_HINTS };
+/** True when the message suggests adding an event to calendar — we need reply() with tools, not stream */
+function needsCalendarTools(message) {
+  if (!message || typeof message !== 'string') return false;
+  const m = message.trim().toLowerCase();
+  return /ajout(e|er)\s+(mon|ma|le|la)?\s*(vol|vols|meeting|event)|add\s+(my|the)\s+(flight|meeting|event)|mets?\s+(au|dans)\s+(mon\s+)?calendrier|create\s+(event|calendar)|cre[eé]e?r?\s+(un\s+)?(e?v[eé]nement|event)/i.test(m)
+    || (/\bvol\b.*\b(shanghai|pvg|dubai)\b|\b(flight|vol)\b.*\bcalendrier\b/i.test(m));
+}
+
+module.exports = { reply, createReplyStream, parseCommand, getClient, EVA_SYSTEM, MODE_HINTS, needsCalendarTools };

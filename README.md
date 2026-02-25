@@ -32,7 +32,10 @@ This repo contains the **web application**: backend API + frontend command cente
 Run the EVA schema on the **same** PostgreSQL instance as Halisoft:
 
 ```bash
-psql "$DATABASE_URL" -f migrations/001_create_eva_schema.sql
+# From project root:
+psql "$DATABASE_URL" -f eva/migrations/001_create_eva_schema.sql
+psql "$DATABASE_URL" -f eva/migrations/003_add_calendar_events.sql
+psql "$DATABASE_URL" -f eva/migrations/004_add_document_file_data.sql   # Required for document upload
 ```
 
 ### 2. Backend
@@ -86,6 +89,8 @@ npm run dev
 |-------------------|-------------|
 | `DATABASE_URL`    | PostgreSQL connection string (same as Halisoft) |
 | `ANTHROPIC_API_KEY` | Claude API key for EVA chat + document AI (PDF/image OCR) |
+| `EVA_GOOGLE_CLIENT_ID` | Google OAuth Client ID (Gmail + Calendar). Or `GOOGLE_CLIENT_ID`. |
+| `EVA_GOOGLE_CLIENT_SECRET` | Google OAuth Client Secret. Or `GOOGLE_CLIENT_SECRET`. |
 | `EVA_PORT` / `PORT` | API port (default 5002) |
 | `EVA_API_KEY`     | Optional API key for production |
 | `EVA_OWNER_EMAIL` | Default owner (default `loic@halisoft.biz`) |
@@ -163,7 +168,9 @@ npm install && npm run build   # Build
 npm start                       # Start
 ```
 
-Set env vars: `DATABASE_URL`, `ANTHROPIC_API_KEY`, `EVA_API_KEY`, `NODE_ENV=production`.
+Set env vars: `DATABASE_URL`, `ANTHROPIC_API_KEY`, `EVA_GOOGLE_CLIENT_ID`, `EVA_GOOGLE_CLIENT_SECRET`, `EVA_API_KEY`, `NODE_ENV=production`.
+
+**Gmail & Calendar:** Add `EVA_GOOGLE_CLIENT_ID` and `EVA_GOOGLE_CLIENT_SECRET` from [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services → Credentials. Enable Gmail API + Calendar API, create OAuth 2.0 Client ID (Web), add redirect URI: `https://eva.halisoft.biz/api/oauth/gmail/callback`.
 
 ## EVA Phases
 

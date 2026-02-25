@@ -153,7 +153,14 @@ export const api = {
       body: formData,
     });
     if (res.status === 401) { onAuthFailure(); throw new Error('Session expired'); }
-    if (!res.ok) throw new Error('Upload failed');
+    if (!res.ok) {
+      let msg = 'Upload failed';
+      try {
+        const body = await res.json();
+        if (body?.error) msg = body.error;
+      } catch (_) {}
+      throw new Error(msg);
+    }
     return res.json();
   },
   processDocument: (id) => request(`/documents/${id}/process`, { method: 'POST' }),

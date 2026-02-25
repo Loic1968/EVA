@@ -5,7 +5,7 @@
 body {
   margin: 0;
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  background: #f8fafc;
+  background: #f1f5f9;
   color: #1e293b;
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: rgba(34, 211, 238, 0.2);
@@ -13,6 +13,10 @@ body {
 html.dark body {
   background: #0f172a;
   color: #e2e8f0;
+}
+/* Light mode: subtle card separation */
+html:not(.dark) [class*="rounded-xl"].bg-white {
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
 }
 
 /* Custom scrollbar */
@@ -37,25 +41,26 @@ html.dark body {
 .eva-message ul, .eva-message ol { margin: 0.5rem 0; padding-left: 1.5rem; }
 .eva-message li { margin-bottom: 0.25rem; }
 .eva-message code {
-  background: rgba(0, 0, 0, 0.3);
+  background: rgba(0, 0, 0, 0.08);
   padding: 0.125rem 0.375rem;
   border-radius: 0.25rem;
   font-size: 0.85em;
   font-family: 'SF Mono', 'Fira Code', monospace;
 }
 .eva-message pre {
-  background: rgba(0, 0, 0, 0.4);
+  background: rgba(0, 0, 0, 0.06);
   padding: 0.75rem 1rem;
   border-radius: 0.5rem;
   overflow-x: auto;
   margin: 0.5rem 0;
 }
-.eva-message pre code {
-  background: transparent;
-  padding: 0;
-}
-.eva-message strong { color: #f1f5f9; }
-.eva-message a { color: #22d3ee; text-decoration: underline; }
+.eva-message pre code { background: transparent; padding: 0; }
+.eva-message strong { color: inherit; font-weight: 600; }
+.eva-message a { color: #0891b2; text-decoration: underline; }
+html.dark .eva-message code { background: rgba(0, 0, 0, 0.3); }
+html.dark .eva-message pre { background: rgba(0, 0, 0, 0.4); }
+html.dark .eva-message strong { color: #f1f5f9; }
+html.dark .eva-message a { color: #22d3ee; }
 
 /* Pulse animation for loading */
 @keyframes eva-pulse {

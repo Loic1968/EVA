@@ -30,6 +30,10 @@ const API_KEY = process.env.EVA_API_KEY;
 if (isProd && !process.env.EVA_API_KEY) {
   console.warn('[EVA] WARNING: EVA_API_KEY not set. Add it in Render → Environment for API protection.');
 }
+// Dev: warn if EVA_FRONTEND_URL uses wrong port (EVA Vite = 3001, not 5173)
+if (!isProd && process.env.EVA_FRONTEND_URL && /:5173(\/|$)/.test(process.env.EVA_FRONTEND_URL)) {
+  console.warn('[EVA] EVA_FRONTEND_URL uses port 5173 but EVA Vite runs on 3001. Change to http://localhost:3001');
+}
 
 // Helmet – security headers (CSP allows OpenAI Realtime for voice)
 app.use(helmet({
@@ -119,7 +123,16 @@ app.use('/api', evaRoutes);
 
 // Serve frontend (web/dist) when built (e.g. on Render: single service for eva.halisoft.biz)
 const distPath = path.join(__dirname, '../web/dist');
-if (fs.existsSync(distPath)) {
+const frontendUrl = process.env.EVA_FRONTEND_URL || process.env.EVA_WEB_URL;
+
+if (frontendUrl && !isProd) {
+  // Dev: redirect page requests to Vite frontend so 5002/sources → localhost:3001/sources
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || req.path === '/health') return next();
+    const base = frontendUrl.replace(/\/$/, '');
+    return res.redirect(base + req.originalUrl);
+  });
+} else if (fs.existsSync(distPath)) {
   app.use(express.static(distPath));
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api')) return next();

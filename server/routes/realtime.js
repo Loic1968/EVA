@@ -111,7 +111,7 @@ async function buildInstructionsWithContext(ownerId) {
           const fmt = ev.is_all_day
             ? start.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })
             : start.toLocaleString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-          instructions += `[Event ${i + 1}] ${ev.title || '(no title)'} | ${fmt}${ev.location ? ` @ ${ev.location}` : ''}\n`;
+          instructions += `[Event ${i + 1}] ${ev.title || '(no title)'} | ${fmt}${ev.location ? ` @ ${ev.location}` : ''}${ev.gmail_address ? ` [${ev.gmail_address}]` : ''}\n`;
         });
       }
     }

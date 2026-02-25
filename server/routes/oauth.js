@@ -12,12 +12,16 @@ async function gmailCallback(req, res, next) {
 
     const ownerId = state ? parseInt(state, 10) : null;
     if (!ownerId || isNaN(ownerId)) {
-      return res.redirect('/login?error=' + encodeURIComponent('Invalid OAuth state. Please log in and try again.'));
+      const frontendUrl = process.env.EVA_FRONTEND_URL || process.env.EVA_WEB_URL;
+    const base = frontendUrl ? frontendUrl.replace(/\/$/, '') : '';
+    return res.redirect(base + '/login?error=' + encodeURIComponent('Invalid OAuth state. Please log in and try again.'));
     }
 
     const tokens = await googleOAuth.exchangeCode(code);
     if (!tokens || !tokens.access_token) {
-      return res.redirect('/sources?error=' + encodeURIComponent('Token exchange failed'));
+      const frontendUrl = process.env.EVA_FRONTEND_URL || process.env.EVA_WEB_URL;
+    const base = frontendUrl ? frontendUrl.replace(/\/$/, '') : '';
+    return res.redirect(base + '/sources?error=' + encodeURIComponent('Token exchange failed'));
     }
 
     const gmailAddress = await googleOAuth.getUserEmail(tokens.access_token, tokens.refresh_token);
@@ -58,10 +62,14 @@ async function gmailCallback(req, res, next) {
       [ownerId, JSON.stringify({ gmail_address: gmailAddress })]
     );
 
-    res.redirect('/sources?connected=gmail');
+    const frontendUrl = process.env.EVA_FRONTEND_URL || process.env.EVA_WEB_URL;
+    const base = frontendUrl ? frontendUrl.replace(/\/$/, '') : '';
+    res.redirect(base + '/sources?connected=gmail');
   } catch (e) {
     console.error('[EVA] Gmail OAuth callback error:', e);
-    res.redirect('/sources?error=' + encodeURIComponent(e.message || 'OAuth failed'));
+    const frontendUrl = process.env.EVA_FRONTEND_URL || process.env.EVA_WEB_URL;
+    const base = frontendUrl ? frontendUrl.replace(/\/$/, '') : '';
+    res.redirect(base + '/sources?error=' + encodeURIComponent(e.message || 'OAuth failed'));
   }
 }
 

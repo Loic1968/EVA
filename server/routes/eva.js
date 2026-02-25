@@ -248,6 +248,51 @@ router.post('/chat/stream', async (req, res, next) => {
       return res.status(400).json({ error: 'message required after command' });
     }
 
+    // Calendar-add intent needs reply() with tools (create_calendar_event); stream has no tools
+    if (req.ownerId && evaChat.needsCalendarTools(msgToSend)) {
+      const result = await evaChat.reply(msgToSend, chatHistory, req.ownerId, mode);
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.flushHeaders?.();
+      if (result.reply) {
+        res.write(`data: ${JSON.stringify({ type: 'chunk', text: result.reply })}\n\n`);
+      }
+      if (convId) {
+        await db.query(
+          `INSERT INTO eva.messages (conversation_id, owner_id, role, content) VALUES ($1, $2, 'user', $3)`,
+          [convId, req.ownerId, message.trim()]
+        );
+        await db.query(
+          `INSERT INTO eva.messages (conversation_id, owner_id, role, content, tokens_used) VALUES ($1, $2, 'assistant', $3, $4)`,
+          [convId, req.ownerId, result.reply, (result.tokens?.input || 0) + (result.tokens?.output || 0)]
+        );
+        await db.query(
+          `UPDATE eva.conversations SET updated_at = now(), title = COALESCE(NULLIF(title, ''), $3) WHERE id = $1 AND owner_id = $2`,
+          [convId, req.ownerId, message.trim().slice(0, 100)]
+        );
+      }
+      await db.query(
+        `INSERT INTO eva.audit_logs (owner_id, action_type, channel, details) VALUES ($1, 'query', 'chat', $2)`,
+        [req.ownerId, JSON.stringify({
+          message: message.slice(0, 500),
+          replyLength: result.reply?.length ?? 0,
+          model: result.model,
+          conversation_id: convId,
+          stream: true,
+          calendar_tools: true,
+        })]
+      );
+      res.write(`data: ${JSON.stringify({
+        type: 'done',
+        reply: result.reply,
+        model: result.model,
+        tokens: result.tokens,
+        conversation_id: convId,
+      })}\n\n`);
+      return res.end();
+    }
+
     const { stream, model } = await evaChat.createReplyStream(msgToSend, chatHistory, req.ownerId, mode);
 
     res.setHeader('Content-Type', 'text/event-stream');
@@ -556,6 +601,12 @@ async function handleDocumentUpload(req, res, next) {
 
     res.status(201).json(updated.rows[0] || r.rows[0]);
   } catch (e) {
+    if (/column "file_data" does not exist|column "content_text" does not exist/i.test(String(e.message))) {
+      return res.status(500).json({
+        error: 'Database schema outdated. Run: psql "$DATABASE_URL" -f eva/migrations/004_add_document_file_data.sql',
+        detail: e.message,
+      });
+    }
     next(e);
   }
 }
@@ -863,20 +914,24 @@ router.get('/gmail/emails', async (req, res, next) => {
 router.post('/calendar/sync', async (req, res, next) => {
   try {
     const result = await calendarSync.syncCalendarForAllAccounts(req.ownerId);
-    res.json({ status: 'synced', ...result });
+    res.json({ status: 'synced', synced: result.synced, accounts: result.accounts, errors: result.errors });
   } catch (e) {
     next(e);
   }
 });
 
-// List calendar events
+// List calendar events (optional gmail_account_id, from, to for date range)
 router.get('/calendar/events', async (req, res, next) => {
   try {
-    const { limit = 50, days = 14 } = req.query;
+    const { limit = 100, days = 60, gmail_account_id, from, to } = req.query;
+    const gmailAccountId = gmail_account_id ? parseInt(gmail_account_id, 10) : null;
     const events = await calendarSync.getUpcomingEvents(
       req.ownerId,
-      Math.min(Number(limit) || 50, 100),
-      Math.min(Number(days) || 14, 90)
+      Math.min(Number(limit) || 100, 200),
+      Math.min(Number(days) || 60, 90),
+      gmailAccountId,
+      from || null,
+      to || null
     );
     res.json({ events });
   } catch (e) {

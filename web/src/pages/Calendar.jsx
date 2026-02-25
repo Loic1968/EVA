@@ -1,11 +1,38 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 
+const locale = navigator.language?.startsWith('fr') ? 'fr-FR' : 'en-GB';
+const WEEKDAYS = locale.startsWith('fr')
+  ? ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
+  : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+function getMonthRange(year, month) {
+  const first = new Date(year, month, 1);
+  const last = new Date(year, month + 1, 0);
+  const start = new Date(first);
+  const end = new Date(last);
+  // Week starts Monday (1) for fr, Sunday (0) for en
+  const weekStart = locale.startsWith('fr') ? 1 : 0;
+  let dow = start.getDay(); // 0=Sun, 1=Mon, ...
+  let back = weekStart === 1 ? (dow === 0 ? 6 : dow - 1) : dow;
+  start.setDate(start.getDate() - back);
+  dow = end.getDay();
+  let fwd = weekStart === 1 ? (dow === 0 ? 0 : 7 - dow) : 6 - dow;
+  end.setDate(end.getDate() + fwd);
+  return { start, end };
+}
+
 export default function Calendar() {
   const [gmailAccounts, setGmailAccounts] = useState([]);
+  const [filterAccount, setFilterAccount] = useState(null);
   const [syncing, setSyncing] = useState({ email: false, calendar: false });
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
+  const [viewMode, setViewMode] = useState('month'); // 'month' | 'agenda'
+  const [current, setCurrent] = useState(() => {
+    const d = new Date();
+    return { year: d.getFullYear(), month: d.getMonth() };
+  });
 
   const loadAccounts = async () => {
     try {
@@ -14,30 +41,49 @@ export default function Calendar() {
     } catch (_) {}
   };
 
+  const [allEvents, setAllEvents] = useState([]);
+  const loadEvents = async () => {
+    try {
+      const { start, end } = getMonthRange(current.year, current.month);
+      // Fetch a bit before/after for smooth nav
+      const padStart = new Date(start);
+      padStart.setDate(padStart.getDate() - 7);
+      const padEnd = new Date(end);
+      padEnd.setDate(padEnd.getDate() + 7);
+      const params = {
+        from: padStart.toISOString().slice(0, 10),
+        to: padEnd.toISOString().slice(0, 10),
+        limit: 200,
+      };
+      if (filterAccount) params.gmail_account_id = filterAccount;
+      const res = await api.getCalendarEvents(params).catch(() => ({ events: [] }));
+      setAllEvents(res.events || []);
+    } catch (_) {
+      setAllEvents([]);
+    }
+  };
+
   useEffect(() => {
     loadAccounts();
   }, []);
 
-  const syncEmail = async () => {
-    if (gmailAccounts.length === 0) {
-      setError('Connect Gmail first in Data Sources.');
-      return;
-    }
-    setSyncing((s) => ({ ...s, email: true }));
-    setError(null);
-    setSuccess(null);
-    try {
-      for (const acct of gmailAccounts) {
-        await api.syncGmail(acct.id);
-      }
-      setSuccess(`Synced ${gmailAccounts.length} Gmail account(s).`);
-      await loadAccounts();
-    } catch (e) {
-      setError('Email sync failed: ' + (e?.message || 'Unknown error'));
-    } finally {
-      setSyncing((s) => ({ ...s, email: false }));
-    }
-  };
+  useEffect(() => {
+    loadEvents();
+  }, [current.year, current.month, filterAccount]);
+
+  const events = allEvents; // already filtered by loadEvents when filterAccount is set
+
+  const [autoSyncDone, setAutoSyncDone] = useState(false);
+  useEffect(() => {
+    if (autoSyncDone || gmailAccounts.length === 0 || allEvents.length > 0) return;
+    setAutoSyncDone(true);
+    setSyncing((s) => ({ ...s, calendar: true }));
+    api
+      .syncCalendar()
+      .then(() => loadEvents())
+      .finally(() => setSyncing((s) => ({ ...s, calendar: false })))
+      .catch(() => {});
+  }, [gmailAccounts.length, allEvents.length, autoSyncDone]);
 
   const syncCalendar = async () => {
     if (gmailAccounts.length === 0) {
@@ -46,91 +92,278 @@ export default function Calendar() {
     }
     setSyncing((s) => ({ ...s, calendar: true }));
     setError(null);
+    setSuccess(null);
     try {
       const res = await api.syncCalendar();
-      setSuccess(`Calendar synced. ${res.accounts || 1} account(s), ${res.synced ?? 0} events.`);
+      setSuccess(`Synced ${res.accounts || 1} account(s), ${res.synced ?? 0} events.`);
+      if (res.errors?.length) setError(res.errors.join(' '));
+      await loadEvents();
     } catch (e) {
-      setError(e?.message || 'Calendar sync failed.');
+      setError(e?.body?.error || e?.message || 'Calendar sync failed.');
     } finally {
       setSyncing((s) => ({ ...s, calendar: false }));
     }
   };
 
   const hasGmail = gmailAccounts.length > 0;
-  const calendarReady = typeof api.syncCalendar === 'function' && hasGmail;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const prevMonth = () => {
+    setCurrent((c) => (c.month === 0 ? { year: c.year - 1, month: 11 } : { ...c, month: c.month - 1 }));
+  };
+  const nextMonth = () => {
+    setCurrent((c) => (c.month === 11 ? { year: c.year + 1, month: 0 } : { ...c, month: c.month + 1 }));
+  };
+  const goToday = () => {
+    const d = new Date();
+    setCurrent({ year: d.getFullYear(), month: d.getMonth() });
+  };
+
+  const { start: gridStart } = getMonthRange(current.year, current.month);
+  const days = [];
+  const d = new Date(gridStart);
+  for (let i = 0; i < 42; i++) {
+    days.push(new Date(d));
+    d.setDate(d.getDate() + 1);
+  }
+
+  const eventsByDay = {};
+  for (const ev of events) {
+    const key = new Date(ev.start_at).toDateString();
+    if (!eventsByDay[key]) eventsByDay[key] = [];
+    eventsByDay[key].push(ev);
+  }
+  for (const k of Object.keys(eventsByDay)) {
+    eventsByDay[k].sort((a, b) => new Date(a.start_at) - new Date(b.start_at));
+  }
+
+  const formatTime = (ev) => {
+    if (ev.is_all_day) return null;
+    const start = new Date(ev.start_at);
+    return start.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const monthTitle = new Date(current.year, current.month).toLocaleDateString(locale, { month: 'long', year: 'numeric' });
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">Calendar</h1>
-        <p className="text-slate-600 dark:text-eva-muted text-sm mt-1">
-          Sync Google Calendar and Gmail. EVA uses this for meetings, flights, schedules.
-        </p>
-      </div>
-
-      {error && <div className="text-red-600 dark:text-red-400 text-sm bg-red-500/10 rounded-lg px-4 py-2">{error}</div>}
-      {success && <div className="text-emerald-600 dark:text-emerald-400 text-sm bg-emerald-500/10 rounded-lg px-4 py-2">{success}</div>}
-
-      {/* Sync options */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 p-5">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 rounded-lg bg-red-500/20 flex items-center justify-center text-xl">✉</div>
-            <div>
-              <h2 className="font-medium text-slate-900 dark:text-white">Sync Email</h2>
-              <p className="text-xs text-slate-500 dark:text-eva-muted">Gmail inbox, sent, drafts</p>
-            </div>
-          </div>
-          <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
-            Sync your Gmail to the Memory Vault. EVA will use emails when you chat.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={syncEmail}
-              disabled={syncing.email || !hasGmail}
-              className="px-4 py-2 rounded-lg bg-cyan-500/20 text-cyan-600 dark:text-eva-accent hover:bg-cyan-500/30 disabled:opacity-50 text-sm font-medium"
-            >
-              {syncing.email ? 'Syncing…' : hasGmail ? 'Sync Now' : 'Connect Gmail first'}
-            </button>
-            <a href="/sources" className="px-4 py-2 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-300 dark:hover:bg-slate-600 text-sm font-medium">
-              Data Sources →
-            </a>
-          </div>
-          {hasGmail && (
-            <div className="mt-3 text-xs text-slate-500 dark:text-eva-muted">
-              {gmailAccounts.length} account(s): {gmailAccounts.map((a) => a.gmail_address).join(', ')}
-            </div>
-          )}
-        </div>
-
-        <div className="bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 p-5">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center text-xl">📅</div>
-            <div>
-              <h2 className="font-medium text-slate-900 dark:text-white">Sync Calendar</h2>
-              <p className="text-xs text-slate-500 dark:text-eva-muted">Google Calendar events</p>
-            </div>
-          </div>
-          <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
-            Sync Google Calendar so EVA knows your meetings and schedule.
-          </p>
+    <div className="flex flex-col h-[calc(100vh-4rem)] min-h-0 bg-slate-50 dark:bg-slate-900/50">
+      {/* Header */}
+      <div className="shrink-0 flex items-center justify-between gap-4 py-3 px-4 border-b border-slate-200 dark:border-slate-700/40 bg-white dark:bg-eva-panel">
+        <div className="flex items-center gap-3">
           <button
-            onClick={syncCalendar}
-            disabled={syncing.calendar || !calendarReady}
-            className="px-4 py-2 rounded-lg bg-cyan-500/20 text-cyan-600 dark:text-eva-accent hover:bg-cyan-500/30 disabled:opacity-50 text-sm font-medium"
+            onClick={prevMonth}
+            className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400"
+            aria-label="Previous month"
           >
-            {syncing.calendar ? 'Syncing…' : calendarReady ? 'Sync Now' : 'Connect Gmail first'}
+            ‹
+          </button>
+          <button
+            onClick={nextMonth}
+            className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400"
+            aria-label="Next month"
+          >
+            ›
+          </button>
+          <h1 className="text-xl font-semibold text-slate-900 dark:text-white capitalize min-w-[180px]">{monthTitle}</h1>
+          <button
+            onClick={goToday}
+            className="px-3 py-1.5 rounded-lg text-sm font-medium bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600"
+          >
+            Today
           </button>
         </div>
+        <div className="flex items-center gap-2">
+          <div className="flex rounded-lg overflow-hidden border border-slate-200 dark:border-slate-600">
+            <button
+              onClick={() => setViewMode('month')}
+              className={`px-4 py-2 text-sm font-medium ${viewMode === 'month' ? 'bg-cyan-500 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'}`}
+            >
+              Month
+            </button>
+            <button
+              onClick={() => setViewMode('agenda')}
+              className={`px-4 py-2 text-sm font-medium ${viewMode === 'agenda' ? 'bg-cyan-500 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'}`}
+            >
+              Agenda
+            </button>
+          </div>
+          <button
+            onClick={syncCalendar}
+            disabled={syncing.calendar || !hasGmail}
+            className="px-4 py-2 rounded-lg bg-cyan-500/20 text-cyan-600 dark:text-eva-accent hover:bg-cyan-500/30 disabled:opacity-50 text-sm font-medium"
+          >
+            {syncing.calendar ? 'Syncing…' : 'Sync'}
+          </button>
+          <a href="/sources" className="px-4 py-2 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-300 dark:hover:bg-slate-600 text-sm font-medium">
+            Sources
+          </a>
+        </div>
       </div>
 
-      {/* Quick links */}
-      <div className="bg-slate-100 dark:bg-slate-800/40 rounded-xl p-5">
-        <h3 className="text-slate-700 dark:text-slate-300 font-medium mb-2">Quick links</h3>
-        <div className="flex flex-wrap gap-3">
-          <a href="/emails" className="text-sm text-cyan-600 dark:text-eva-accent hover:underline">View Emails →</a>
-          <a href="/sources" className="text-sm text-cyan-600 dark:text-eva-accent hover:underline">Data Sources →</a>
-        </div>
+      {error && <div className="shrink-0 text-red-600 dark:text-red-400 text-sm bg-red-500/10 px-4 py-2">{error}</div>}
+      {success && <div className="shrink-0 text-emerald-600 dark:text-emerald-400 text-sm bg-emerald-500/10 px-4 py-2">{success}</div>}
+
+      <div className="flex flex-1 min-h-0">
+        {/* Sidebar */}
+        <aside className="w-52 shrink-0 border-r border-slate-200 dark:border-slate-700/40 bg-white dark:bg-eva-panel flex flex-col">
+          <div className="p-3 border-b border-slate-200 dark:border-slate-700/40">
+            <h2 className="text-xs font-medium text-slate-500 dark:text-eva-muted uppercase tracking-wider">Calendars</h2>
+          </div>
+          <div className="flex-1 overflow-y-auto p-2">
+            <button
+              onClick={() => setFilterAccount(null)}
+              className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 ${!filterAccount ? 'bg-cyan-500/20 text-cyan-600 dark:text-eva-accent' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/50'}`}
+            >
+              <span className="w-2 h-2 rounded-full bg-cyan-400" />
+              All
+            </button>
+            {gmailAccounts.map((a) => {
+              const count = allEvents.filter((e) => e.gmail_account_id === a.id).length;
+              const isActive = filterAccount === a.id;
+              return (
+                <button
+                  key={a.id}
+                  onClick={() => setFilterAccount(a.id)}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2 truncate ${isActive ? 'bg-cyan-500/20 text-cyan-600 dark:text-eva-accent' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/50'}`}
+                  title={a.gmail_address}
+                >
+                  <span className="w-2 h-2 rounded-full bg-blue-400 shrink-0" />
+                  <span className="truncate flex-1">{a.gmail_address}</span>
+                  {count > 0 && <span className="text-xs text-slate-500">{count}</span>}
+                </button>
+              );
+            })}
+            {!hasGmail && (
+              <p className="px-3 py-4 text-sm text-slate-500">
+                <a href="/sources" className="text-cyan-600 hover:underline">Connect Gmail</a>
+              </p>
+            )}
+          </div>
+          <div className="p-2 border-t border-slate-200 dark:border-slate-700/40">
+            <button
+              onClick={async () => {
+                if (!hasGmail) return;
+                setSyncing((s) => ({ ...s, email: true }));
+                try {
+                  for (const acct of gmailAccounts) await api.syncGmail(acct.id);
+                  await loadAccounts();
+                } finally {
+                  setSyncing((s) => ({ ...s, email: false }));
+                }
+              }}
+              disabled={syncing.email || !hasGmail}
+              className="w-full px-3 py-2 rounded-lg text-xs text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/50 disabled:opacity-50"
+            >
+              {syncing.email ? 'Syncing…' : 'Sync Email'}
+            </button>
+          </div>
+        </aside>
+
+        {/* Main content */}
+        <main className="flex-1 overflow-hidden flex flex-col min-w-0">
+          {viewMode === 'month' ? (
+            /* Month grid (Outlook-style) */
+            <div className="flex-1 flex flex-col p-4 overflow-hidden">
+              <div className="grid grid-cols-7 border-b border-slate-200 dark:border-slate-700/40 shrink-0">
+                {WEEKDAYS.map((wd) => (
+                  <div key={wd} className="py-2 px-1 text-center text-xs font-medium text-slate-500 dark:text-eva-muted">
+                    {wd}
+                  </div>
+                ))}
+              </div>
+              <div className="flex-1 grid grid-cols-7 grid-rows-6 gap-px bg-slate-200 dark:bg-slate-700/40 overflow-auto min-h-0">
+                {days.map((day) => {
+                  const key = day.toDateString();
+                  const dayEvents = eventsByDay[key] || [];
+                  const isCurrentMonth = day.getMonth() === current.month;
+                  const isToday = day.getTime() === today.getTime();
+                  return (
+                    <div
+                      key={key}
+                      className={`bg-white dark:bg-eva-panel flex flex-col min-h-[80px] ${!isCurrentMonth ? 'opacity-50' : ''}`}
+                    >
+                      <div
+                        className={`shrink-0 py-1 px-2 text-xs font-medium ${isToday ? 'bg-cyan-500 text-white rounded-full w-6 h-6 flex items-center justify-center' : 'text-slate-600 dark:text-slate-400'}`}
+                      >
+                        {day.getDate()}
+                      </div>
+                      <div className="flex-1 overflow-y-auto p-1 space-y-0.5 min-h-0">
+                        {dayEvents.slice(0, 3).map((ev) => (
+                          <div
+                            key={ev.id}
+                            className="text-xs px-2 py-0.5 rounded truncate bg-cyan-500/15 text-cyan-700 dark:text-cyan-400 border-l-2 border-cyan-500"
+                            title={`${ev.title || ''} ${ev.location ? '• ' + ev.location : ''}`}
+                          >
+                            {formatTime(ev) && <span className="text-slate-500 mr-1">{formatTime(ev)}</span>}
+                            {ev.title || '(No title)'}
+                          </div>
+                        ))}
+                        {dayEvents.length > 3 && (
+                          <div className="text-xs text-slate-500 pl-2">+{dayEvents.length - 3} more</div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            /* Agenda list */
+            <div className="flex-1 overflow-y-auto p-6">
+              {events.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-20 text-center">
+                  <div className="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-3xl mb-4">📅</div>
+                  <p className="text-slate-600 dark:text-eva-muted font-medium">No events</p>
+                  <p className="text-sm text-slate-500 mt-1">
+                    {hasGmail ? 'Click Sync to import. If you see "insufficient scopes", disconnect and reconnect Gmail in Data Sources.' : 'Connect Gmail in Data Sources.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="max-w-xl space-y-6">
+                  {Object.entries(
+                    events.reduce((acc, ev) => {
+                      const d = new Date(ev.start_at);
+                      d.setHours(0, 0, 0, 0);
+                      const k = d.getTime();
+                      if (!acc[k]) acc[k] = { date: d, events: [] };
+                      acc[k].events.push(ev);
+                      return acc;
+                    }, {})
+                  )
+                    .sort((a, b) => a[0] - b[0])
+                    .map(([, g]) => {
+                      g.events.sort((a, b) => new Date(a.start_at) - new Date(b.start_at));
+                      const isToday = g.date.getTime() === today.getTime();
+                      return (
+                        <section key={g.date.getTime()}>
+                          <h3 className="text-sm font-semibold text-slate-500 dark:text-eva-muted uppercase tracking-wider mb-2">
+                            {isToday ? 'Today' : g.date.toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' })}
+                          </h3>
+                          <div className="space-y-2">
+                            {g.events.map((ev) => (
+                              <div
+                                key={ev.id}
+                                className="flex gap-4 p-4 rounded-xl bg-white dark:bg-eva-panel border border-slate-200 dark:border-slate-700/40"
+                              >
+                                <div className="shrink-0 w-16 text-sm text-slate-500">
+                                  {ev.is_all_day ? 'All day' : `${new Date(ev.start_at).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })} – ${new Date(ev.end_at).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}`}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-medium text-slate-900 dark:text-white">{ev.title || '(No title)'}</div>
+                                  {ev.location && <div className="text-sm text-slate-500 mt-0.5">📍 {ev.location}</div>}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </section>
+                      );
+                    })}
+                </div>
+              )}
+            </div>
+          )}
+        </main>
       </div>
     </div>
   );

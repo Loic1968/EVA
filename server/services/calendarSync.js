@@ -10,7 +10,7 @@ const CALENDAR_FETCH_DAYS = parseInt(process.env.CALENDAR_FETCH_DAYS || '60', 10
 
 /**
  * Sync calendar events for a given Gmail account.
- * Fetches events from primary calendar for the last N days and next N days.
+ * Fetches from ALL calendars in the user's list (primary + work, shared, etc.).
  */
 async function syncCalendar(ownerId, gmailAccountId) {
   const acctResult = await db.query(
@@ -44,87 +44,119 @@ async function syncCalendar(ownerId, gmailAccountId) {
   const timeMax = new Date(now);
   timeMax.setDate(timeMax.getDate() + CALENDAR_FETCH_DAYS);
 
-  let newCount = 0;
-  let pageToken = null;
-
-  do {
-    const res = await calendar.events.list({
-      calendarId: 'primary',
-      timeMin: timeMin.toISOString(),
-      timeMax: timeMax.toISOString(),
-      maxResults: 250,
-      pageToken: pageToken || undefined,
-      orderBy: 'startTime',
-      singleEvents: true,
-    });
-
-    const events = res.data.items || [];
-
-    for (const ev of events) {
-      if (!ev.id || ev.status === 'cancelled') continue;
-
-      const start = ev.start?.dateTime || ev.start?.date;
-      const end = ev.end?.dateTime || ev.end?.date;
-      if (!start || !end) continue;
-
-      const result = await db.query(
-        `INSERT INTO eva.calendar_events
-         (owner_id, gmail_account_id, event_id, title, description, location, start_at, end_at, html_link, is_all_day, synced_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
-         ON CONFLICT (gmail_account_id, event_id) DO UPDATE SET
-           title = EXCLUDED.title,
-           description = EXCLUDED.description,
-           location = EXCLUDED.location,
-           start_at = EXCLUDED.start_at,
-           end_at = EXCLUDED.end_at,
-           html_link = EXCLUDED.html_link,
-           is_all_day = EXCLUDED.is_all_day,
-           synced_at = now()`,
-        [
-          ownerId,
-          gmailAccountId,
-          ev.id,
-          ev.summary || '(no title)',
-          (ev.description || '').slice(0, 10000),
-          ev.location || null,
-          new Date(start),
-          new Date(end),
-          ev.htmlLink || null,
-          !!ev.start?.date,
-        ]
-      );
-      if (result.rowCount > 0) newCount++;
+  // 1. List all calendars the user has (primary + work, shared, etc.)
+  let calendarIds = [{ id: 'primary' }];
+  try {
+    const listRes = await calendar.calendarList.list({ maxResults: 50 });
+    const items = listRes.data.items || [];
+    if (items.length > 0) {
+      calendarIds = items.map((c) => ({ id: c.id, summary: c.summary || c.id }));
     }
+  } catch (err) {
+    console.warn('[Calendar Sync] calendarList.list failed, using primary only:', err.message);
+  }
+  console.log(`[Calendar Sync] Syncing ${calendarIds.length} calendar(s): ${calendarIds.map((c) => c.id).join(', ')}`);
 
-    pageToken = res.data.nextPageToken;
-  } while (pageToken);
+  let totalSynced = 0;
+  for (const cal of calendarIds) {
+    let pageToken = null;
+    do {
+      try {
+        const res = await calendar.events.list({
+          calendarId: cal.id,
+          timeMin: timeMin.toISOString(),
+          timeMax: timeMax.toISOString(),
+          maxResults: 250,
+          pageToken: pageToken || undefined,
+          orderBy: 'startTime',
+          singleEvents: true,
+        });
 
-  return { synced: newCount };
+        const events = res.data.items || [];
+
+        for (const ev of events) {
+          if (!ev.id || ev.status === 'cancelled') continue;
+
+          const start = ev.start?.dateTime || ev.start?.date;
+          const end = ev.end?.dateTime || ev.end?.date;
+          if (!start || !end) continue;
+
+          // event_id unique per calendar: primary uses raw id (backward compat), others use prefix
+          const eventId = cal.id === 'primary' ? ev.id : `${cal.id}__${ev.id}`.replace(/[^a-zA-Z0-9._-]/g, '_');
+
+          await db.query(
+            `INSERT INTO eva.calendar_events
+             (owner_id, gmail_account_id, event_id, title, description, location, start_at, end_at, html_link, is_all_day, synced_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
+             ON CONFLICT (gmail_account_id, event_id) DO UPDATE SET
+               title = EXCLUDED.title,
+               description = EXCLUDED.description,
+               location = EXCLUDED.location,
+               start_at = EXCLUDED.start_at,
+               end_at = EXCLUDED.end_at,
+               html_link = EXCLUDED.html_link,
+               is_all_day = EXCLUDED.is_all_day,
+               synced_at = now()`,
+            [
+              ownerId,
+              gmailAccountId,
+              eventId,
+              ev.summary || '(no title)',
+              (ev.description || '').slice(0, 10000),
+              ev.location || null,
+              new Date(start),
+              new Date(end),
+              ev.htmlLink || null,
+              !!ev.start?.date,
+            ]
+          );
+          totalSynced++;
+        }
+
+        pageToken = res.data.nextPageToken;
+      } catch (err) {
+        console.warn(`[Calendar Sync] calendar ${cal.id} failed:`, err.message);
+        break;
+      }
+    } while (pageToken);
+  }
+
+  console.log(`[Calendar Sync] Account ${gmailAccountId}: ${totalSynced} events synced`);
+  return { synced: totalSynced };
 }
 
 /**
  * Sync calendar for all Gmail accounts of an owner.
+ * Returns { synced, accounts, errors } so frontend can show what failed.
  */
 async function syncCalendarForAllAccounts(ownerId) {
   const acctResult = await db.query(
-    'SELECT id FROM eva.gmail_accounts WHERE owner_id = $1',
+    'SELECT id, gmail_address FROM eva.gmail_accounts WHERE owner_id = $1',
     [ownerId]
   );
   const accounts = acctResult.rows;
   if (accounts.length === 0) {
-    return { synced: 0, accounts: 0 };
+    return { synced: 0, accounts: 0, errors: ['No Gmail account connected. Connect Gmail in Data Sources first.'] };
   }
 
   let totalSynced = 0;
+  const errors = [];
   for (const acct of accounts) {
     try {
       const r = await syncCalendar(ownerId, acct.id);
       totalSynced += r.synced;
     } catch (err) {
-      console.warn(`[Calendar Sync] Account ${acct.id} failed:`, err.message);
+      const msg = err.message || String(err);
+      const label = acct.gmail_address || `Account ${acct.id}`;
+      console.warn(`[Calendar Sync] ${label} failed:`, msg);
+      const isScopeError = /insufficient authentication scopes|Calendar API has not been used|Access Not Configured|403|scope|invalid_grant/i.test(msg);
+      const hint = isScopeError
+        ? ' → Disconnect and reconnect Gmail in Data Sources to grant calendar access.'
+        : '';
+      errors.push(`${label}: ${msg}${hint}`);
     }
   }
-  return { synced: totalSynced, accounts: accounts.length };
+  return { synced: totalSynced, accounts: accounts.length, errors: errors.length > 0 ? errors : undefined };
 }
 
 /**
@@ -285,21 +317,39 @@ async function deleteEvent(ownerId, eventId) {
 }
 
 /**
- * Get upcoming calendar events for an owner (for EVA context injection).
+ * Get calendar events for an owner.
+ * @param {number} ownerId
+ * @param {number} limit
+ * @param {number} daysAhead - used when from/to not provided
+ * @param {number|null} gmailAccountId - filter by account (optional)
+ * @param {string|null} fromStr - ISO date for range start (optional)
+ * @param {string|null} toStr - ISO date for range end (optional)
  */
-async function getUpcomingEvents(ownerId, limit = 15, daysAhead = 14) {
+async function getUpcomingEvents(ownerId, limit = 15, daysAhead = 14, gmailAccountId = null, fromStr = null, toStr = null) {
   try {
-    const from = new Date();
-    const to = new Date();
-    to.setDate(to.getDate() + daysAhead);
+    let from, to;
+    if (fromStr && toStr) {
+      from = new Date(fromStr);
+      to = new Date(toStr);
+    } else {
+      from = new Date();
+      to = new Date();
+      to.setDate(to.getDate() + daysAhead);
+    }
+
+    const accountFilter = gmailAccountId ? ' AND ce.gmail_account_id = $5' : '';
+    const params = [ownerId, from, to, Math.min(limit, 200)];
+    if (gmailAccountId) params.push(gmailAccountId);
 
     const r = await db.query(
-      `SELECT id, title, start_at, end_at, location, is_all_day, gmail_account_id
-       FROM eva.calendar_events
-       WHERE owner_id = $1 AND start_at >= $2 AND start_at <= $3
-       ORDER BY start_at ASC
+      `SELECT ce.id, ce.title, ce.start_at, ce.end_at, ce.location, ce.is_all_day,
+              ce.gmail_account_id, ga.gmail_address
+       FROM eva.calendar_events ce
+       JOIN eva.gmail_accounts ga ON ga.id = ce.gmail_account_id AND ga.owner_id = ce.owner_id
+       WHERE ce.owner_id = $1 AND ce.start_at >= $2 AND ce.start_at <= $3${accountFilter}
+       ORDER BY ce.start_at ASC
        LIMIT $4`,
-      [ownerId, from, to, Math.min(limit, 50)]
+      params
     );
     return r.rows;
   } catch (err) {

@@ -3,6 +3,7 @@ import { api } from '../api';
 
 const SOURCE_TYPES = [
   { type: 'gmail', label: 'Gmail', desc: 'Connect via OAuth2 — EVA reads your recent emails and uses them as context.', color: 'bg-red-500/20 text-red-600 dark:text-red-400', oauth: true },
+  { type: 'calendar', label: 'Google Calendar', desc: 'Calendriers synchronisés via Gmail (1 par compte). Sync dans Calendar.', color: 'bg-blue-500/20 text-blue-600 dark:text-blue-400', route: '/calendar', calendarFromGmail: true },
   { type: 'documents', label: 'Documents', desc: 'PDFs, contracts, reports — upload via the Documents page.', color: 'bg-purple-500/20 text-purple-600 dark:text-purple-400', route: '/documents', alwaysAvailable: true },
   { type: 'whatsapp', label: 'WhatsApp', desc: 'Chat exports (soon)', color: 'bg-green-500/20 text-green-600 dark:text-green-400', soon: true },
   { type: 'linkedin', label: 'LinkedIn', desc: 'Messages & connections (soon)', color: 'bg-indigo-500/20 text-indigo-600 dark:text-indigo-400', soon: true },
@@ -55,7 +56,11 @@ export default function DataSources() {
       if (e.status === 401) {
         setError('Session expired. Please log in again, then try connecting Gmail.');
       } else {
-        setError((e.body?.error || e.message) + '. Ensure EVA_GOOGLE_CLIENT_ID and EVA_GOOGLE_CLIENT_SECRET are set on Render.');
+        const isLocal = typeof window !== 'undefined' && /localhost|127\.0\.0\.1/.test(window.location?.hostname || '');
+        const hint = isLocal
+          ? ' Add EVA_GOOGLE_CLIENT_ID and EVA_GOOGLE_CLIENT_SECRET to eva/.env (see .env.example).'
+          : ' Add them in Render → Environment.';
+        setError((e.body?.error || e.message) + hint);
       }
     }
   };
@@ -117,16 +122,25 @@ export default function DataSources() {
 
       {error && <div className="text-red-600 dark:text-red-400 text-sm bg-red-500/10 rounded-lg px-4 py-2">{error}</div>}
       {connectSuccess && (
-        <div className="text-emerald-600 dark:text-emerald-400 text-sm bg-emerald-500/10 rounded-lg px-4 py-2 flex items-center gap-2">
-          <span>✓</span> {connectSuccess}
+        <div className="text-emerald-600 dark:text-emerald-400 text-sm bg-emerald-500/10 rounded-lg px-4 py-2 flex items-center justify-between gap-2 flex-wrap">
+          <span className="flex items-center gap-2"><span>✓</span> {connectSuccess}</span>
+          <a href="/calendar" className="text-cyan-600 dark:text-eva-accent hover:underline font-medium">→ Sync Calendar</a>
+        </div>
+      )}
+
+      {/* Calendar scope hint */}
+      {hasGmail && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
+          <strong>Calendrier :</strong> Si Sync Calendar échoue avec « insufficient scopes », déconnectez puis reconnectez chaque compte Gmail ci-dessous pour accorder l&apos;accès au calendrier.
         </div>
       )}
 
       {/* Gmail accounts (connected) */}
       {hasGmail && (
         <div className="bg-white dark:bg-eva-panel rounded-xl border border-emerald-500/30 overflow-hidden">
-          <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-700/40 flex items-center justify-between">
+          <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-700/40 flex items-center justify-between flex-wrap gap-2">
             <span className="text-sm font-medium text-slate-900 dark:text-white">Gmail Accounts</span>
+            <a href="/calendar" className="text-xs px-3 py-1.5 rounded bg-blue-500/20 text-blue-600 dark:text-blue-400 hover:bg-blue-500/30 transition-colors">📅 Calendar</a>
             <div className="flex items-center gap-2">
               <span className="text-xs text-emerald-600 dark:text-emerald-400">Connected</span>
               <button
@@ -184,8 +198,10 @@ export default function DataSources() {
         <h2 className="text-sm font-medium text-slate-900 dark:text-white mb-3">Sources Disponibles</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {SOURCE_TYPES.map((src) => {
-            const connected = src.type === 'gmail' ? hasGmail : connectedTypes.includes(src.type);
-            const showAction = src.alwaysAvailable || (!connected && !src.soon);
+            const connected = src.type === 'gmail' ? hasGmail
+              : src.type === 'calendar' ? hasGmail
+              : connectedTypes.includes(src.type);
+            const showAction = src.alwaysAvailable || src.calendarFromGmail || (!connected && !src.soon);
             return (
               <div
                 key={src.type}
@@ -200,32 +216,27 @@ export default function DataSources() {
                   {src.soon && <span className="text-xs text-slate-500">soon</span>}
                 </div>
                 <p className="text-xs text-slate-600 dark:text-eva-muted mt-3">{src.desc}</p>
-                {showAction && !src.soon && (
+                {showAction && !src.soon && !connected && (
                   <button
-                    onClick={() => src.oauth ? connectGmail() : (src.route ? window.location.assign(src.route) : addSource(src.type))}
+                    onClick={() => src.oauth || src.calendarFromGmail ? connectGmail() : (src.route ? window.location.assign(src.route) : addSource(src.type))}
                     className={'mt-3 text-xs font-medium transition-colors ' + (
-                      src.oauth
+                      (src.oauth || src.calendarFromGmail)
                         ? 'px-4 py-2 bg-cyan-500/20 text-cyan-600 dark:text-eva-accent rounded-lg hover:bg-cyan-500/30 dark:hover:bg-eva-accent/30'
                         : 'text-cyan-600 dark:text-eva-accent hover:text-cyan-700 dark:hover:text-cyan-300'
                     )}
                   >
-                    {src.oauth ? 'Connect Gmail →' : src.route ? 'Go to Documents →' : 'Register source →'}
+                    {src.oauth || src.calendarFromGmail ? 'Connect Gmail →' : src.route ? 'Go to Documents →' : 'Register source →'}
                   </button>
                 )}
                 {connected && src.type === 'gmail' && (
                   <div className="mt-3 flex flex-wrap gap-3">
-                    <button
-                      onClick={() => window.location.href = '/emails'}
-                      className="text-xs text-cyan-600 dark:text-eva-accent hover:text-cyan-700 dark:hover:text-cyan-300 transition-colors"
-                    >
-                      Voir les emails →
-                    </button>
-                    <button
-                      onClick={connectGmail}
-                      className="text-xs text-cyan-600 dark:text-eva-accent hover:text-cyan-700 dark:hover:text-cyan-300 transition-colors"
-                    >
-                      + Ajouter un compte
-                    </button>
+                    <a href="/emails" className="text-xs text-cyan-600 dark:text-eva-accent hover:underline">Voir les emails</a>
+                    <button onClick={connectGmail} className="text-xs text-cyan-600 dark:text-eva-accent hover:text-cyan-700 dark:hover:text-cyan-300 transition-colors">+ Ajouter un compte</button>
+                  </div>
+                )}
+                {connected && src.type === 'calendar' && (
+                  <div className="mt-3 flex flex-wrap gap-3">
+                    <a href="/calendar" className="text-xs px-4 py-2 bg-cyan-500/20 text-cyan-600 dark:text-eva-accent rounded-lg hover:bg-cyan-500/30 dark:hover:bg-eva-accent/30 font-medium">Sync Calendar →</a>
                   </div>
                 )}
               </div>

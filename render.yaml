@@ -13,5 +13,9 @@ services:
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
+      - key: EVA_GOOGLE_CLIENT_ID
+        sync: false
+      - key: EVA_GOOGLE_CLIENT_SECRET
+        sync: false
       - key: EVA_API_KEY
         sync: false

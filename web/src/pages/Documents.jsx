@@ -54,7 +54,8 @@ export default function Documents() {
       await api.processDocument(doc.id);
       await load();
     } catch (e) {
-      setError(e.message);
+      const msg = e?.body?.error || e?.message || 'Index failed';
+      setError(msg);
     } finally {
       setProcessingId(null);
     }

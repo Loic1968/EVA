@@ -797,15 +797,15 @@ router.get('/gmail/emails', async (req, res, next) => {
       }
     }
 
-    // Folder filter: inbox | sent | draft | all (Outlook-style). Default = inbox.
+    // Folder filter: inbox | sent | draft | all (Outlook-style). labels is TEXT[] in schema.
     const folderLabel = folder === 'sent' ? 'SENT' : folder === 'draft' ? 'DRAFT' : folder === 'all' ? null : 'INBOX';
     const labelCondition = folderLabel
-      ? ` AND (labels::jsonb @> '["${folderLabel}"]'::jsonb OR labels::text LIKE '%"${folderLabel}"%')`
+      ? ` AND labels @> ARRAY['${folderLabel}']::text[]`
       : '';
 
     // Default: list recent emails with optional filters
-    let query = `SELECT id, gmail_account_id, from_email, from_name, to_emails, subject, snippet, received_at, labels, is_read, is_starred, has_attachments
-                 FROM eva.emails WHERE owner_id = $1${labelCondition}`;
+    const selectCols = 'id, gmail_account_id, from_email, from_name, to_emails, subject, snippet, received_at, labels, is_read, is_starred, has_attachments';
+    let query = `SELECT ${selectCols} FROM eva.emails WHERE owner_id = $1${labelCondition}`;
     const params = [req.ownerId];
     let paramIdx = 2;
 
@@ -849,6 +849,7 @@ router.get('/gmail/emails', async (req, res, next) => {
     if (/relation "eva\.(emails|gmail_accounts)" does not exist|does not exist/i.test(String(e.message))) {
       return res.json({ emails: [], total: 0 });
     }
+    console.error('[EVA /gmail/emails]', e.message);
     next(e);
   }
 });

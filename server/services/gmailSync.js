@@ -283,10 +283,11 @@ async function searchEmails(ownerId, queryText, limit = 5, gmailAccountId = null
 
   const folderLabel = folder === 'sent' ? 'SENT' : folder === 'draft' ? 'DRAFT' : folder === 'all' ? null : 'INBOX';
   const labelCondition = folderLabel
-    ? ` AND (labels::jsonb @> '["${folderLabel}"]'::jsonb OR labels::text LIKE '%"${folderLabel}"%')`
+    ? ` AND labels @> ARRAY['${folderLabel}']::text[]`
     : '';
 
-  let query = `SELECT id, gmail_account_id, from_email, from_name, subject, snippet,
+  const selectCols = 'id, gmail_account_id, from_email, from_name, to_emails, subject, snippet';
+  let query = `SELECT ${selectCols},
         left(body_plain, 300) as body_preview,
         received_at, labels, is_read, is_starred, has_attachments
      FROM eva.emails
@@ -312,7 +313,7 @@ async function searchEmails(ownerId, queryText, limit = 5, gmailAccountId = null
 async function getRecentEmails(ownerId, limit = 8) {
   try {
     const r = await db.query(
-      `SELECT id, from_email, from_name, subject, snippet, left(body_plain, 600) as body_preview, received_at
+      `SELECT id, from_email, from_name, to_emails, labels, subject, snippet, left(body_plain, 600) as body_preview, received_at
        FROM eva.emails
        WHERE owner_id = $1
        ORDER BY received_at DESC

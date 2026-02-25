@@ -72,9 +72,10 @@ async function buildInstructionsWithContext(ownerId) {
         instructions += '\n\n---\n## EMAILS (use to answer questions about messages, people, dates)\n\n';
         recent.forEach((e, i) => {
           const date = new Date(e.received_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
-          const from = e.from_name || e.from_email;
+          const isSent = Array.isArray(e.labels) ? e.labels.includes('SENT') : (e.labels && /"SENT"|'SENT'/.test(String(e.labels)));
+          const who = isSent ? `TO: ${Array.isArray(e.to_emails) ? e.to_emails.join(', ') : e.to_emails || '—'}` : `FROM: ${e.from_name || e.from_email}`;
           const body = ((e.body_preview || e.snippet || '').replace(/\s+/g, ' ').trim()).slice(0, 600);
-          instructions += `[Email ${i + 1}] FROM: ${from} | SUBJECT: ${(e.subject || '').slice(0, 80)} | DATE: ${date}\nBODY: ${body}\n\n`;
+          instructions += `[Email ${i + 1}] ${who} | SUBJECT: ${(e.subject || '').slice(0, 80)} | DATE: ${date}\nBODY: ${body}\n\n`;
         });
       }
     }

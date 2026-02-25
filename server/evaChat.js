@@ -107,14 +107,17 @@ async function reply(userMessage, history = [], ownerId = null, mode = null) {
         const shouldInject = ALWAYS_INJECT_RECENT || EMAIL_KEYWORDS.test(userMessage);
         if (shouldInject) {
           const emailResults = EMAIL_KEYWORDS.test(userMessage)
-            ? await sync.searchEmails(ownerId, userMessage, 5)
+            ? await sync.searchEmails(ownerId, userMessage, 5, null, 'all')
             : await sync.getRecentEmails(ownerId, 5);
           if (emailResults.length > 0) {
-            emailContext = '\n\n## Recent Emails (Memory Vault)\n';
+            emailContext = '\n\n## Emails (Memory Vault — inbox, sent, drafts)\n';
             emailContext += 'Use these emails to answer questions about messages, who said what, etc. If the answer is here, cite it. If not, say you don\'t have that info.\n\n';
             emailResults.forEach((e, i) => {
+              const isSent = Array.isArray(e.labels) ? e.labels.includes('SENT') : (e.labels && /"SENT"|'SENT'/.test(String(e.labels)));
               emailContext += `**Email ${i + 1}:**\n`;
-              emailContext += `- From: ${e.from_name ? `${e.from_name} <${e.from_email}>` : e.from_email}\n`;
+              emailContext += isSent
+                ? `- To: ${Array.isArray(e.to_emails) ? e.to_emails.join(', ') : e.to_emails || '—'}\n`
+                : `- From: ${e.from_name ? `${e.from_name} <${e.from_email}>` : e.from_email}\n`;
               emailContext += `- Subject: ${e.subject}\n`;
               emailContext += `- Date: ${new Date(e.received_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}\n`;
               emailContext += `- Preview: ${(e.body_preview || e.snippet || '').slice(0, 300)}\n\n`;
@@ -206,14 +209,17 @@ async function createReplyStream(userMessage, history = [], ownerId = null, mode
         const shouldInject = ALWAYS_INJECT_RECENT || EMAIL_KEYWORDS.test(userMessage);
         if (shouldInject) {
           const emailResults = EMAIL_KEYWORDS.test(userMessage)
-            ? await sync.searchEmails(ownerId, userMessage, 5)
+            ? await sync.searchEmails(ownerId, userMessage, 5, null, 'all')
             : await sync.getRecentEmails(ownerId, 5);
           if (emailResults.length > 0) {
-            emailContext = '\n\n## Recent Emails (Memory Vault)\n';
+            emailContext = '\n\n## Emails (Memory Vault — inbox, sent, drafts)\n';
             emailContext += 'Use these emails to answer. Cite sender, date, subject when relevant.\n\n';
             emailResults.forEach((e, i) => {
+              const isSent = Array.isArray(e.labels) ? e.labels.includes('SENT') : (e.labels && /"SENT"|'SENT'/.test(String(e.labels)));
               emailContext += `**Email ${i + 1}:**\n`;
-              emailContext += `- From: ${e.from_name ? `${e.from_name} <${e.from_email}>` : e.from_email}\n`;
+              emailContext += isSent
+                ? `- To: ${Array.isArray(e.to_emails) ? e.to_emails.join(', ') : e.to_emails || '—'}\n`
+                : `- From: ${e.from_name ? `${e.from_name} <${e.from_email}>` : e.from_email}\n`;
               emailContext += `- Subject: ${e.subject}\n`;
               emailContext += `- Date: ${new Date(e.received_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}\n`;
               emailContext += `- Preview: ${(e.body_preview || e.snippet || '').slice(0, 300)}\n\n`;

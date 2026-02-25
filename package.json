@@ -16,6 +16,7 @@
     "test:smoke": "node scripts/smoke-test.js",
     "test:prod": "node scripts/prod-test.js",
     "diagnose:documents": "node scripts/diagnose-documents.js",
+    "test:documents": "node scripts/test-document-processor.js",
     "test": "node --test server/__tests__/*.test.js",
     "test:unit": "node --test server/__tests__/*.test.js"
   },

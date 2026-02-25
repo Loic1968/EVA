@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { api } from '../api';
 
-const INDEXABLE_TYPES = ['pdf', 'txt', 'csv', 'docx', 'doc', 'jpg', 'jpeg', 'png', 'webp'];
+const INDEXABLE_TYPES = ['pdf', 'txt', 'csv', 'docx', 'doc', 'jpg', 'jpeg', 'png', 'webp', 'gif'];
 
 function ContentModal({ doc, onClose }) {
   const [content, setContent] = useState(null);
@@ -38,14 +38,32 @@ export default function Documents() {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [reindexing, setReindexing] = useState(false);
   const [crawling, setCrawling] = useState(false);
   const [crawlUrl, setCrawlUrl] = useState('');
   const [processingId, setProcessingId] = useState(null);
   const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
   const [dragOver, setDragOver] = useState(false);
   const [contentModalDoc, setContentModalDoc] = useState(null);
   const fileRef = useRef(null);
   const cameraRef = useRef(null);
+
+  const handleReindexAll = async () => {
+    setReindexing(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const r = await api.reindexDocuments();
+      await load();
+      if (r.fail > 0) setError(`Re-indexed: ${r.ok} OK, ${r.fail} failed`);
+      else if (r.ok > 0) setSuccess(`Re-indexed ${r.ok} documents with AI.`);
+    } catch (e) {
+      setError(e?.body?.error || e?.message || 'Re-index failed');
+    } finally {
+      setReindexing(false);
+    }
+  };
 
   const handleProcess = async (doc) => {
     setProcessingId(doc.id);
@@ -179,6 +197,7 @@ export default function Documents() {
       </div>
 
       {error && <div className="text-red-600 dark:text-red-400 text-sm bg-red-500/10 rounded-lg px-4 py-2">{error}</div>}
+      {success && <div className="text-emerald-600 dark:text-emerald-400 text-sm bg-emerald-500/10 rounded-lg px-4 py-2">{success}</div>}
 
       {/* Drop zone / tap hint */}
       <div
@@ -205,8 +224,18 @@ export default function Documents() {
 
       {/* File list */}
       <div className="bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 overflow-hidden">
-        <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-700/40">
+        <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-700/40 flex items-center justify-between gap-2">
           <span className="text-sm font-medium text-slate-900 dark:text-white">{documents.length} documents</span>
+          {documents.length > 0 && (
+            <button
+              onClick={handleReindexAll}
+              disabled={reindexing}
+              className="text-xs px-3 py-2 rounded-lg bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 hover:bg-cyan-500/30 disabled:opacity-50 touch-manipulation"
+              title="Re-index all documents with AI (Claude)"
+            >
+              {reindexing ? 'Re-indexing…' : 'Re-index all'}
+            </button>
+          )}
         </div>
         {documents.length === 0 ? (
           <div className="p-8 text-center text-slate-500 dark:text-eva-muted text-sm">
@@ -221,7 +250,7 @@ export default function Documents() {
                     doc.file_type === 'pdf' ? 'bg-red-500/20 text-red-600 dark:text-red-400' :
                     doc.file_type === 'docx' ? 'bg-blue-500/20 text-blue-600 dark:text-blue-400' :
                     doc.file_type === 'csv' ? 'bg-green-500/20 text-green-600 dark:text-green-400' :
-                    ['jpg', 'jpeg', 'png', 'webp'].includes((doc.file_type || '').toLowerCase()) ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400' :
+                    ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes((doc.file_type || '').toLowerCase()) ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400' :
                     'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
                   }`}>
                     {(doc.file_type || '?').toUpperCase().slice(0, 3)}

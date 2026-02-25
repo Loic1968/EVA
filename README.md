@@ -85,7 +85,7 @@ npm run dev
 | Variable           | Description |
 |-------------------|-------------|
 | `DATABASE_URL`    | PostgreSQL connection string (same as Halisoft) |
-| `ANTHROPIC_API_KEY` | Claude API key for EVA chat |
+| `ANTHROPIC_API_KEY` | Claude API key for EVA chat + document AI (PDF/image OCR) |
 | `EVA_PORT` / `PORT` | API port (default 5002) |
 | `EVA_API_KEY`     | Optional API key for production |
 | `EVA_OWNER_EMAIL` | Default owner (default `loic@halisoft.biz`) |
@@ -108,6 +108,7 @@ npm run dev
 ### Documents & Data
 - `GET /api/documents` — List uploaded documents
 - `POST /api/documents/upload` — Upload a file (raw body + X-Filename header)
+- `POST /api/documents/reindex` — Re-index all documents with AI (PDF + images)
 - `GET /api/data-sources` — List registered data sources
 - `POST /api/data-sources` — Register a new source
 

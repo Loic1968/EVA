@@ -5,13 +5,55 @@ const fs = require('fs');
 const path = require('path');
 const db = require('../db');
 
+const MIN_TEXT_FOR_AI_FALLBACK = 20;
+const MAX_PDF_FOR_CLAUDE_MB = 20;
+
 async function extractPdfFromBuffer(buffer) {
   try {
     const pdf = require('pdf-parse');
     const data = await pdf(buffer);
-    return (data?.text || '').trim() || null;
+    const text = (data?.text || '').trim();
+    if (text && text.length >= MIN_TEXT_FOR_AI_FALLBACK) return text;
+    return extractPdfViaClaude(buffer);
   } catch (e) {
     console.warn('[DocumentProcessor] PDF extraction failed:', e.message);
+    return extractPdfViaClaude(buffer);
+  }
+}
+
+async function extractPdfViaClaude(buffer) {
+  const key = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
+  if (!key) {
+    console.warn('[DocumentProcessor] No ANTHROPIC_API_KEY — skipped AI OCR');
+    return null;
+  }
+  if (buffer.length > MAX_PDF_FOR_CLAUDE_MB * 1024 * 1024) {
+    console.warn('[DocumentProcessor] PDF too large for Claude (>', MAX_PDF_FOR_CLAUDE_MB, 'MB)');
+    return null;
+  }
+  try {
+    const Anthropic = require('@anthropic-ai/sdk');
+    const client = new Anthropic({ apiKey: key.trim() });
+    const base64 = buffer.toString('base64');
+    const model = process.env.EVA_CHAT_MODEL || 'claude-sonnet-4-20250514';
+    const response = await client.messages.create(
+      {
+        model,
+        max_tokens: 16000,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } },
+            { type: 'text', text: 'Extract ALL text from this document. Return ONLY the extracted text. Preserve order. If scanned/handwritten, transcribe it.' },
+          ],
+        }],
+      },
+      { headers: { 'anthropic-beta': 'pdfs-2024-09-25' } }
+    );
+    const textBlock = response.content?.find((b) => b.type === 'text');
+    return (textBlock?.text || '').trim() || null;
+  } catch (e) {
+    console.warn('[DocumentProcessor] Claude PDF OCR failed:', e.message);
     return null;
   }
 }
@@ -25,22 +67,46 @@ function extractTxtFromBuffer(buffer) {
   }
 }
 
-async function extractImageOcr(buffer) {
-  try {
-    const { createWorker } = require('tesseract.js');
-    const worker = await createWorker('eng');
-    try {
-      const { data: { text } } = await worker.recognize(buffer);
-      await worker.terminate();
-      return (text || '').trim();
-    } catch (e) {
-      await worker.terminate();
-      throw e;
-    }
-  } catch (e) {
-    console.warn('[DocumentProcessor] OCR failed:', e.message);
+const IMAGE_MEDIA_TYPES = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif' };
+const MAX_IMAGE_FOR_CLAUDE_MB = 5;
+
+async function extractImageViaClaude(buffer, ext) {
+  const key = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
+  if (!key) {
+    console.warn('[DocumentProcessor] No ANTHROPIC_API_KEY — skipped AI image OCR');
     return null;
   }
+  if (buffer.length > MAX_IMAGE_FOR_CLAUDE_MB * 1024 * 1024) {
+    console.warn('[DocumentProcessor] Image too large for Claude (>', MAX_IMAGE_FOR_CLAUDE_MB, 'MB)');
+    return null;
+  }
+  const mediaType = IMAGE_MEDIA_TYPES[ext] || 'image/jpeg';
+  try {
+    const Anthropic = require('@anthropic-ai/sdk');
+    const client = new Anthropic({ apiKey: key.trim() });
+    const base64 = buffer.toString('base64');
+    const model = process.env.EVA_CHAT_MODEL || 'claude-sonnet-4-20250514';
+    const response = await client.messages.create({
+      model,
+      max_tokens: 4096,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
+          { type: 'text', text: 'Extract ALL text visible in this image. Return ONLY the extracted text. Preserve order. Include handwritten text, labels, tables, captions.' },
+        ],
+      }],
+    });
+    const textBlock = response.content?.find((b) => b.type === 'text');
+    return (textBlock?.text || '').trim() || null;
+  } catch (e) {
+    console.warn('[DocumentProcessor] Claude image OCR failed:', e.message);
+    return null;
+  }
+}
+
+async function extractImageOcr(buffer, ext) {
+  return extractImageViaClaude(buffer, ext);
 }
 
 async function extractDocxFromBuffer(buffer) {
@@ -70,9 +136,9 @@ async function extractText(filePathOrBuffer, fileType) {
       return null;
     }
   }
-  if (['jpg', 'jpeg', 'png', 'webp'].includes(ext)) {
+  if (['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext)) {
     const buffer = isBuffer ? filePathOrBuffer : fs.readFileSync(filePathOrBuffer);
-    return extractImageOcr(buffer);
+    return extractImageOcr(buffer, ext);
   }
   if (ext === 'docx' || ext === 'doc') {
     const buffer = isBuffer ? filePathOrBuffer : fs.readFileSync(filePathOrBuffer);
@@ -125,7 +191,7 @@ async function processDocument(documentId, ownerId) {
     } else {
       await db.query(
         "UPDATE eva.documents SET status = 'error', metadata = metadata || $1 WHERE id = $2",
-        [JSON.stringify({ error: 'No text extracted. Document may be scanned (image-only PDF). Use PDFs with selectable text.' }), documentId]
+        [JSON.stringify({ error: 'No text extracted. AI (Claude) was used for PDFs and images — check ANTHROPIC_API_KEY and file size (PDF < 20MB, images < 5MB).' }), documentId]
       );
     }
     return text;
@@ -186,4 +252,26 @@ async function getRecentDocuments(ownerId, limit = 5) {
   }
 }
 
-module.exports = { extractText, processDocument, searchDocuments, getRecentDocuments };
+/**
+ * Re-index all documents for an owner (e.g. after upgrading to AI extraction).
+ */
+async function reindexAllDocuments(ownerId) {
+  const r = await db.query(
+    'SELECT id FROM eva.documents WHERE owner_id = $1 ORDER BY created_at DESC',
+    [ownerId]
+  );
+  let ok = 0;
+  let fail = 0;
+  for (const row of r.rows) {
+    try {
+      const text = await processDocument(row.id, ownerId);
+      if (text && text.length > 0) ok++;
+      else fail++;
+    } catch (e) {
+      fail++;
+    }
+  }
+  return { total: r.rows.length, ok, fail };
+}
+
+module.exports = { extractText, processDocument, searchDocuments, getRecentDocuments, reindexAllDocuments };

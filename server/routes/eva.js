@@ -643,6 +643,17 @@ router.get('/documents/:id/content', async (req, res, next) => {
   }
 });
 
+// Re-index all documents for owner (upgrade to AI extraction)
+router.post('/documents/reindex', async (req, res, next) => {
+  try {
+    const docProcessor = require('../services/documentProcessor');
+    const result = await docProcessor.reindexAllDocuments(req.ownerId);
+    res.json(result);
+  } catch (e) {
+    next(e);
+  }
+});
+
 // Reprocess document (extract text for search)
 router.post('/documents/:id/process', async (req, res, next) => {
   try {

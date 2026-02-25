@@ -135,8 +135,8 @@ async function reply(userMessage, history = [], ownerId = null, mode = null) {
       const shouldInject = ALWAYS_INJECT_RECENT || DOCUMENT_KEYWORDS.test(userMessage);
       if (shouldInject) {
         const docResults = DOCUMENT_KEYWORDS.test(userMessage)
-          ? await docProcessor.searchDocuments(ownerId, userMessage, 3)
-          : await docProcessor.getRecentDocuments(ownerId, 3);
+          ? await docProcessor.searchDocuments(ownerId, userMessage, 5)
+          : await docProcessor.getRecentDocuments(ownerId, 5);
         if (docResults.length > 0) {
           documentContext = '\n\n## Documents (Memory Vault)\n';
           documentContext += 'Use these for flights, tickets, travel, etc. If the answer is here, give it. If not, say you don\'t have that info.\n\n';
@@ -197,22 +197,28 @@ async function createReplyStream(userMessage, history = [], ownerId = null, mode
   const client = getClient();
   const model = process.env.EVA_CHAT_MODEL || 'claude-sonnet-4-20250514';
 
+  // Email context: same logic as reply() — always inject recent OR search on keywords
   let emailContext = '';
-  if (ownerId && EMAIL_KEYWORDS.test(userMessage)) {
+  if (ownerId) {
     try {
       const sync = getGmailSync();
       if (sync) {
-        const emailResults = await sync.searchEmails(ownerId, userMessage, 5);
-        if (emailResults.length > 0) {
-          emailContext = '\n\n## Recent Emails from Memory Vault\n';
-          emailContext += 'The following emails match the user\'s query. Use them to provide accurate, specific answers:\n\n';
-          emailResults.forEach((e, i) => {
-            emailContext += `**Email ${i + 1}:**\n`;
-            emailContext += `- From: ${e.from_name ? `${e.from_name} <${e.from_email}>` : e.from_email}\n`;
-            emailContext += `- Subject: ${e.subject}\n`;
-            emailContext += `- Date: ${new Date(e.received_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}\n`;
-            emailContext += `- Preview: ${(e.body_preview || e.snippet || '').slice(0, 300)}\n\n`;
-          });
+        const shouldInject = ALWAYS_INJECT_RECENT || EMAIL_KEYWORDS.test(userMessage);
+        if (shouldInject) {
+          const emailResults = EMAIL_KEYWORDS.test(userMessage)
+            ? await sync.searchEmails(ownerId, userMessage, 5)
+            : await sync.getRecentEmails(ownerId, 5);
+          if (emailResults.length > 0) {
+            emailContext = '\n\n## Recent Emails (Memory Vault)\n';
+            emailContext += 'Use these emails to answer. Cite sender, date, subject when relevant.\n\n';
+            emailResults.forEach((e, i) => {
+              emailContext += `**Email ${i + 1}:**\n`;
+              emailContext += `- From: ${e.from_name ? `${e.from_name} <${e.from_email}>` : e.from_email}\n`;
+              emailContext += `- Subject: ${e.subject}\n`;
+              emailContext += `- Date: ${new Date(e.received_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}\n`;
+              emailContext += `- Preview: ${(e.body_preview || e.snippet || '').slice(0, 300)}\n\n`;
+            });
+          }
         }
       }
     } catch (err) {
@@ -220,18 +226,24 @@ async function createReplyStream(userMessage, history = [], ownerId = null, mode
     }
   }
 
+  // Document context: same logic as reply() — always inject recent OR search on keywords
   let documentContext = '';
-  if (ownerId && DOCUMENT_KEYWORDS.test(userMessage)) {
+  if (ownerId) {
     try {
       const docProcessor = require('./services/documentProcessor');
-      const docResults = await docProcessor.searchDocuments(ownerId, userMessage, 3);
-      if (docResults.length > 0) {
-        documentContext = '\n\n## Documents uploadés (Memory Vault)\n';
-        documentContext += 'Loic a uploadé des documents. Contenu pertinent:\n\n';
-        docResults.forEach((d, i) => {
-          documentContext += `**Document ${i + 1}:** ${d.filename}\n`;
-          documentContext += `${(d.content_preview || d.content_text || '').slice(0, 800)}\n\n`;
-        });
+      const shouldInject = ALWAYS_INJECT_RECENT || DOCUMENT_KEYWORDS.test(userMessage);
+      if (shouldInject) {
+        const docResults = DOCUMENT_KEYWORDS.test(userMessage)
+          ? await docProcessor.searchDocuments(ownerId, userMessage, 5)
+          : await docProcessor.getRecentDocuments(ownerId, 5);
+        if (docResults.length > 0) {
+          documentContext = '\n\n## Documents (Memory Vault)\n';
+          documentContext += 'Use these for flights, tickets, invoices, travel, etc. If the answer is here, give it. Cite the document.\n\n';
+          docResults.forEach((d, i) => {
+            const text = (d.content_text || d.content_preview || '').slice(0, 1500);
+            documentContext += `**${d.filename}:**\n${text}\n\n`;
+          });
+        }
       }
     } catch (err) {
       console.warn('[EVA Chat] Document context lookup failed:', err.message);

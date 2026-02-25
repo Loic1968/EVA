@@ -6,18 +6,11 @@ import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 
 function ExternalLink({ href, children, className = '' }) {
-  const handleClick = (e) => {
-    if (e.button === 0 && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
-      e.preventDefault();
-      window.open(href, '_blank', 'noopener,noreferrer');
-    }
-  };
   return (
     <a
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      onClick={handleClick}
       className={`cursor-pointer touch-manipulation inline-flex items-center py-1.5 px-2 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors ${className}`}
     >
       {children}

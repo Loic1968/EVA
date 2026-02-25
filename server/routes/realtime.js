@@ -6,7 +6,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { getKillSwitch, getShadowMode } = require('../services/settingsService');
+const { getKillSwitch } = require('../services/settingsService');
 
 const OPENAI_KEY = (process.env.OPENAI_API_KEY || '').trim();
 const REALTIME_ENABLED = !!OPENAI_KEY;
@@ -128,8 +128,7 @@ router.get('/token', async (req, res, next) => {
     }
     const killOn = await getKillSwitch(req.ownerId);
     if (killOn) return res.status(503).json({ error: 'EVA paused (kill switch)', kill_switch: true });
-    const shadowOn = await getShadowMode(req.ownerId);
-    if (shadowOn) return res.status(503).json({ error: 'Voice disabled in Shadow Mode', shadow_mode: true });
+    // Voice allowed in Shadow Mode — only drafts are restricted
 
     const { instructions, transcriptionLang, turnEagerness } = await buildInstructionsWithContext(req.ownerId);
 

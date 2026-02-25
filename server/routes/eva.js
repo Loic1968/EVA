@@ -248,8 +248,8 @@ router.post('/chat/stream', async (req, res, next) => {
       return res.status(400).json({ error: 'message required after command' });
     }
 
-    // Calendar-add intent needs reply() with tools (create_calendar_event); stream has no tools
-    if (req.ownerId && evaChat.needsCalendarTools(msgToSend)) {
+    // Use reply() with tools (save_memory, create_calendar_event) when ownerId — so EVA can learn. Stream has no tools.
+    if (req.ownerId) {
       const result = await evaChat.reply(msgToSend, chatHistory, req.ownerId, mode);
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
@@ -290,7 +290,7 @@ router.post('/chat/stream', async (req, res, next) => {
         tokens: result.tokens,
         conversation_id: convId,
       })}\n\n`);
-      return res.end();
+      return       res.end();
     }
 
     const { stream, model } = await evaChat.createReplyStream(msgToSend, chatHistory, req.ownerId, mode);

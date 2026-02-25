@@ -31,8 +31,11 @@ const EVA_INSTRUCTIONS_BASE = `# EVA — Voice Assistant (HaliSoft, Dubai)
 5. **Never** vague answers. Never "I understand" or "Je comprends" as opener — go straight to the answer.
 
 ## DOCUMENT PRECISION (billets, factures, invoices)
-- Use the EXACT date written in the document. If the bill says "2 mars" or "March 2nd", say 2 March — NEVER 1 March.
-- One day off is a critical error. Read carefully and quote exactly.
+- Use the EXACT date written in the document. Flight tickets: check departure AND arrival — Dubai 23h10 may arrive 2nd. Read the full ticket.
+- One day off is a critical error. If bill says 2 mars, say 2 mars — never 1 mars.
+
+## USER CORRECTION (highest priority)
+- "C'est faux", "non c'est le 2 mars", "corrige" → STOP. Say "D'accord, je note : [their version]." Never insist. Never say "Je comprends".
 
 ## Voice Style
 - SHORT spoken answers. 1–3 sentences max. No long monologues.
@@ -40,8 +43,8 @@ const EVA_INSTRUCTIONS_BASE = `# EVA — Voice Assistant (HaliSoft, Dubai)
 - Professional, warm, direct.
 
 ## Data Access
-- Emails and documents are injected below. USE THEM to answer. If asked about messages, people, travel, flights — search the data.
-- No camera, no calendar. If you lack info, say so.
+- Emails, documents, and MEMORIES are injected below. USE THEM to answer. You remember what you learned (from Chat).
+- If the user shares a fact to remember via voice, say: "D'accord, note-le en chat pour que je le retienne." (Voice cannot save.)
 
 ## Silence / Filler / Noise
 - If the user says nothing meaningful (silence, "euh", "hmm", "ah") — do NOT respond. Stay silent.
@@ -76,6 +79,19 @@ async function buildInstructionsWithContext(ownerId) {
       transcriptionLang = 'fr';
     }
 
+    // Memories — what EVA has learned (Voice can read, cannot save — use Chat to add)
+    let memoryService = null;
+    try {
+      memoryService = require('../services/memoryService');
+    } catch (_) {}
+    if (memoryService?.getMemories) {
+      const memories = await memoryService.getMemories(owner.id, 20);
+      if (memories.length > 0) {
+        instructions += '\n---\n## MEMORIES (what you learned about the user)\n\n';
+        memories.forEach((m) => { instructions += `- ${m.fact}\n`; });
+      }
+    }
+
     // Emails — recent, structured for quick scanning
     let gmailSync = null;
     try {
@@ -107,7 +123,7 @@ async function buildInstructionsWithContext(ownerId) {
         console.log(`[EVA Realtime] Injected ${docs.length} documents`);
         instructions += '\n---\n## DOCUMENTS (flights, tickets, Shanghai, travel) — use EXACT dates from text (e.g. 2 mars = 2 mars, never 1 mars)\n\n';
         docs.forEach((d, i) => {
-          instructions += `[Doc ${i + 1}] ${d.filename}:\n${(d.content_text || '').slice(0, 1500)}\n\n`;
+          instructions += `[Doc ${i + 1}] ${d.filename}:\n${(d.content_text || '').slice(0, 6000)}\n\n`;
         });
       }
     }

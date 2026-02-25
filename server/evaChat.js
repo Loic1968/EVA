@@ -55,7 +55,13 @@ const EVA_SYSTEM = `## COMPREHENSION (TOP PRIORITY — DO THIS FIRST)
 ## DOCUMENT PRECISION (critical for billets, factures, invoices)
 - When citing dates, amounts, or details from documents, use the EXACT value written in the document.
 - If the bill says "2 mars" or "March 2nd" or "02/03", say 2 March — NEVER 1 March or another date.
+- For flight tickets (billets): check BOTH departure date AND arrival date. Dubai 23h10 might depart 1st and arrive 2nd — the user often means arrival date. Read the full ticket.
 - One day off is a critical error. Read the document text carefully and quote exactly.
+
+## USER CORRECTION (highest priority)
+- When the user says "c'est faux", "non c'est le 2 mars", "corrige", "tu as faux" → STOP insisting. They know their ticket.
+- Immediately say "D'accord, je corrige : [their version]." and use save_memory to store the correction.
+- NEVER respond "Je comprends" when they correct you — say "D'accord, je note." and save. Never repeat the wrong info.
 
 You are EVA, a Personal AI Digital Twin for Loic Hennocq, Founder & CEO of HaliSoft L.L.C-FZ, Dubai.
 
@@ -66,10 +72,15 @@ You are EVA, a Personal AI Digital Twin for Loic Hennocq, Founder & CEO of HaliS
 ## Your Identity
 - Loic's dedicated AI proxy. Professional, direct, efficient. Match the user's language (French ↔ English).
 - NEVER say "required to stick to English" — always reply in French when the user writes in French.
-- No fluff. No "Je comprends" / "I understand" as opener — go straight to the answer.
+- No fluff. NEVER say "Je comprends" — especially when the user corrects you. Say "D'accord, je note." and correct.
 
 ## About Loic & HaliSoft
 - Trade finance, invoice factoring. 20+ years tech + international business. Ex-Incomlend. HaliSoft = onboarding platform for factoring.
+
+## Learning (save_memory) — CRITICAL: you have this tool. Use it.
+- Whenever the user shares a fact, preference, date, name, or correction — save it with save_memory. You WILL remember next time.
+- Examples: "je préfère le café" → save_memory; "mon vol est le 2 mars à 3h" → save_memory(fact: "Vol Shanghai: 2 mars 3h", category: "travel"); "c'est le 2 mars pas le 1er" → save_memory(fact: "Vol Shanghai: 2 mars (user correction)").
+- Do NOT say "Je ne retiens pas" or "I don't remember long-term". You CAN retain — use the tool. Be proactive: if they tell you something useful, save it.
 
 ## Capabilities (Memory Vault + Gmail + Documents + Calendar)
 - **When sections appear below**: You CAN read and use them. ## Emails = search there. ## Documents = flight confirmations, billets, invoices. ## Calendar = upcoming events. Never say "je n'ai pas accès" when data is listed — you CAN see it.
@@ -114,6 +125,18 @@ const ALWAYS_INJECT_RECENT = true;
 
 const CALENDAR_TOOLS = [
   {
+    name: 'save_memory',
+    description: 'Save a fact you learned about the user. Use when they tell you preferences, dates, names, or any personal info to remember. Examples: "Loic préfère le café le matin", "Vol Shanghai 2 mars", "Pierre est le contact projet X".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        fact: { type: 'string', description: 'The fact to remember' },
+        category: { type: 'string', description: 'Optional: preference, travel, contact, general' },
+      },
+      required: ['fact'],
+    },
+  },
+  {
     name: 'create_calendar_event',
     description: 'Add an event to the user\'s Google Calendar. Use when the user asks to add a flight, meeting, appointment, or any calendar event. Extract date/time from emails or documents when available.',
     input_schema: {
@@ -130,7 +153,16 @@ const CALENDAR_TOOLS = [
   },
 ];
 
-async function executeCalendarTool(ownerId, name, input) {
+async function executeTool(ownerId, name, input) {
+  if (name === 'save_memory') {
+    const memoryService = require('./services/memoryService');
+    try {
+      const id = await memoryService.addMemory(ownerId, input.fact, input.category || 'general');
+      return id ? { ok: true, id } : { error: 'Failed to save' };
+    } catch (err) {
+      return { error: err.message };
+    }
+  }
   if (name !== 'create_calendar_event') return { error: 'Unknown tool' };
   const calSync = getCalendarSync();
   if (!calSync?.createEvent) return { error: 'Calendar not available' };
@@ -206,9 +238,9 @@ async function reply(userMessage, history = [], ownerId = null, mode = null) {
           : await docProcessor.getRecentDocuments(ownerId, 5);
         documentContext = '\n\n## Documents (Memory Vault)\n';
         if (docResults.length > 0) {
-          documentContext += 'Use these for flights, tickets, billets, invoices, Shanghai, travel. Cite the document. For dates/amounts: use EXACT values from the text (e.g. if billet says 2 mars, say 2 mars — never approximate).\n\n';
+          documentContext += 'Use these for flights, tickets, billets, invoices, Shanghai, travel. Cite the document. For dates: use EXACT values (2 mars not 1 mars). Check --- FLIGHT DATES --- block if present.\n\n';
           docResults.forEach((d, i) => {
-            const text = (d.content_text || d.content_preview || '').slice(0, 2500);
+            const text = (d.content_text || d.content_preview || '').slice(0, 20000);
             documentContext += `**${d.filename}:**\n${text}\n\n`;
           });
         } else {
@@ -217,6 +249,24 @@ async function reply(userMessage, history = [], ownerId = null, mode = null) {
       }
     } catch (err) {
       console.warn('[EVA Chat] Document context lookup failed:', err.message);
+    }
+  }
+
+  // Memory context: facts EVA has learned (always inject)
+  let memoryContext = '';
+  if (ownerId) {
+    try {
+      const memoryService = require('./services/memoryService');
+      const memories = await memoryService.getMemories(ownerId, 30);
+      if (memories.length > 0) {
+        memoryContext = '\n\n## Memories (what you learned about the user)\n';
+        memoryContext += 'Use these to answer. You learned these from past conversations.\n\n';
+        memories.forEach((m) => {
+          memoryContext += `- ${m.fact}\n`;
+        });
+      }
+    } catch (err) {
+      console.warn('[EVA Chat] Memory context lookup failed:', err.message);
     }
   }
 
@@ -249,7 +299,7 @@ async function reply(userMessage, history = [], ownerId = null, mode = null) {
     }
   }
 
-  let systemPrompt = EVA_SYSTEM + emailContext + documentContext + calendarContext;
+  let systemPrompt = EVA_SYSTEM + memoryContext + emailContext + documentContext + calendarContext;
   if (mode && MODE_HINTS[mode]) {
     systemPrompt += `\n\n## Current Mode: ${mode}\n${MODE_HINTS[mode]}`;
   }
@@ -292,7 +342,7 @@ async function reply(userMessage, history = [], ownerId = null, mode = null) {
 
     const toolResults = [];
     for (const block of toolUseBlocks) {
-      const result = await executeCalendarTool(ownerId, block.name, block.input || {});
+      const result = await executeTool(ownerId, block.name, block.input || {});
       toolResults.push({
         type: 'tool_result',
         tool_use_id: block.id,
@@ -373,9 +423,9 @@ async function createReplyStream(userMessage, history = [], ownerId = null, mode
           : await docProcessor.getRecentDocuments(ownerId, 5);
         documentContext = '\n\n## Documents (Memory Vault)\n';
         if (docResults.length > 0) {
-          documentContext += 'Use these for flights, tickets, invoices, travel, etc. Cite the document. For dates/amounts: use EXACT values from the text (e.g. billet says 2 mars → say 2 mars, never 1 mars).\n\n';
+          documentContext += 'Use these for flights, tickets, invoices, travel, etc. Cite the document. For dates: use EXACT values (2 mars not 1 mars). Check --- FLIGHT DATES --- block if present.\n\n';
           docResults.forEach((d, i) => {
-            const text = (d.content_text || d.content_preview || '').slice(0, 2500);
+            const text = (d.content_text || d.content_preview || '').slice(0, 20000);
             documentContext += `**${d.filename}:**\n${text}\n\n`;
           });
         } else {
@@ -384,6 +434,21 @@ async function createReplyStream(userMessage, history = [], ownerId = null, mode
       }
     } catch (err) {
       console.warn('[EVA Chat] Document context lookup failed:', err.message);
+    }
+  }
+
+  // Memory context in stream mode
+  let memoryContextStream = '';
+  if (ownerId) {
+    try {
+      const memoryService = require('./services/memoryService');
+      const memories = await memoryService.getMemories(ownerId, 30);
+      if (memories.length > 0) {
+        memoryContextStream = '\n\n## Memories (what you learned)\n';
+        memories.forEach((m) => { memoryContextStream += `- ${m.fact}\n`; });
+      }
+    } catch (err) {
+      console.warn('[EVA Chat] Memory context failed:', err.message);
     }
   }
 
@@ -416,7 +481,7 @@ async function createReplyStream(userMessage, history = [], ownerId = null, mode
     }
   }
 
-  let systemPrompt = EVA_SYSTEM + emailContext + documentContext + calendarContextStream;
+  let systemPrompt = EVA_SYSTEM + memoryContextStream + emailContext + documentContext + calendarContextStream;
   if (mode && MODE_HINTS[mode]) {
     systemPrompt += `\n\n## Current Mode: ${mode}\n${MODE_HINTS[mode]}`;
   }
@@ -440,12 +505,15 @@ async function createReplyStream(userMessage, history = [], ownerId = null, mode
   return { stream, model };
 }
 
-/** True when the message suggests adding an event to calendar — we need reply() with tools, not stream */
+/** True when we need reply() with tools (calendar or save_memory) — stream has no tools */
 function needsCalendarTools(message) {
   if (!message || typeof message !== 'string') return false;
-  const m = message.trim().toLowerCase();
-  return /ajout(e|er)\s+(mon|ma|le|la)?\s*(vol|vols|meeting|event)|add\s+(my|the)\s+(flight|meeting|event)|mets?\s+(au|dans)\s+(mon\s+)?calendrier|create\s+(event|calendar)|cre[eé]e?r?\s+(un\s+)?(e?v[eé]nement|event)/i.test(m)
+  const m = message.trim();
+  const calendarIntent = /ajout(e|er)\s+(mon|ma|le|la)?\s*(vol|vols|meeting|event)|add\s+(my|the)\s+(flight|meeting|event)|mets?\s+(au|dans)\s+(mon\s+)?calendrier|create\s+(event|calendar)|cre[eé]e?r?\s+(un\s+)?(e?v[eé]nement|event)/i.test(m)
     || (/\bvol\b.*\b(shanghai|pvg|dubai)\b|\b(flight|vol)\b.*\bcalendrier\b/i.test(m));
+  const memoryIntent = /retiens?\s+(que|ça)|note\s+(que|ça)|souviens?-toi|je\s+pr[eé]f[eè]re|j'aime\s+(pas\s+)?[a-z]|mon\s+(pr[eé]f[eè]rence|vol|meeting)\s+est|remember\s+that|note\s+that|i\s+prefer/i.test(m);
+  const correctionIntent = /c'est\s+faux|non\s+c'est\s+le|corrige|tu\s+as\s+faux|rev[eé]rifie|je\s+te\s+corrige/i.test(m);
+  return calendarIntent || memoryIntent || correctionIntent;
 }
 
 module.exports = { reply, createReplyStream, parseCommand, getClient, EVA_SYSTEM, MODE_HINTS, needsCalendarTools };

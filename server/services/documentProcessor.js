@@ -8,20 +8,26 @@ const db = require('../db');
 const MIN_TEXT_FOR_AI_FALLBACK = 20;
 const MAX_PDF_FOR_CLAUDE_MB = 20;
 
-async function extractPdfFromBuffer(buffer) {
+const BILLET_KEYWORDS = /billet|ticket|boarding|emirates|etihad|flydubai|flight|itin[eé]raire|voyage/i;
+
+async function extractPdfFromBuffer(buffer, filename = '') {
+  const isBillet = BILLET_KEYWORDS.test((filename || '').toLowerCase());
+  if (isBillet) {
+    return extractPdfViaClaude(buffer, filename);
+  }
   try {
     const pdf = require('pdf-parse');
     const data = await pdf(buffer);
     const text = (data?.text || '').trim();
     if (text && text.length >= MIN_TEXT_FOR_AI_FALLBACK) return text;
-    return extractPdfViaClaude(buffer);
+    return extractPdfViaClaude(buffer, filename);
   } catch (e) {
     console.warn('[DocumentProcessor] PDF extraction failed:', e.message);
-    return extractPdfViaClaude(buffer);
+    return extractPdfViaClaude(buffer, filename);
   }
 }
 
-async function extractPdfViaClaude(buffer) {
+async function extractPdfViaClaude(buffer, filename = '') {
   const key = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
   if (!key) {
     console.warn('[DocumentProcessor] No ANTHROPIC_API_KEY — skipped AI OCR');
@@ -44,7 +50,16 @@ async function extractPdfViaClaude(buffer) {
           role: 'user',
           content: [
             { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } },
-            { type: 'text', text: 'Extract ALL text from this document. Return ONLY the extracted text. Preserve order. If scanned/handwritten, transcribe it.' },
+            { type: 'text', text: `Extract ALL text from this document. Return ONLY the extracted text. Preserve order. If scanned/handwritten, transcribe it.
+For flight tickets/billets: ADD at the start a structured block:
+--- FLIGHT DATES ---
+Departure date: [exact day + month from document, e.g. 02 mars or 2 March]
+Departure time: [local time]
+Arrival date: [exact day + month]
+Arrival time: [local time]
+Route: [e.g. DXB-PVG]
+--- END ---
+Then the full extracted text. Be precise: 01 vs 02, 1 vs 2 mars — these differ.` },
           ],
         }],
       },
@@ -120,12 +135,12 @@ async function extractDocxFromBuffer(buffer) {
   }
 }
 
-async function extractText(filePathOrBuffer, fileType) {
+async function extractText(filePathOrBuffer, fileType, filename = '') {
   const isBuffer = Buffer.isBuffer(filePathOrBuffer);
   const ext = (fileType || (!isBuffer && path.extname(filePathOrBuffer)) || '').toLowerCase().replace('.', '');
   if (ext === 'pdf') {
     const buffer = isBuffer ? filePathOrBuffer : fs.readFileSync(filePathOrBuffer);
-    return extractPdfFromBuffer(buffer);
+    return extractPdfFromBuffer(buffer, filename);
   }
   if (['txt', 'text', 'csv'].includes(ext)) {
     if (isBuffer) return extractTxtFromBuffer(filePathOrBuffer);
@@ -182,7 +197,7 @@ async function processDocument(documentId, ownerId) {
 
   try {
     await db.query("UPDATE eva.documents SET status = 'processing' WHERE id = $1", [documentId]);
-    const text = await extractText(input, doc.file_type);
+    const text = await extractText(input, doc.file_type, doc.filename || '');
     if (text && text.length > 0) {
       await db.query(
         "UPDATE eva.documents SET content_text = $1, status = 'indexed', processed_at = now() WHERE id = $2",
@@ -228,7 +243,7 @@ function searchDocuments(ownerId, queryText, limit = 5) {
   const params = [ownerId, likePattern, ...orTerms, limit];
   return db
     .query(
-      `SELECT id, filename, content_text, file_type, left(content_text, 3000) AS content_preview, created_at
+      `SELECT id, filename, content_text, file_type, created_at
        FROM eva.documents
        WHERE owner_id = $1
          AND content_text IS NOT NULL

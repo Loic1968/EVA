@@ -966,26 +966,79 @@ router.get('/gmail/emails/:id', async (req, res, next) => {
 // ════════════════════════════════════════════════════════════════
 router.get('/stats', async (req, res, next) => {
   try {
-    const [convos, msgs, draftsR, logsR, docsR, emailsR] = await Promise.all([
+    const [convos, msgs, draftsR, logsR, docsR, emailsR, gmailR, calendarR] = await Promise.all([
       db.query('SELECT COUNT(*) AS count FROM eva.conversations WHERE owner_id = $1', [req.ownerId]),
       db.query('SELECT COUNT(*) AS count FROM eva.messages WHERE owner_id = $1', [req.ownerId]),
       db.query(`SELECT status, COUNT(*) AS count FROM eva.drafts WHERE owner_id = $1 GROUP BY status`, [req.ownerId]),
       db.query(`SELECT COUNT(*) AS count FROM eva.audit_logs WHERE owner_id = $1 AND created_at > now() - interval '7 days'`, [req.ownerId]),
       db.query('SELECT COUNT(*) AS count, COALESCE(SUM(file_size), 0) AS total_size FROM eva.documents WHERE owner_id = $1', [req.ownerId]),
       db.query('SELECT COUNT(*) AS count FROM eva.emails WHERE owner_id = $1', [req.ownerId]).catch(() => ({ rows: [{ count: 0 }] })),
+      db.query('SELECT COUNT(*) AS count FROM eva.gmail_accounts WHERE owner_id = $1', [req.ownerId]).catch(() => ({ rows: [{ count: 0 }] })),
+      db.query('SELECT COUNT(*) AS count FROM eva.calendar_events WHERE owner_id = $1', [req.ownerId]).catch(() => ({ rows: [{ count: 0 }] })),
     ]);
 
     const draftsByStatus = {};
     (draftsR.rows || []).forEach((r) => { draftsByStatus[r.status] = Number(r.count); });
+
+    const docs = Number(docsR.rows[0]?.count || 0);
+    const emails = Number(emailsR.rows[0]?.count || 0);
+    const gmailAccounts = Number(gmailR.rows[0]?.count || 0);
+    const calendarEvents = Number(calendarR.rows[0]?.count || 0);
+    const totalDrafts = Object.values(draftsByStatus).reduce((a, b) => a + b, 0);
+    const realtimeEnabled = !!(process.env.OPENAI_API_KEY || '').trim();
+
+    const hasMemoryVaultData = docs > 0 || emails > 0 || calendarEvents > 0;
+    const hasMemoryVault = hasMemoryVaultData || gmailAccounts > 0;
+    const hasVoice = realtimeEnabled;
+    const hasDrafts = totalDrafts > 0;
+
+    const phases = [
+      {
+        phase: 1,
+        label: 'Memory Vault',
+        desc: 'Archive & indexing',
+        status: hasMemoryVault ? 'live' : 'building',
+        pct: hasMemoryVaultData ? 100 : (gmailAccounts > 0 ? 50 : 20),
+      },
+      {
+        phase: 2,
+        label: 'Voice + Shadow',
+        desc: 'Real-time voice + observation',
+        status: hasVoice ? 'live' : 'planned',
+        pct: hasVoice ? 100 : 0,
+      },
+      {
+        phase: 3,
+        label: 'Limited Proxy',
+        desc: 'Approve-before-send',
+        status: hasDrafts ? 'live' : 'building',
+        pct: hasDrafts ? 80 : 40,
+      },
+      {
+        phase: 4,
+        label: 'Fine-Tuned Model',
+        desc: 'Your voice, your style',
+        status: 'planned',
+        pct: 0,
+      },
+      {
+        phase: 5,
+        label: 'Autonomous Proxy',
+        desc: 'Full delegation',
+        status: 'planned',
+        pct: 0,
+      },
+    ];
 
     res.json({
       conversations: Number(convos.rows[0]?.count || 0),
       messages: Number(msgs.rows[0]?.count || 0),
       drafts: draftsByStatus,
       audit_logs_7d: Number(logsR.rows[0]?.count || 0),
-      documents: Number(docsR.rows[0]?.count || 0),
+      documents: docs,
       documents_size: Number(docsR.rows[0]?.total_size || 0),
-      emails: Number(emailsR.rows[0]?.count || 0),
+      emails,
+      phases,
     });
   } catch (e) {
     next(e);

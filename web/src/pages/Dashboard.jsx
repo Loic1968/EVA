@@ -133,21 +133,22 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Phase status */}
+        {/* Phase status — from API (real data) */}
         <div className="bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 p-5">
           <h2 className="text-sm font-medium text-slate-900 dark:text-white mb-4">EVA Phases</h2>
           <div className="space-y-4">
-            {[
-              { phase: 1, label: 'Memory Vault', desc: 'Archive & indexing', status: 'building', pct: 40 },
-              { phase: 2, label: 'Voice + Shadow', desc: 'Real-time voice + observation', status: 'building', pct: 25 },
+            {(stats?.phases || [
+              { phase: 1, label: 'Memory Vault', desc: 'Archive & indexing', status: 'building', pct: 0 },
+              { phase: 2, label: 'Voice + Shadow', desc: 'Real-time voice + observation', status: 'planned', pct: 0 },
               { phase: 3, label: 'Limited Proxy', desc: 'Approve-before-send', status: 'planned', pct: 0 },
               { phase: 4, label: 'Fine-Tuned Model', desc: 'Your voice, your style', status: 'planned', pct: 0 },
               { phase: 5, label: 'Autonomous Proxy', desc: 'Full delegation', status: 'planned', pct: 0 },
-            ].map((p) => (
+            ]).map((p) => (
               <div key={p.phase}>
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-2">
                     <span className={`text-xs font-mono px-1.5 py-0.5 rounded ${
+                      p.status === 'live' ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' :
                       p.status === 'building' ? 'bg-cyan-500/20 text-cyan-600 dark:text-cyan-400' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-500'
                     }`}>P{p.phase}</span>
                     <span className="text-sm text-slate-700 dark:text-slate-300">{p.label}</span>
@@ -157,6 +158,7 @@ export default function Dashboard() {
                 <div className="h-1 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
                   <div
                     className={`h-full rounded-full transition-all ${
+                      p.status === 'live' ? 'bg-emerald-500' :
                       p.status === 'building' ? 'bg-gradient-to-r from-cyan-500 to-blue-500' : 'bg-slate-200 dark:bg-slate-700'
                     }`}
                     style={{ width: `${p.pct}%` }}

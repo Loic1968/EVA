@@ -14,12 +14,25 @@ const DEFAULT_OWNER_EMAIL = process.env.EVA_OWNER_EMAIL || 'loic@halisoft.biz';
 
 const EVA_INSTRUCTIONS_BASE = `# EVA — Voice Assistant (HaliSoft, Dubai)
 
+## RULE #1: When to Stay Silent
+- ONLY speak when the user has CLEARLY asked a question or made a request.
+- If you hear noise, silence, breathing, "euh", unclear mumbling — STAY COMPLETELY SILENT.
+- NEVER say "j'ai compris" or "oui" as a response to nothing. Never invent questions to answer.
+
+## Your Name
+- "Comment tu t'appelles?" / "What's your name?" / "Qui es-tu?" / "Ton nom?" / "t'appelles comment?" → Answer: "EVA" or "Je m'appelle EVA". Short.
+- Voice can mishear "comment" as "merci" — if they seem to ask about your NAME or WHO you are → say "EVA". Never "merci c'est EVA".
+
 ## CRITICAL: How to Answer
 1. **Parse the question**: What is the user asking? (person, topic, date, action)
 2. **Search the data below**: Emails and documents are YOUR SOURCE. Match names, subjects, dates.
 3. **If found** → Give the specific answer. "Pierre t'a écrit le 12 février : [résumé]". Be concrete.
 4. **If not found** → Say "Je n'ai pas cette info" or "I don't have that". Never invent.
 5. **Never** vague answers. Never "I understand" or "Je comprends" as opener — go straight to the answer.
+
+## DOCUMENT PRECISION (billets, factures, invoices)
+- Use the EXACT date written in the document. If the bill says "2 mars" or "March 2nd", say 2 March — NEVER 1 March.
+- One day off is a critical error. Read carefully and quote exactly.
 
 ## Voice Style
 - SHORT spoken answers. 1–3 sentences max. No long monologues.
@@ -30,8 +43,11 @@ const EVA_INSTRUCTIONS_BASE = `# EVA — Voice Assistant (HaliSoft, Dubai)
 - Emails and documents are injected below. USE THEM to answer. If asked about messages, people, travel, flights — search the data.
 - No camera, no calendar. If you lack info, say so.
 
-## Silence / Filler
+## Silence / Filler / Noise
 - If the user says nothing meaningful (silence, "euh", "hmm", "ah") — do NOT respond. Stay silent.
+- If you hear background noise, breathing, or unclear audio — STAY SILENT. Do not respond.
+- NEVER say "j'ai compris", "oui j'ai compris", "I understand" as a standalone response. Only respond when the user has clearly asked a question.
+- Never start answering a question that was not explicitly asked. Never chain random responses. If in doubt → stay silent.
 
 ## Stop
 - "Stop", "arrête", "assez" → reply ONLY "OK" or "D'accord" then stop.`;
@@ -89,7 +105,7 @@ async function buildInstructionsWithContext(ownerId) {
       const docs = await docProcessor.getRecentDocuments(owner.id, 8);
       if (docs.length > 0) {
         console.log(`[EVA Realtime] Injected ${docs.length} documents`);
-        instructions += '\n---\n## DOCUMENTS (flights, tickets, Shanghai, travel, meetings)\n\n';
+        instructions += '\n---\n## DOCUMENTS (flights, tickets, Shanghai, travel) — use EXACT dates from text (e.g. 2 mars = 2 mars, never 1 mars)\n\n';
         docs.forEach((d, i) => {
           instructions += `[Doc ${i + 1}] ${d.filename}:\n${(d.content_text || '').slice(0, 1500)}\n\n`;
         });
@@ -146,11 +162,14 @@ router.get('/token', async (req, res, next) => {
               model: 'gpt-4o-transcribe',
               language: transcriptionLang,
             } : undefined,
+            noise_reduction: { type: 'near_field' },
             turn_detection: {
-              type: 'semantic_vad',
+              type: 'server_vad',
+              threshold: 0.6,
+              prefix_padding_ms: 200,
+              silence_duration_ms: 700,
               create_response: true,
               interrupt_response: true,
-              eagerness: turnEagerness || 'low',
             },
           },
           output: { voice: 'marin' },

@@ -52,7 +52,16 @@ const EVA_SYSTEM = `## COMPREHENSION (TOP PRIORITY — DO THIS FIRST)
 4. If you don't find it → say clearly "Je n'ai pas cette info" / "I don't have that". Never invent.
 5. NEVER give vague or generic answers when they ask something specific. Go straight to the answer.
 
+## DOCUMENT PRECISION (critical for billets, factures, invoices)
+- When citing dates, amounts, or details from documents, use the EXACT value written in the document.
+- If the bill says "2 mars" or "March 2nd" or "02/03", say 2 March — NEVER 1 March or another date.
+- One day off is a critical error. Read the document text carefully and quote exactly.
+
 You are EVA, a Personal AI Digital Twin for Loic Hennocq, Founder & CEO of HaliSoft L.L.C-FZ, Dubai.
+
+## Your Name — Answer Directly
+- "Comment tu t'appelles?" / "What's your name?" / "Qui es-tu?" / "C'est quoi ton nom?" → Answer: "EVA" or "Je m'appelle EVA". Nothing else.
+- Do NOT say "merci c'est EVA" — that confuses "merci" with a name question. If they ask your name → say "EVA".
 
 ## Your Identity
 - Loic's dedicated AI proxy. Professional, direct, efficient. Match the user's language (French ↔ English).
@@ -197,7 +206,7 @@ async function reply(userMessage, history = [], ownerId = null, mode = null) {
           : await docProcessor.getRecentDocuments(ownerId, 5);
         documentContext = '\n\n## Documents (Memory Vault)\n';
         if (docResults.length > 0) {
-          documentContext += 'Use these for flights, tickets, billets, Shanghai, travel. If the answer is here, give it and cite the document.\n\n';
+          documentContext += 'Use these for flights, tickets, billets, invoices, Shanghai, travel. Cite the document. For dates/amounts: use EXACT values from the text (e.g. if billet says 2 mars, say 2 mars — never approximate).\n\n';
           docResults.forEach((d, i) => {
             const text = (d.content_text || d.content_preview || '').slice(0, 2500);
             documentContext += `**${d.filename}:**\n${text}\n\n`;
@@ -364,7 +373,7 @@ async function createReplyStream(userMessage, history = [], ownerId = null, mode
           : await docProcessor.getRecentDocuments(ownerId, 5);
         documentContext = '\n\n## Documents (Memory Vault)\n';
         if (docResults.length > 0) {
-          documentContext += 'Use these for flights, tickets, invoices, travel, etc. If the answer is here, give it. Cite the document.\n\n';
+          documentContext += 'Use these for flights, tickets, invoices, travel, etc. Cite the document. For dates/amounts: use EXACT values from the text (e.g. billet says 2 mars → say 2 mars, never 1 mars).\n\n';
           docResults.forEach((d, i) => {
             const text = (d.content_text || d.content_preview || '').slice(0, 2500);
             documentContext += `**${d.filename}:**\n${text}\n\n`;

@@ -35,6 +35,7 @@ export default function ChatRealtime() {
   const dataChannelRef = useRef(null);
   const audioRef = useRef(null);
   const durationInterval = useRef(null);
+  const wakeLockRef = useRef(null);
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
@@ -48,7 +49,16 @@ export default function ChatRealtime() {
     return () => { cancelled = true; };
   }, []);
 
-  const stopSession = useCallback(() => {
+  const releaseWakeLock = useCallback(() => {
+    if (wakeLockRef.current) {
+      try { wakeLockRef.current.release(); } catch (_) {}
+      wakeLockRef.current = null;
+    }
+  }, []);
+
+  const stopSession = useCallback((opts = {}) => {
+    const { keepConnectingState } = opts;
+    releaseWakeLock();
     if (durationInterval.current) {
       clearInterval(durationInterval.current);
       durationInterval.current = null;
@@ -67,9 +77,9 @@ export default function ChatRealtime() {
       pc.close();
       peerRef.current = null;
     }
-    setStatus('idle');
+    if (!keepConnectingState) setStatus('idle');
     setCallDuration(0);
-  }, []);
+  }, [releaseWakeLock]);
 
   const startSession = useCallback(async () => {
     setError(null);
@@ -114,6 +124,9 @@ export default function ChatRealtime() {
         setStatus('connected');
         setCallDuration(0);
         durationInterval.current = setInterval(() => setCallDuration((d) => d + 1), 1000);
+        // Screen Wake Lock — keeps phone awake during call (prevents sleep breaking conversation)
+        if ('wakeLock' in navigator)
+          navigator.wakeLock.request('screen').then((wl) => { wakeLockRef.current = wl; }).catch(() => {});
       });
 
       dc.addEventListener('message', (ev) => {
@@ -143,6 +156,15 @@ export default function ChatRealtime() {
         } catch (_) {}
       });
 
+      pc.onconnectionstatechange = () => {
+        const s = pc.connectionState;
+        if (s === 'disconnected' || s === 'failed') setStatus('disconnected');
+      };
+      pc.oniceconnectionstatechange = () => {
+        const s = pc.iceConnectionState;
+        if (s === 'disconnected' || s === 'failed') setStatus('disconnected');
+      };
+
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
 
@@ -163,9 +185,32 @@ export default function ChatRealtime() {
       setStatus('error');
       stopSession();
     }
-  }, [stopSession, selectedDeviceId]);
+  }, [stopSession, releaseWakeLock, selectedDeviceId]);
 
   useEffect(() => () => stopSession(), [stopSession]);
+
+  // Re-request Wake Lock when user returns to tab (browser releases it when tab is hidden)
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === 'visible' && status === 'connected' && 'wakeLock' in navigator)
+        navigator.wakeLock.request('screen').then((wl) => { wakeLockRef.current = wl; }).catch(() => {});
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [status]);
+
+  // When user returns from sleep/background — check connection, offer reconnect
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible' && status === 'connected') {
+        const pc = peerRef.current;
+        if (pc && (pc.connectionState === 'disconnected' || pc.iceConnectionState === 'disconnected'))
+          setStatus('disconnected');
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [status]);
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[calc(100dvh-8rem)] sm:min-h-[calc(100vh-8rem)] py-6">
@@ -209,6 +254,20 @@ export default function ChatRealtime() {
         <div className="flex flex-col items-center gap-4">
           <div className="w-16 h-16 rounded-full border-2 border-cyan-500 dark:border-cyan-400 border-t-transparent animate-spin" />
           <p className="text-slate-600 dark:text-slate-400">Connecting…</p>
+        </div>
+      ) : status === 'disconnected' ? (
+        <div className="flex flex-col items-center gap-6">
+          <div className="w-16 h-16 rounded-full bg-amber-500/20 flex items-center justify-center">
+            <span className="text-2xl">⚠️</span>
+          </div>
+          <p className="text-amber-600 dark:text-amber-400 font-medium text-center">Connection lost (phone sleep?)</p>
+          <p className="text-slate-600 dark:text-slate-500 text-sm text-center max-w-xs">Tap to reconnect</p>
+          <button
+            onClick={() => { setStatus('connecting'); stopSession({ keepConnectingState: true }); setTimeout(startSession, 300); }}
+            className="min-h-[48px] px-6 py-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-white font-medium touch-manipulation"
+          >
+            Reconnect
+          </button>
         </div>
       ) : (
         <div className="flex flex-col w-full max-w-lg">

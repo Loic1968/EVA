@@ -508,13 +508,22 @@ router.get('/documents', async (req, res, next) => {
   }
 });
 
-// Simple file upload (multipart or base64 JSON)
+// File upload: multer (FormData) or express.raw (direct binary)
 // Store file_data in DB so docs survive Render ephemeral disk (deploys wipe filesystem)
-router.post('/documents/upload', express.raw({ type: '*/*', limit: '50mb' }), async (req, res, next) => {
+const multer = require('multer');
+const uploadMulter = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+
+async function handleDocumentUpload(req, res, next) {
   try {
-    const filename = req.headers['x-filename'] || `upload_${Date.now()}`;
+    let filename, buffer;
+    if (req.file) {
+      filename = req.file.originalname || req.file.fieldname || `upload_${Date.now()}`;
+      buffer = req.file.buffer;
+    } else {
+      filename = req.headers['x-filename'] || `upload_${Date.now()}`;
+      buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body || '');
+    }
     const fileType = path.extname(filename).replace('.', '').toLowerCase() || 'unknown';
-    const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body || '');
     const fileSize = buffer.length;
 
     const filePath = path.join(UPLOAD_DIR, `${Date.now()}_${filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`);
@@ -527,14 +536,16 @@ router.post('/documents/upload', express.raw({ type: '*/*', limit: '50mb' }), as
       [req.ownerId, filename, fileType, fileSize, filePath, buffer]
     );
 
-    // Auto-index: extract text immediately after upload (async, non-blocking)
+    // Index synchronously so user sees real status (no mock)
     const docProcessor = require('../services/documentProcessor');
     const docId = r.rows[0].id;
-    docProcessor.processDocument(docId, req.ownerId).then(() => {
+    try {
+      await docProcessor.processDocument(docId, req.ownerId);
       console.log(`[EVA] Document ${docId} indexed`);
-    }).catch((e) => {
-      console.warn('[EVA] Document auto-index failed:', e.message);
-    });
+    } catch (e) {
+      console.warn('[EVA] Document index failed:', e.message);
+    }
+    const updated = await db.query('SELECT id, filename, file_type, file_size, status, metadata, processed_at FROM eva.documents WHERE id = $1', [docId]);
 
     // Audit log
     await db.query(
@@ -542,9 +553,24 @@ router.post('/documents/upload', express.raw({ type: '*/*', limit: '50mb' }), as
       [req.ownerId, JSON.stringify({ filename, fileType, fileSize })]
     );
 
-    res.status(201).json(r.rows[0]);
+    res.status(201).json(updated.rows[0] || r.rows[0]);
   } catch (e) {
     next(e);
+  }
+}
+
+router.post('/documents/upload', (req, res, next) => {
+  const contentType = (req.get('content-type') || '').toLowerCase();
+  if (contentType.includes('multipart/form-data')) {
+    uploadMulter.single('file')(req, res, (err) => {
+      if (err) return next(err);
+      handleDocumentUpload(req, res, next);
+    });
+  } else {
+    express.raw({ type: '*/*', limit: '50mb' })(req, res, (err) => {
+      if (err) return next(err);
+      handleDocumentUpload(req, res, next);
+    });
   }
 });
 
@@ -576,18 +602,20 @@ router.post('/documents/crawl', async (req, res, next) => {
 
     const docProcessor = require('../services/documentProcessor');
     const docId = r.rows[0].id;
-    docProcessor.processDocument(docId, req.ownerId).then(() => {
+    try {
+      await docProcessor.processDocument(docId, req.ownerId);
       console.log(`[EVA] Crawled document ${docId} indexed`);
-    }).catch((e) => {
-      console.warn('[EVA] Crawled document auto-index failed:', e.message);
-    });
+    } catch (e) {
+      console.warn('[EVA] Crawled document index failed:', e.message);
+    }
+    const updated = await db.query('SELECT id, filename, file_type, file_size, status, metadata, processed_at FROM eva.documents WHERE id = $1', [docId]);
 
     await db.query(
       `INSERT INTO eva.audit_logs (owner_id, action_type, channel, details) VALUES ($1, 'website_crawled', 'documents', $2)`,
       [req.ownerId, JSON.stringify({ url: result.source, filename: result.filename, method: result.method })]
     );
 
-    res.status(201).json(r.rows[0]);
+    res.status(201).json(updated.rows[0] || r.rows[0]);
   } catch (e) {
     if (e.message?.includes('not allowed') || e.message?.includes('not found')) {
       return res.status(400).json({ error: e.message });

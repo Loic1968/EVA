@@ -141,10 +141,12 @@ export const api = {
   getDocuments: (params) => request('/documents?' + new URLSearchParams(params || {})),
   uploadDocument: async (file) => {
     const url = `${API_BASE}/documents/upload`;
+    const formData = new FormData();
+    formData.append('file', file, file.name);
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'X-Filename': file.name, ...getAuthHeaders() },
-      body: file,
+      headers: getAuthHeaders(),
+      body: formData,
     });
     if (res.status === 401) { onAuthFailure(); throw new Error('Session expired'); }
     if (!res.ok) throw new Error('Upload failed');

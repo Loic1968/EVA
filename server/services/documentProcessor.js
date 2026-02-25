@@ -43,6 +43,17 @@ async function extractImageOcr(buffer) {
   }
 }
 
+async function extractDocxFromBuffer(buffer) {
+  try {
+    const mammoth = require('mammoth');
+    const result = await mammoth.extractRawText({ buffer });
+    return (result?.value || '').trim();
+  } catch (e) {
+    console.warn('[DocumentProcessor] DOCX extraction failed:', e.message);
+    return null;
+  }
+}
+
 async function extractText(filePathOrBuffer, fileType) {
   const isBuffer = Buffer.isBuffer(filePathOrBuffer);
   const ext = (fileType || (!isBuffer && path.extname(filePathOrBuffer)) || '').toLowerCase().replace('.', '');
@@ -63,6 +74,10 @@ async function extractText(filePathOrBuffer, fileType) {
     const buffer = isBuffer ? filePathOrBuffer : fs.readFileSync(filePathOrBuffer);
     return extractImageOcr(buffer);
   }
+  if (ext === 'docx' || ext === 'doc') {
+    const buffer = isBuffer ? filePathOrBuffer : fs.readFileSync(filePathOrBuffer);
+    return extractDocxFromBuffer(buffer);
+  }
   return null;
 }
 
@@ -80,14 +95,22 @@ async function processDocument(documentId, ownerId) {
   let input = null;
   if (doc.storage_path && fs.existsSync(doc.storage_path)) {
     input = doc.storage_path;
-  } else if (Buffer.isBuffer(doc.file_data) && doc.file_data.length > 0) {
-    input = doc.file_data;
+  } else if (doc.file_data) {
+    // pg returns BYTEA as Buffer or sometimes as hex string — normalize to Buffer
+    const buf = Buffer.isBuffer(doc.file_data)
+      ? doc.file_data
+      : Buffer.from(doc.file_data, typeof doc.file_data === 'string' ? 'hex' : undefined);
+    if (buf.length > 0) input = buf;
   }
   if (!input) {
+    const errMsg = !doc.file_data || (Buffer.isBuffer(doc.file_data) && doc.file_data.length === 0)
+      ? 'File not stored in DB (upload may have failed). Re-upload the document.'
+      : 'File not found';
     await db.query(
       "UPDATE eva.documents SET status = 'error', metadata = metadata || $1 WHERE id = $2",
-      [JSON.stringify({ error: 'File not found' }), documentId]
+      [JSON.stringify({ error: errMsg }), documentId]
     );
+    console.warn(`[DocumentProcessor] Doc ${documentId}: ${errMsg}`);
     return null;
   }
 

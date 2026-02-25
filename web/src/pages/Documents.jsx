@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { api } from '../api';
 
-const INDEXABLE_TYPES = ['pdf', 'txt', 'csv', 'jpg', 'jpeg', 'png', 'webp'];
+const INDEXABLE_TYPES = ['pdf', 'txt', 'csv', 'docx', 'doc', 'jpg', 'jpeg', 'png', 'webp'];
 
 function ContentModal({ doc, onClose }) {
   const [content, setContent] = useState(null);
@@ -236,7 +236,7 @@ export default function Documents() {
                     doc.status === 'processing' ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400' :
                     doc.status === 'error' ? 'bg-red-500/20 text-red-600 dark:text-red-400' :
                     'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
-                  }`} title={doc.processed_at ? `Indexed ${new Date(doc.processed_at).toLocaleString()}` : doc.status}>
+                  }`} title={doc.status === 'error' && doc.metadata?.error ? doc.metadata.error : (doc.processed_at ? `Indexed ${new Date(doc.processed_at).toLocaleString()}` : doc.status)}>
                     {doc.status === 'indexed' ? 'Indexed' : doc.status === 'uploaded' ? 'Not indexed' : doc.status === 'processing' ? 'Indexing…' : 'Index failed'}
                   </span>
                   {doc.status === 'indexed' && (

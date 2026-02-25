@@ -7,6 +7,16 @@ require('dotenv').config();
 
 const { DATABASE_URL, EVA_DATABASE_URL } = process.env;
 
+// Ensure BYTEA (OID 17) returns Buffer for document file_data on Render
+require('pg').types.setTypeParser(17, (val) => {
+  if (!val) return null;
+  if (Buffer.isBuffer(val)) return val;
+  if (typeof val === 'string' && val.slice(0, 2) === '\\x') {
+    return Buffer.from(val.slice(2), 'hex');
+  }
+  return Buffer.from(val, 'binary');
+});
+
 let pool = null;
 
 function getPool() {

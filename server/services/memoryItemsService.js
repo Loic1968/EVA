@@ -79,4 +79,19 @@ async function listKeys(ownerId) {
   }
 }
 
-module.exports = { getMemoryItems, addMemoryItem, deleteByKey, listKeys, slugify };
+async function getByKey(ownerId, key) {
+  const k = (key || '').trim().toLowerCase().replace(/\s+/g, '_').slice(0, 128);
+  if (!k) return null;
+  try {
+    const r = await db.query(
+      'SELECT kind, key, value FROM eva.memory_items WHERE owner_id = $1 AND key = $2 LIMIT 1',
+      [ownerId, k]
+    );
+    return r.rows[0] || null;
+  } catch (e) {
+    if (/relation "eva\.memory_items" does not exist/i.test(String(e.message))) return null;
+    throw e;
+  }
+}
+
+module.exports = { getMemoryItems, addMemoryItem, deleteByKey, listKeys, getByKey, slugify };

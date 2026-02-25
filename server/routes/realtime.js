@@ -12,7 +12,8 @@ const OPENAI_KEY = (process.env.OPENAI_API_KEY || '').trim();
 const REALTIME_ENABLED = !!OPENAI_KEY;
 const DEFAULT_OWNER_EMAIL = process.env.EVA_OWNER_EMAIL || 'loic@halisoft.biz';
 
-const EVA_INSTRUCTIONS_BASE = `# EVA — Voice Assistant (HaliSoft, Dubai)
+const { getCanonicalPrompt } = require('../prompts/canonicalPrompt');
+const EVA_INSTRUCTIONS_LEGACY = `# EVA — Voice Assistant (HaliSoft, Dubai)
 
 ## RULE #1: When to Stay Silent
 - ONLY speak when the user has CLEARLY asked a question or made a request.
@@ -55,6 +56,10 @@ const EVA_INSTRUCTIONS_BASE = `# EVA — Voice Assistant (HaliSoft, Dubai)
 
 ## Stop
 - "Stop", "arrête", "assez" → reply ONLY "OK" or "D'accord" then stop.`;
+
+const EVA_INSTRUCTIONS_BASE = process.env.EVA_OVERHAUL_ENABLED === 'true'
+  ? getCanonicalPrompt('voice')
+  : EVA_INSTRUCTIONS_LEGACY;
 
 async function buildInstructionsWithContext(ownerId) {
   let instructions = EVA_INSTRUCTIONS_BASE;

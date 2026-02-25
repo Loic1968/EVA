@@ -52,7 +52,8 @@ function parseCommand(text) {
   return { command: null, message: t, mode: null };
 }
 
-const EVA_SYSTEM = `# PRINCIPE FONDAMENTAL — NE JAMAIS INVENTER
+const { getCanonicalPrompt } = require('./prompts/canonicalPrompt');
+const EVA_SYSTEM_LEGACY = `# PRINCIPE FONDAMENTAL — NE JAMAIS INVENTER
 Tu réponds UNIQUEMENT au DERNIER message de l'utilisateur. Tu ne fabriques JAMAIS de question qu'il n'a pas posée. Tu ne fabriques JAMAIS de réponse à une question qu'il n'a pas posée.
 - Si son message ne contient pas de question claire ni d'énoncé de fait → réponds "Oui ?" et rien d'autre.
 
@@ -105,6 +106,10 @@ You are EVA, a Personal AI Digital Twin for the user. The user may introduce the
 
 ## Style
 - Concis. Pas de fluff. Jamais inventer de données. Calendrier: utilise create_calendar_event quand demandé.`;
+
+const EVA_SYSTEM = process.env.EVA_OVERHAUL_ENABLED === 'true'
+  ? getCanonicalPrompt('chat')
+  : EVA_SYSTEM_LEGACY;
 
 function getClient() {
   const key = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
@@ -225,6 +230,12 @@ async function reply(userMessage, history = [], ownerId = null, mode = null) {
   const client = getClient();
   const model = process.env.EVA_CHAT_MODEL || 'claude-sonnet-4-20250514';
 
+  let systemPrompt;
+  if (process.env.EVA_SMART_CONTEXT === 'true' && ownerId) {
+    const contextBuilder = require('./contextBuilder');
+    const { context } = await contextBuilder.buildContext({ ownerId, userMessage, history });
+    systemPrompt = EVA_SYSTEM + (context || '');
+  } else {
   // Build email context: search on keywords, or inject recent when ALWAYS_INJECT
   let emailContext = '';
   if (ownerId) {
@@ -385,7 +396,8 @@ async function reply(userMessage, history = [], ownerId = null, mode = null) {
     }
   }
 
-  let systemPrompt = EVA_SYSTEM + structuredFactsContext + memoryContext + emailContext + documentContext + calendarContext;
+  systemPrompt = EVA_SYSTEM + structuredFactsContext + memoryContext + emailContext + documentContext + calendarContext;
+  }
   if (mode && MODE_HINTS[mode]) {
     systemPrompt += `\n\n## Current Mode: ${mode}\n${MODE_HINTS[mode]}`;
   }
@@ -400,6 +412,8 @@ async function reply(userMessage, history = [], ownerId = null, mode = null) {
   ];
 
   const useThinking = process.env.EVA_USE_THINKING !== 'false';
+  const tempRaw = process.env.EVA_TEMP;
+  const temp = Number(tempRaw);
   const createOptions = {
     model,
     max_tokens: 2048,
@@ -407,6 +421,11 @@ async function reply(userMessage, history = [], ownerId = null, mode = null) {
     messages,
     tools: ownerId ? CALENDAR_TOOLS : [],
   };
+  if (!Number.isNaN(temp) && temp >= 0 && temp <= 2) {
+    createOptions.temperature = temp;
+  } else if (process.env.EVA_OVERHAUL_ENABLED === 'true') {
+    createOptions.temperature = 0.2; // Overhaul default: low temp for coherence
+  }
   if (useThinking) {
     createOptions.thinking = { type: 'enabled', budget_tokens: 2048 };
   }

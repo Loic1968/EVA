@@ -191,7 +191,18 @@ router.post('/chat', async (req, res, next) => {
       return res.status(400).json({ error: 'message required after command' });
     }
 
-    const result = await evaChat.reply(msgToSend, chatHistory, req.ownerId, mode);
+    // Phase 2: Pre-answer shortcut when EVA_OVERHAUL_ENABLED (direct from facts, no LLM)
+    let result;
+    if (process.env.EVA_OVERHAUL_ENABLED === 'true' && req.ownerId) {
+      const preAnswerService = require('../services/preAnswerService');
+      const preAnswer = await preAnswerService.tryPreAnswer(req.ownerId, msgToSend);
+      if (preAnswer) {
+        result = { reply: preAnswer.reply, model: 'pre-answer', tokens: { input: 0, output: 0 } };
+      }
+    }
+    if (!result) {
+      result = await evaChat.reply(msgToSend, chatHistory, req.ownerId, mode);
+    }
 
     // Persist messages if we have a conversation
     if (convId) {
@@ -344,7 +355,13 @@ router.post('/chat/stream', async (req, res, next) => {
 
     // Use reply() with tools (save_memory, create_calendar_event) when ownerId — so EVA can learn. Stream has no tools.
     if (req.ownerId) {
-      const result = await evaChat.reply(msgToSend, chatHistory, req.ownerId, mode);
+      let result;
+      if (process.env.EVA_OVERHAUL_ENABLED === 'true') {
+        const preAnswerService = require('../services/preAnswerService');
+        const preAnswer = await preAnswerService.tryPreAnswer(req.ownerId, msgToSend);
+        if (preAnswer) result = { reply: preAnswer.reply, model: 'pre-answer', tokens: { input: 0, output: 0 } };
+      }
+      if (!result) result = await evaChat.reply(msgToSend, chatHistory, req.ownerId, mode);
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');

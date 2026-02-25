@@ -824,6 +824,47 @@ router.post('/documents/crawl', async (req, res, next) => {
   }
 });
 
+// Delete a document
+router.delete('/documents/:id', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const r = await db.query('DELETE FROM eva.documents WHERE id = $1 AND owner_id = $2 RETURNING id', [id, req.ownerId]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Document not found' });
+    await db.query(
+      `INSERT INTO eva.audit_logs (owner_id, action_type, channel, details) VALUES ($1, 'document_deleted', 'documents', $2)`,
+      [req.ownerId, JSON.stringify({ document_id: id })]
+    );
+    res.json({ deleted: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// Stream original file (PDF, image) for viewing
+router.get('/documents/:id/file', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const r = await db.query(
+      'SELECT id, filename, file_type, file_data FROM eva.documents WHERE id = $1 AND owner_id = $2',
+      [id, req.ownerId]
+    );
+    const doc = r.rows[0];
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
+    if (!doc.file_data || (Buffer.isBuffer(doc.file_data) && doc.file_data.length === 0)) {
+      return res.status(404).json({ error: 'File data not available' });
+    }
+    const buf = Buffer.isBuffer(doc.file_data) ? doc.file_data : Buffer.from(doc.file_data);
+    const ft = (doc.file_type || '').toLowerCase();
+    const ctype = ft === 'pdf' ? 'application/pdf' : ['jpg', 'jpeg'].includes(ft) ? 'image/jpeg' : ft === 'png' ? 'image/png' : ft === 'gif' ? 'image/gif' : ft === 'webp' ? 'image/webp' : 'application/octet-stream';
+    res.setHeader('Content-Type', ctype);
+    res.setHeader('Content-Disposition', `inline; filename="${(doc.filename || 'document').replace(/"/g, '%22')}"`);
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.send(buf);
+  } catch (e) {
+    next(e);
+  }
+});
+
 // Get indexed content of a document (extracted text)
 router.get('/documents/:id/content', async (req, res, next) => {
   try {

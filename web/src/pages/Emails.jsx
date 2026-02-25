@@ -1,6 +1,13 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 
+const FOLDERS = [
+  { id: 'inbox', label: 'Boîte de réception', icon: '📥' },
+  { id: 'sent', label: 'Envoyés', icon: '📤' },
+  { id: 'draft', label: 'Brouillons', icon: '✏️' },
+  { id: 'all', label: 'Tous les éléments', icon: '📧' },
+];
+
 export default function Emails() {
   const [emails, setEmails] = useState([]);
   const [gmailAccounts, setGmailAccounts] = useState([]);
@@ -82,46 +89,15 @@ export default function Emails() {
     return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
   };
 
-  const formatGroupDate = (dateStr) => {
-    const d = new Date(dateStr);
-    const now = new Date();
-    const today = now.toISOString().slice(0, 10);
-    const yesterday = new Date(now);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().slice(0, 10);
-    const diff = now - d;
-    const weekAgo = 7 * 86400000;
-    if (dateStr === today) return 'Aujourd\'hui';
-    if (dateStr === yesterdayStr) return 'Hier';
-    if (diff < weekAgo) return d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
-    return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
-  };
-
-  const emailsByDate = emails.reduce((acc, email) => {
-    const dateStr = new Date(email.received_at).toISOString().slice(0, 10);
-    if (!acc[dateStr]) acc[dateStr] = [];
-    acc[dateStr].push(email);
-    return acc;
-  }, {});
-  const dateKeys = Object.keys(emailsByDate).sort((a, b) => b.localeCompare(a));
-
-  const formatAttachmentSize = (bytes) => {
-    if (!bytes) return '';
-    if (bytes < 1024) return `${bytes} o`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} Ko`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
-  };
-
   const formatSyncTime = (d) => {
     if (!d) return null;
-    const date = new Date(d);
-    return date.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    return new Date(d).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   };
 
   const formatRelativeTime = (d) => {
     if (!d) return null;
     const diff = (Date.now() - new Date(d)) / 1000;
-    if (diff < 60) return 'à l\'instant';
+    if (diff < 60) return "à l'instant";
     if (diff < 3600) return `il y a ${Math.floor(diff / 60)} min`;
     if (diff < 86400) return `il y a ${Math.floor(diff / 3600)} h`;
     return formatSyncTime(d);
@@ -129,250 +105,214 @@ export default function Emails() {
 
   const activeAccount = activeTab === 'all' ? null : gmailAccounts.find((a) => String(a.id) === activeTab);
   const lastSyncAt = activeTab === 'all'
-    ? gmailAccounts.reduce((latest, a) => {
-        if (!a.last_sync_at) return latest;
-        return !latest || new Date(a.last_sync_at) > new Date(latest) ? a.last_sync_at : latest;
-      }, null)
+    ? gmailAccounts.reduce((latest, a) => (!latest || (a.last_sync_at && new Date(a.last_sync_at) > new Date(latest)) ? a.last_sync_at : latest), null)
     : activeAccount?.last_sync_at;
   const syncStatus = activeAccount?.sync_status;
   const syncLabel = syncStatus === 'active' ? 'Synchronisé' : syncStatus === 'syncing' ? 'Synchronisation…' : syncStatus === 'error' ? 'Erreur' : syncStatus === 'pending' ? 'En attente' : null;
 
+  const setFolderAndReset = (f) => {
+    setFolder(f);
+    setPage(0);
+    setSelectedEmail(null);
+  };
+
+  const setAccountAndReset = (tab) => {
+    setActiveTab(tab);
+    setPage(0);
+    setSelectedEmail(null);
+  };
+
+  const safeHtml = (html) => {
+    if (!html || typeof html !== 'string') return '';
+    return html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '').replace(/on\w+\s*=/gi, '');
+  };
+
   return (
-    <div className="flex flex-col min-h-[calc(100vh-8rem)] sm:h-[calc(100vh-8rem)] overflow-hidden">
-      <div className="flex-shrink-0 mb-4 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">Boîte mail</h1>
-          <p className="text-slate-600 dark:text-eva-muted text-sm mt-1">
-            {total > 0 ? `${total.toLocaleString()} emails` : 'Connecte Gmail depuis Data Sources.'}
-          </p>
-          {gmailAccounts.length > 0 && (
-            <div className="flex items-center gap-3 mt-1.5 text-xs">
-              {syncLabel && (
-                <span className={`px-2 py-0.5 rounded font-medium ${
-                  syncStatus === 'active' ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' :
-                  syncStatus === 'syncing' ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400' :
-                  syncStatus === 'error' ? 'bg-red-500/20 text-red-600 dark:text-red-400' :
-                  'bg-slate-200 dark:bg-slate-700/60 text-slate-600 dark:text-slate-400'
-                }`}>
-                  {syncLabel}
-                </span>
-              )}
-              {lastSyncAt ? (
-                <span className="text-slate-500 dark:text-eva-muted" title={formatSyncTime(lastSyncAt)}>
-                  Dernière sync: {formatRelativeTime(lastSyncAt)}
-                </span>
-              ) : activeTab !== 'all' && (
-                <span className="text-slate-500 dark:text-eva-muted">Pas encore synchronisé</span>
-              )}
-            </div>
-          )}
-        </div>
+    <div className="flex h-[calc(100vh-6rem)] overflow-hidden bg-white dark:bg-eva-panel">
+      {/* Left sidebar — Outlook-style folders */}
+      <aside className="w-52 flex-shrink-0 border-r border-slate-200 dark:border-slate-700/40 flex flex-col bg-slate-50 dark:bg-slate-900/30">
         <a
           href="https://mail.google.com/mail/?view=cm"
           target="_blank"
           rel="noopener noreferrer"
-          className="flex-shrink-0 min-h-[44px] px-4 py-2.5 flex items-center justify-center bg-cyan-500 dark:bg-eva-accent text-white rounded-lg text-sm font-medium hover:bg-cyan-600 dark:hover:bg-cyan-400 transition-colors gap-2 touch-manipulation"
+          className="m-3 px-4 py-2.5 flex items-center justify-center gap-2 bg-[#0078D4] hover:bg-[#106EBE] text-white rounded text-sm font-medium transition-colors"
         >
-          <span>✏️</span> Nouvel email
+          <span>+</span> Nouvel email
         </a>
-      </div>
-
-      {error && <div className="text-red-600 dark:text-red-400 text-sm bg-red-500/10 rounded-lg px-4 py-2 mb-4">{error}</div>}
-
-      {/* Folder tabs (Outlook-style) */}
-      <div className="flex flex-wrap gap-1 mb-3">
-        <button
-          onClick={() => { setFolder('inbox'); setPage(0); setSelectedEmail(null); }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium ${folder === 'inbox' ? 'bg-cyan-500/20 text-cyan-700 dark:text-eva-accent' : 'bg-white dark:bg-eva-panel border border-slate-200 dark:border-slate-700/40 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}
-        >
-          📥 Boîte de réception
-        </button>
-        <button
-          onClick={() => { setFolder('sent'); setPage(0); setSelectedEmail(null); }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium ${folder === 'sent' ? 'bg-cyan-500/20 text-cyan-700 dark:text-eva-accent' : 'bg-white dark:bg-eva-panel border border-slate-200 dark:border-slate-700/40 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}
-        >
-          📤 Envoyés
-        </button>
-        <button
-          onClick={() => { setFolder('draft'); setPage(0); setSelectedEmail(null); }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium ${folder === 'draft' ? 'bg-cyan-500/20 text-cyan-700 dark:text-eva-accent' : 'bg-white dark:bg-eva-panel border border-slate-200 dark:border-slate-700/40 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}
-        >
-          ✏️ Brouillons
-        </button>
-        <button
-          onClick={() => { setFolder('all'); setPage(0); setSelectedEmail(null); }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium ${folder === 'all' ? 'bg-cyan-500/20 text-cyan-700 dark:text-eva-accent' : 'bg-white dark:bg-eva-panel border border-slate-200 dark:border-slate-700/40 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}
-        >
-          ✉ Tous
-        </button>
-      </div>
-
-      {/* Tabs par boîte mail */}
-      <div className="flex flex-wrap gap-1 mb-4">
-        <button
-          onClick={() => { setActiveTab('all'); setPage(0); setSelectedEmail(null); }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium ${activeTab === 'all' ? 'bg-cyan-500/20 text-cyan-700 dark:text-eva-accent' : 'bg-white dark:bg-eva-panel border border-slate-200 dark:border-slate-700/40 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}
-        >
-          Tous les comptes
-        </button>
-        {gmailAccounts.map((acct) => (
-          <button
-            key={acct.id}
-            onClick={() => { setActiveTab(String(acct.id)); setPage(0); setSelectedEmail(null); }}
-            className={`px-4 py-2 rounded-lg text-sm font-medium truncate max-w-[180px] ${activeTab === String(acct.id) ? 'bg-cyan-500/20 text-cyan-700 dark:text-eva-accent' : 'bg-white dark:bg-eva-panel border border-slate-200 dark:border-slate-700/40 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}
-            title={acct.gmail_address}
-          >
-            📧 {acct.gmail_address}
-          </button>
-        ))}
-      </div>
-
-      {/* Search */}
-      <form onSubmit={handleSearch} className="flex gap-2 mb-4 flex-shrink-0">
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Rechercher dans les emails..."
-          className="flex-1 px-4 py-2.5 bg-white dark:bg-eva-panel border border-slate-200 dark:border-slate-700/40 rounded-lg text-slate-900 dark:text-white text-sm placeholder:text-slate-500 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/30"
-        />
-        <button
-          type="submit"
-          className="px-5 py-2.5 bg-cyan-500/20 text-cyan-700 dark:text-eva-accent rounded-lg text-sm font-medium hover:bg-cyan-500/30 dark:hover:bg-eva-accent/30 transition-colors"
-        >
-          Rechercher
-        </button>
-      </form>
-
-      {/* Split: liste | détail — on mobile, detail overlays list when selected */}
-      <div className="flex-1 flex gap-4 min-h-0 overflow-hidden">
-        <div className={`bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 overflow-hidden flex flex-col ${selectedEmail ? 'w-full md:w-[380px] flex-shrink-0 hidden md:flex' : 'flex-1 min-w-0'}`}>
-      {loading ? (
-        <div className="flex items-center justify-center h-32">
-          <div className="flex gap-1">
-            <div className="w-2 h-2 rounded-full bg-eva-accent eva-dot" />
-            <div className="w-2 h-2 rounded-full bg-eva-accent eva-dot" />
-            <div className="w-2 h-2 rounded-full bg-eva-accent eva-dot" />
+        <nav className="px-2 pb-4">
+          <div className="text-[11px] font-semibold text-slate-500 dark:text-eva-muted uppercase tracking-wider px-2 py-1.5">Dossiers</div>
+          {FOLDERS.map((f) => (
+            <button
+              key={f.id}
+              onClick={() => setFolderAndReset(f.id)}
+              className={`w-full flex items-center gap-2 px-2 py-2 rounded text-left text-sm ${
+                folder === f.id ? 'bg-[#0078D4]/15 text-[#0078D4] dark:bg-[#0078D4]/20 dark:text-[#4DA3FF] font-medium' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-700/40'
+              }`}
+            >
+              <span className="text-base">{f.icon}</span>
+              <span className="truncate">{f.label}</span>
+            </button>
+          ))}
+        </nav>
+        {gmailAccounts.length > 1 && (
+          <>
+            <div className="text-[11px] font-semibold text-slate-500 dark:text-eva-muted uppercase tracking-wider px-2 py-1.5 mt-2">Comptes</div>
+            <div className="space-y-0.5">
+              <button
+                onClick={() => setAccountAndReset('all')}
+                className={`w-full flex items-center gap-2 px-2 py-2 rounded text-left text-sm truncate ${activeTab === 'all' ? 'bg-[#0078D4]/15 text-[#0078D4] dark:text-[#4DA3FF] font-medium' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200/60 dark:hover:bg-slate-700/40'}`}
+              >
+                Tous les comptes
+              </button>
+              {gmailAccounts.map((acct) => (
+                <button
+                  key={acct.id}
+                  onClick={() => setAccountAndReset(String(acct.id))}
+                  className={`w-full flex items-center gap-2 px-2 py-2 rounded text-left text-sm truncate ${activeTab === String(acct.id) ? 'bg-[#0078D4]/15 text-[#0078D4] dark:text-[#4DA3FF] font-medium' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200/60 dark:hover:bg-slate-700/40'}`}
+                  title={acct.gmail_address}
+                >
+                  {acct.gmail_address}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+        {gmailAccounts.length > 0 && lastSyncAt && (
+          <div className="mt-auto px-2 py-2 text-[10px] text-slate-400 dark:text-slate-500" title={formatSyncTime(lastSyncAt)}>
+            Sync: {formatRelativeTime(lastSyncAt)}
           </div>
+        )}
+      </aside>
+
+      {/* Main: message list + reading pane */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Toolbar: search */}
+        <div className="flex-shrink-0 flex items-center gap-2 px-3 py-2 border-b border-slate-200 dark:border-slate-700/40 bg-white dark:bg-eva-panel">
+          <form onSubmit={handleSearch} className="flex-1 flex gap-2">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Rechercher des messages"
+              className="flex-1 min-w-0 px-3 py-2 bg-slate-100 dark:bg-slate-800/60 border-0 rounded text-sm text-slate-900 dark:text-white placeholder:text-slate-500 focus:ring-2 focus:ring-[#0078D4]/30 focus:ring-inset"
+            />
+            <button type="submit" className="px-4 py-2 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded text-sm font-medium hover:bg-slate-300 dark:hover:bg-slate-600">
+              Rechercher
+            </button>
+          </form>
+          {syncLabel && (
+            <span className={`text-[10px] px-2 py-1 rounded ${syncStatus === 'active' ? 'bg-emerald-500/20 text-emerald-600' : syncStatus === 'syncing' ? 'bg-amber-500/20 text-amber-600' : syncStatus === 'error' ? 'bg-red-500/20 text-red-600' : 'bg-slate-200 text-slate-600'}`}>
+              {syncLabel}
+            </span>
+          )}
         </div>
-      ) : emails.length === 0 ? (
-        <div className="p-8 text-center flex-1">
-          <p className="text-slate-600 dark:text-eva-muted text-sm">
-            {search ? 'Aucun email trouvé.' : 'Aucun email. Connecte Gmail depuis Data Sources.'}
-          </p>
-        </div>
-      ) : (
-            <>
-          <div className="overflow-y-auto flex-1">
-            {dateKeys.map((dateStr) => (
-              <div key={dateStr} className="border-b border-slate-200 dark:border-slate-700/30 last:border-b-0">
-                <div className="px-4 py-2 bg-slate-100 dark:bg-slate-800/50 sticky top-0 z-10 text-xs font-medium text-slate-500 dark:text-eva-muted uppercase tracking-wider">
-                  {formatGroupDate(dateStr)}
+
+        {error && <div className="flex-shrink-0 px-3 py-2 text-red-600 dark:text-red-400 text-sm bg-red-50 dark:bg-red-900/20">{error}</div>}
+
+        <div className="flex-1 flex min-h-0">
+          {/* Message list — Outlook table style */}
+          <div className={`flex flex-col border-r border-slate-200 dark:border-slate-700/40 ${selectedEmail ? 'w-full sm:w-80 md:w-96 flex-shrink-0' : 'flex-1 min-w-0'}`}>
+            {loading ? (
+              <div className="flex items-center justify-center flex-1">
+                <div className="flex gap-1"><div className="w-2 h-2 rounded-full bg-[#0078D4] animate-pulse" /><div className="w-2 h-2 rounded-full bg-[#0078D4] animate-pulse" /><div className="w-2 h-2 rounded-full bg-[#0078D4] animate-pulse" /></div>
+              </div>
+            ) : emails.length === 0 ? (
+              <div className="flex-1 flex items-center justify-center p-8">
+                <p className="text-slate-500 dark:text-eva-muted text-sm text-center">
+                  {search ? 'Aucun message trouvé.' : 'Aucun email. Connecte Gmail depuis Data Sources.'}
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="flex-shrink-0 grid grid-cols-[1fr_1fr_auto] gap-2 px-3 py-2 bg-slate-100 dark:bg-slate-800/40 text-[11px] font-semibold text-slate-500 dark:text-eva-muted uppercase tracking-wider border-b border-slate-200 dark:border-slate-700/40">
+                  <span>{folder === 'sent' ? 'À' : 'De'}</span>
+                  <span>Objet</span>
+                  <span className="text-right">Date</span>
                 </div>
-                <div className="divide-y divide-slate-100 dark:divide-slate-700/20">
-                  {emailsByDate[dateStr].map((email) => (
+                <div className="flex-1 overflow-y-auto">
+                  {emails.map((email) => (
                     <button
                       key={email.id}
                       onClick={() => openEmail(email)}
-                      className={`w-full text-left px-4 py-3 hover:bg-slate-100 dark:hover:bg-slate-700/20 flex items-start gap-3 ${
-                        selectedEmail?.id === email.id ? 'bg-slate-100 dark:bg-slate-700/30 border-l-2 border-cyan-500 dark:border-eva-accent' : ''
-                      } ${!email.is_read ? 'bg-cyan-50/50 dark:bg-slate-700/10' : ''}`}
+                      className={`w-full text-left grid grid-cols-[1fr_1fr_auto] gap-2 px-3 py-2.5 border-b border-slate-100 dark:border-slate-700/20 hover:bg-slate-50 dark:hover:bg-slate-700/20 ${
+                        selectedEmail?.id === email.id ? 'bg-[#0078D4]/10 dark:bg-[#0078D4]/15 border-l-2 border-l-[#0078D4]' : ''
+                      } ${!email.is_read ? 'bg-blue-50/50 dark:bg-blue-900/10' : ''}`}
                     >
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-0.5">
-                          <span className={`text-sm truncate ${!email.is_read ? 'text-slate-900 dark:text-white font-medium' : 'text-slate-600 dark:text-slate-300'}`}>
-                            {folder === 'sent'
-                              ? (Array.isArray(email.to_emails) ? email.to_emails.join(', ') : email.to_emails || '—')
-                              : (email.from_name || email.from_email)}
-                          </span>
-                          {email.is_starred && <span className="text-amber-400 text-xs">★</span>}
-                          {email.has_attachments && <span className="text-slate-500 text-xs">📎</span>}
-                        </div>
-                        <div className={`text-sm truncate ${!email.is_read ? 'text-slate-700 dark:text-slate-200' : 'text-slate-500 dark:text-slate-400'}`}>
-                          {email.subject || '(sans objet)'}
-                        </div>
-                        <div className="text-xs text-slate-500 dark:text-eva-muted truncate mt-0.5">
-                          {email.snippet}
-                        </div>
+                      <div className="min-w-0 flex items-center gap-1">
+                        <span className={`truncate text-sm ${!email.is_read ? 'font-semibold text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-300'}`}>
+                          {folder === 'sent' ? (Array.isArray(email.to_emails) ? email.to_emails[0] || '—' : email.to_emails || '—') : (email.from_name || email.from_email)}
+                        </span>
+                        {email.is_starred && <span className="text-amber-500 shrink-0">★</span>}
+                        {email.has_attachments && <span className="text-slate-400 shrink-0">📎</span>}
                       </div>
-                      <span className="text-xs text-slate-500 dark:text-eva-muted whitespace-nowrap shrink-0" title={new Date(email.received_at).toLocaleString('fr-FR')}>
+                      <div className={`min-w-0 truncate text-sm ${!email.is_read ? 'font-medium text-slate-800 dark:text-slate-200' : 'text-slate-500 dark:text-slate-400'}`}>
+                        {email.subject || '(sans objet)'}
+                      </div>
+                      <span className="text-[11px] text-slate-400 dark:text-slate-500 whitespace-nowrap shrink-0" title={new Date(email.received_at).toLocaleString('fr-FR')}>
                         {formatDate(email.received_at)}
                       </span>
                     </button>
                   ))}
                 </div>
-              </div>
-            ))}
-          </div>
-
-          {total > PAGE_SIZE && (
-            <div className="px-4 py-2 border-t border-slate-200 dark:border-slate-700/40 flex items-center justify-between flex-shrink-0">
-              <span className="text-xs text-slate-500 dark:text-eva-muted">
-                Page {page + 1} / {Math.ceil(total / PAGE_SIZE)}
-              </span>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => handlePageChange(page - 1)}
-                  disabled={page === 0}
-                  className="text-xs px-3 py-1 rounded bg-slate-200 dark:bg-slate-700/40 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white disabled:opacity-30"
-                >
-                  ← Précédent
-                </button>
-                <button
-                  onClick={() => handlePageChange(page + 1)}
-                  disabled={(page + 1) * PAGE_SIZE >= total}
-                  className="text-xs px-3 py-1 rounded bg-slate-200 dark:bg-slate-700/40 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white disabled:opacity-30"
-                >
-                  Suivant →
-                </button>
-              </div>
-            </div>
-          )}
-            </>
-        )}
-        </div>
-
-        {/* Panneau détail — full-width on mobile when selected */}
-        <div className={`flex-1 bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 overflow-hidden flex flex-col min-w-0 ${!selectedEmail ? 'hidden' : 'flex'}`}>
-          {detailLoading ? (
-            <div className="flex justify-center items-center flex-1">
-              <div className="flex gap-1"><div className="w-2 h-2 rounded-full bg-eva-accent eva-dot" /><div className="w-2 h-2 rounded-full bg-eva-accent eva-dot" /><div className="w-2 h-2 rounded-full bg-eva-accent eva-dot" /></div>
-            </div>
-          ) : selectedEmail ? (
-            <>
-              <div className="p-4 border-b border-slate-200 dark:border-slate-700/40 flex-shrink-0">
-                <div className="flex items-start justify-between gap-2 sm:gap-4">
-                  <button onClick={() => setSelectedEmail(null)} className="md:hidden shrink-0 p-2 min-w-[44px] min-h-[44px] flex items-center justify-center text-slate-500 hover:text-slate-900 dark:hover:text-white rounded-lg touch-manipulation" aria-label="Retour">←</button>
-                  <div className="min-w-0 flex-1">
-                    <h2 className="text-lg font-medium text-slate-900 dark:text-white truncate">{selectedEmail.subject || '(sans objet)'}</h2>
-                    <p className="text-sm text-slate-600 dark:text-eva-muted mt-0.5">De: <span className="text-slate-700 dark:text-slate-300">{selectedEmail.from_name ? `${selectedEmail.from_name} <${selectedEmail.from_email}>` : selectedEmail.from_email}</span></p>
-                    {selectedEmail.to_emails?.length > 0 && <p className="text-sm text-slate-600 dark:text-eva-muted">À: <span className="text-slate-700 dark:text-slate-400">{Array.isArray(selectedEmail.to_emails) ? selectedEmail.to_emails.join(', ') : selectedEmail.to_emails}</span></p>}
-                    {selectedEmail.cc_emails?.length > 0 && <p className="text-sm text-slate-600 dark:text-eva-muted">Cc: <span className="text-slate-700 dark:text-slate-400">{Array.isArray(selectedEmail.cc_emails) ? selectedEmail.cc_emails.join(', ') : selectedEmail.cc_emails}</span></p>}
-                  </div>
-                  <span className="text-xs text-slate-500 dark:text-eva-muted whitespace-nowrap">{new Date(selectedEmail.received_at).toLocaleString('fr-FR')}</span>
-                </div>
-                {selectedEmail.attachments && selectedEmail.attachments.length > 0 && (
-                  <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700/30">
-                    <div className="text-xs text-slate-500 dark:text-eva-muted mb-1">Pièces jointes :</div>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedEmail.attachments.map((att, i) => (
-                        <div key={i} className="flex items-center gap-2 px-3 py-2 bg-slate-100 dark:bg-slate-700/40 rounded-lg text-sm text-slate-700 dark:text-slate-300">
-                          <span>📎</span>
-                          <span className="truncate max-w-[200px]" title={att.filename}>{att.filename}</span>
-                          {att.size_bytes && <span className="text-xs text-slate-500 dark:text-eva-muted">({att.size_bytes < 1024 ? att.size_bytes + ' o' : (att.size_bytes / 1024).toFixed(0) + ' Ko'})</span>}
-                        </div>
-                      ))}
+                {total > PAGE_SIZE && (
+                  <div className="flex-shrink-0 flex items-center justify-between px-3 py-2 border-t border-slate-200 dark:border-slate-700/40 text-[11px] text-slate-500 dark:text-eva-muted">
+                    <span>Page {page + 1} / {Math.ceil(total / PAGE_SIZE)}</span>
+                    <div className="flex gap-1">
+                      <button onClick={() => handlePageChange(page - 1)} disabled={page === 0} className="px-2 py-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-30">←</button>
+                      <button onClick={() => handlePageChange(page + 1)} disabled={(page + 1) * PAGE_SIZE >= total} className="px-2 py-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-30">→</button>
                     </div>
                   </div>
                 )}
+              </>
+            )}
+          </div>
+
+          {/* Reading pane — Outlook style */}
+          <div className={`flex-1 flex flex-col min-w-0 bg-slate-50/50 dark:bg-slate-900/20 ${!selectedEmail ? 'hidden md:flex md:items-center md:justify-center' : ''}`}>
+            {detailLoading ? (
+              <div className="flex items-center justify-center flex-1">
+                <div className="flex gap-1"><div className="w-2 h-2 rounded-full bg-[#0078D4] animate-pulse" /><div className="w-2 h-2 rounded-full bg-[#0078D4] animate-pulse" /><div className="w-2 h-2 rounded-full bg-[#0078D4] animate-pulse" /></div>
               </div>
-              <div className="flex-1 overflow-y-auto p-4">
-                <pre className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap font-sans">
-                  {selectedEmail.body_plain || (selectedEmail.body_html ? selectedEmail.body_html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() : '') || '(contenu vide)'}
-                </pre>
-              </div>
-            </>
-          ) : null}
+            ) : selectedEmail ? (
+              <>
+                <div className="flex-shrink-0 p-4 border-b border-slate-200 dark:border-slate-700/40 bg-white dark:bg-eva-panel relative">
+                  <button onClick={() => setSelectedEmail(null)} className="md:hidden absolute top-2 left-2 p-2 text-slate-500 hover:text-slate-900 dark:hover:text-white" aria-label="Retour">←</button>
+                  <h1 className="text-lg font-semibold text-slate-900 dark:text-white pr-8">{selectedEmail.subject || '(sans objet)'}</h1>
+                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600 dark:text-slate-400">
+                    <span><strong className="text-slate-500 dark:text-slate-500">De:</strong> {selectedEmail.from_name ? `${selectedEmail.from_name} <${selectedEmail.from_email}>` : selectedEmail.from_email}</span>
+                    {selectedEmail.to_emails?.length > 0 && <span><strong className="text-slate-500 dark:text-slate-500">À:</strong> {Array.isArray(selectedEmail.to_emails) ? selectedEmail.to_emails.join(', ') : selectedEmail.to_emails}</span>}
+                    {selectedEmail.cc_emails?.length > 0 && <span><strong className="text-slate-500 dark:text-slate-500">Cc:</strong> {Array.isArray(selectedEmail.cc_emails) ? selectedEmail.cc_emails.join(', ') : selectedEmail.cc_emails}</span>}
+                    <span><strong className="text-slate-500 dark:text-slate-500">Date:</strong> {new Date(selectedEmail.received_at).toLocaleString('fr-FR')}</span>
+                  </div>
+                  {selectedEmail.attachments && selectedEmail.attachments.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700/30 flex flex-wrap gap-2">
+                      {selectedEmail.attachments.map((att, i) => (
+                        <div key={i} className="flex items-center gap-2 px-2 py-1.5 bg-slate-100 dark:bg-slate-700/40 rounded text-xs text-slate-700 dark:text-slate-300">
+                          <span>📎</span>
+                          <span className="truncate max-w-[180px]" title={att.filename}>{att.filename}</span>
+                          {att.size_bytes && <span className="text-slate-500">({att.size_bytes < 1024 ? att.size_bytes + ' o' : (att.size_bytes / 1024).toFixed(0) + ' Ko'})</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1 overflow-y-auto p-4">
+                  {selectedEmail.body_html ? (
+                    <div
+                      className="prose prose-slate dark:prose-invert prose-sm max-w-none email-body"
+                      dangerouslySetInnerHTML={{ __html: safeHtml(selectedEmail.body_html) }}
+                    />
+                  ) : (
+                    <pre className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap font-sans leading-relaxed">
+                      {selectedEmail.body_plain || '(contenu vide)'}
+                    </pre>
+                  )}
+                </div>
+              </>
+            ) : (
+              <p className="text-slate-400 dark:text-slate-500 text-sm">Sélectionnez un message pour l&apos;afficher.</p>
+            )}
+          </div>
         </div>
       </div>
     </div>

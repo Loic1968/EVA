@@ -170,6 +170,19 @@ export const api = {
   processDocument: (id) => request(`/documents/${id}/process`, { method: 'POST' }),
   reindexDocuments: () => request('/documents/reindex', { method: 'POST' }),
   getDocumentContent: (id) => request(`/documents/${id}/content`),
+  getDocumentFile: async (id) => {
+    const url = `${API_BASE.replace(/\/$/, '')}/documents/${id}/file`;
+    const res = await fetch(url, { headers: getAuthHeaders() });
+    if (res.status === 401) { onAuthFailure(); throw new Error('Session expired'); }
+    if (!res.ok) {
+      const err = new Error(res.statusText || 'Failed to load file');
+      err.status = res.status;
+      try { err.body = await res.json(); } catch (_) {}
+      throw err;
+    }
+    return res.blob();
+  },
+  deleteDocument: (id) => request(`/documents/${id}`, { method: 'DELETE' }),
   crawlWebsite: (url) => request('/documents/crawl', { method: 'POST', body: JSON.stringify({ url }) }),
 
   // Gmail OAuth & Emails

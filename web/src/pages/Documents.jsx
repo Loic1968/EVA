@@ -3,30 +3,101 @@ import { api } from '../api';
 
 const INDEXABLE_TYPES = ['pdf', 'txt', 'csv', 'docx', 'doc', 'jpg', 'jpeg', 'png', 'webp', 'gif'];
 
-function ContentModal({ doc, onClose }) {
+const IMAGE_TYPES = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+const PDF_TYPE = 'pdf';
+
+function DocumentReader({ doc, onClose }) {
+  const ft = (doc.file_type || '').toLowerCase();
+  const canViewFile = PDF_TYPE === ft || IMAGE_TYPES.includes(ft);
+  const hasIndexedText = doc.status === 'indexed';
+  const [mode, setMode] = useState(hasIndexedText ? 'text' : 'file'); // 'text' | 'file'
   const [content, setContent] = useState(null);
+  const [fileBlob, setFileBlob] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
+
   useEffect(() => {
+    if (!hasIndexedText) {
+      setLoading(false);
+      return;
+    }
     api.getDocumentContent(doc.id)
       .then((r) => setContent(r.content_text || ''))
       .catch((e) => setErr(e.message || 'Failed to load'))
       .finally(() => setLoading(false));
-  }, [doc.id]);
+  }, [doc.id, hasIndexedText]);
+
+  const blobUrlRef = useRef(null);
+  useEffect(() => {
+    if (mode !== 'file' || !canViewFile) return;
+    setLoading(true);
+    setErr(null);
+    api.getDocumentFile(doc.id)
+      .then((blob) => {
+        if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
+        blobUrlRef.current = URL.createObjectURL(blob);
+        setFileBlob(blobUrlRef.current);
+      })
+      .catch((e) => setErr(e.message || 'Failed to load file'))
+      .finally(() => setLoading(false));
+    return () => {
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current);
+        blobUrlRef.current = null;
+      }
+    };
+  }, [doc.id, mode, canViewFile]);
+
+  const effectiveLoading = mode === 'file' && canViewFile ? loading : mode === 'text' ? loading : false;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={onClose}>
-      <div className="bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-700/40 flex items-center justify-between">
-          <h3 className="font-medium text-slate-900 dark:text-white truncate">Indexed: {doc.filename}</h3>
-          <button onClick={onClose} className="text-slate-500 hover:text-slate-900 dark:hover:text-white p-1">✕</button>
+      <div className="bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-700/40 flex items-center justify-between gap-3">
+          <h3 className="font-medium text-slate-900 dark:text-white truncate flex-1">{doc.filename}</h3>
+          {canViewFile && (
+            <div className="flex gap-1 shrink-0">
+              {hasIndexedText && (
+                <button
+                  onClick={() => setMode('text')}
+                  className={`px-3 py-1.5 rounded-lg text-sm ${mode === 'text' ? 'bg-cyan-500/20 text-cyan-600 dark:text-cyan-400' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-400'}`}
+                >
+                  Text
+                </button>
+              )}
+              <button
+                onClick={() => setMode('file')}
+                className={`px-3 py-1.5 rounded-lg text-sm ${mode === 'file' ? 'bg-cyan-500/20 text-cyan-600 dark:text-cyan-400' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-400'}`}
+              >
+                View file
+              </button>
+            </div>
+          )}
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-900 dark:hover:text-white p-1 shrink-0">✕</button>
         </div>
-        <div className="p-5 overflow-auto flex-1">
-          {loading && <p className="text-slate-500 dark:text-eva-muted">Loading…</p>}
+        <div className="p-5 overflow-auto flex-1 min-h-0">
+          {effectiveLoading && <p className="text-slate-500 dark:text-eva-muted">Loading…</p>}
           {err && <p className="text-red-400">{err}</p>}
-          {content && (
-            <pre className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap font-sans break-words">
-              {content}
-            </pre>
+          {mode === 'text' && content && (
+            <div className="prose prose-slate dark:prose-invert max-w-none text-sm sm:text-base leading-relaxed">
+              <pre className="whitespace-pre-wrap font-sans break-words bg-transparent p-0 m-0 text-slate-700 dark:text-slate-300">
+                {content}
+              </pre>
+            </div>
+          )}
+          {mode === 'file' && canViewFile && fileBlob && (
+            <>
+              {ft === PDF_TYPE && (
+                <iframe
+                  src={fileBlob}
+                  title={doc.filename}
+                  className="w-full h-[70vh] min-h-[400px] rounded-lg border border-slate-200 dark:border-slate-700/40"
+                />
+              )}
+              {IMAGE_TYPES.includes(ft) && (
+                <img src={fileBlob} alt={doc.filename} className="max-w-full h-auto rounded-lg border border-slate-200 dark:border-slate-700/40" />
+              )}
+            </>
           )}
         </div>
       </div>
@@ -45,7 +116,9 @@ export default function Documents() {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [dragOver, setDragOver] = useState(false);
-  const [contentModalDoc, setContentModalDoc] = useState(null);
+  const [readerDoc, setReaderDoc] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null);
   const fileRef = useRef(null);
   const cameraRef = useRef(null);
 
@@ -67,6 +140,24 @@ export default function Documents() {
       setError(e?.body?.error || e?.message || 'Re-index failed');
     } finally {
       setReindexing(false);
+    }
+  };
+
+  const handleDelete = async (doc) => {
+    if (confirmDelete !== doc.id) {
+      setConfirmDelete(doc.id);
+      return;
+    }
+    setDeletingId(doc.id);
+    setError(null);
+    try {
+      await api.deleteDocument(doc.id);
+      setConfirmDelete(null);
+      await load();
+    } catch (e) {
+      setError(e?.body?.error || e?.message || 'Delete failed');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -274,15 +365,31 @@ export default function Documents() {
                   }`} title={doc.status === 'error' && doc.metadata?.error ? doc.metadata.error : (doc.processed_at ? `Indexed ${new Date(doc.processed_at).toLocaleString()}` : doc.status)}>
                     {doc.status === 'indexed' ? 'Indexed' : doc.status === 'uploaded' ? 'Not indexed' : doc.status === 'processing' ? 'Indexing…' : 'Index failed'}
                   </span>
-                  {doc.status === 'indexed' && (
+                  {(doc.status === 'indexed' || ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp'].includes((doc.file_type || '').toLowerCase())) && (
                     <button
-                      onClick={() => setContentModalDoc(doc)}
+                      onClick={() => setReaderDoc(doc)}
                       className="text-xs px-3 py-2 sm:py-1 rounded-lg bg-slate-200 dark:bg-slate-600/30 text-slate-600 dark:text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-400 hover:bg-cyan-500/20 transition-colors touch-manipulation"
-                      title="View extracted text"
+                      title="View document in reader"
                     >
-                      View index
+                      View
                     </button>
                   )}
+                  {confirmDelete === doc.id ? (
+                    <button
+                      onClick={() => setConfirmDelete(null)}
+                      className="text-xs px-3 py-2 sm:py-1 rounded-lg bg-slate-200 dark:bg-slate-600/30 text-slate-600 dark:text-slate-400 hover:bg-slate-300 dark:hover:bg-slate-600"
+                    >
+                      Cancel
+                    </button>
+                  ) : null}
+                  <button
+                    onClick={() => handleDelete(doc)}
+                    disabled={deletingId !== null}
+                    className="text-xs px-3 py-2 sm:py-1 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-500/20 disabled:opacity-50 transition-colors touch-manipulation"
+                    title={confirmDelete === doc.id ? 'Click again to confirm' : 'Delete document'}
+                  >
+                    {deletingId === doc.id ? '…' : confirmDelete === doc.id ? 'Confirm?' : 'Delete'}
+                  </button>
                   {(doc.status === 'uploaded' || doc.status === 'error') && INDEXABLE_TYPES.includes((doc.file_type || '').toLowerCase()) && (
                     <button
                       onClick={() => handleProcess(doc)}
@@ -300,8 +407,8 @@ export default function Documents() {
         )}
       </div>
 
-      {contentModalDoc && (
-        <ContentModal doc={contentModalDoc} onClose={() => setContentModalDoc(null)} />
+      {readerDoc && (
+        <DocumentReader doc={readerDoc} onClose={() => setReaderDoc(null)} />
       )}
     </div>
   );

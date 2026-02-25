@@ -42,6 +42,13 @@ function parseCommand(text) {
   if (/^\/brief\b/i.test(t)) return { command: 'brief', message: t.replace(/^\/brief\s*/i, '').trim(), mode: 'BRIEF_ME' };
   if (/^\/draft\b/i.test(t)) return { command: 'draft', message: t.replace(/^\/draft\s*/i, '').trim(), mode: 'DRAFT_REVIEW' };
   if (/^\/execute\b/i.test(t)) return { command: 'execute', message: t.replace(/^\/execute\s*/i, '').trim(), mode: 'EXECUTE_GUARDED' };
+  const rememberMatch = t.match(/^\/remember\s+(\S+)=(.+)$/is);
+  if (rememberMatch) return { command: 'remember', key: rememberMatch[1].trim(), value: rememberMatch[2].trim(), message: '' };
+  const correctMatch = t.match(/^\/correct\s+(\S+)=(.+)$/is);
+  if (correctMatch) return { command: 'correct', key: correctMatch[1].trim(), value: correctMatch[2].trim(), message: '' };
+  const forgetMatch = t.match(/^\/forget\s+(.+)$/is);
+  if (forgetMatch) return { command: 'forget', key: forgetMatch[1].trim(), message: '' };
+  if (/^\/memory\s*$/i.test(t)) return { command: 'memory', message: '' };
   return { command: null, message: t, mode: null };
 }
 
@@ -52,10 +59,11 @@ const EVA_SYSTEM = `## COMPREHENSION (TOP PRIORITY — DO THIS FIRST)
 4. If you don't find it → say clearly "Je n'ai pas cette info" / "I don't have that". Never invent.
 5. NEVER give vague or generic answers when they ask something specific. Go straight to the answer.
 
-## DOCUMENT PRECISION (critical for billets, factures, invoices)
+## DOCUMENT PRECISION (critical for billets, factures, invoices, identity docs)
 - When citing dates, amounts, or details from documents, use the EXACT value written in the document.
 - If the bill says "2 mars" or "March 2nd" or "02/03", say 2 March — NEVER 1 March or another date.
 - For flight tickets (billets): check BOTH departure date AND arrival date. Dubai 23h10 might depart 1st and arrive 2nd — the user often means arrival date. Read the full ticket.
+- For identity documents (passport, ID): use the --- IDENTITY DOCUMENT --- block if present. Date de naissance / date of birth is critical. Quote exact values.
 - One day off is a critical error. Read the document text carefully and quote exactly.
 
 ## USER CORRECTION (highest priority)
@@ -114,8 +122,8 @@ function getClient() {
 // Keywords that suggest the user is asking about emails (widened for French)
 const EMAIL_KEYWORDS = /email|mail|envoy[eé]|re[çc]u|message|from|sent|wrote|[eé]crit|r[eé]pondu|contact[eé]|inbox|courrier|correspondance|dernier|dit|demand[eé]|r[eé]ponse|qui m'a|pierre|jean|paul|marie/i;
 
-// Keywords for travel/documents (vol, billet, Shanghai, document uploadé)
-const DOCUMENT_KEYWORDS = /vol|billet|avion|train|Shanghai|PVG|voyage|travel|flight|lundi|mardi|mercredi|jeudi|vendredi|semaine|document|fichier|upload|upload[eé]/i;
+// Keywords for travel/documents (vol, billet, Shanghai, passport, date de naissance, etc.)
+const DOCUMENT_KEYWORDS = /vol|billet|avion|train|Shanghai|PVG|voyage|travel|flight|lundi|mardi|mercredi|jeudi|vendredi|semaine|document|fichier|upload|upload[eé]|passport|passeport|date\s*de\s*naissance|birth\s*date|naissance|identit[eé]|cni/i;
 
 // Keywords for calendar (agenda, meeting, vol, rendez-vous, schedule)
 const CALENDAR_KEYWORDS = /agenda|calendrier|calendar|meeting|rendez-vous|rdv|r[eé]union|schedule|plann|event|[eé]v[eé]nement|prochain|vol|lundi|mardi|mercredi|jeudi|vendredi|demain|aujourd'hui|this week|add.*(to|au)|ajout(e|er).*(au|to)/i;
@@ -126,12 +134,12 @@ const ALWAYS_INJECT_RECENT = true;
 const CALENDAR_TOOLS = [
   {
     name: 'save_memory',
-    description: 'Save a fact you learned about the user. Use when they tell you preferences, dates, names, or any personal info to remember. Examples: "Loic préfère le café le matin", "Vol Shanghai 2 mars", "Pierre est le contact projet X".',
+    description: 'Save a fact you learned. Use when user shares preferences, corrections, dates, names. category=preference for "je préfère X", category=correction when user says "c\'est faux" or "non c\'est Y" — corrections have highest priority.',
     input_schema: {
       type: 'object',
       properties: {
         fact: { type: 'string', description: 'The fact to remember' },
-        category: { type: 'string', description: 'Optional: preference, travel, contact, general' },
+        category: { type: 'string', description: 'Optional: correction (when user corrects you), preference, travel, contact, general' },
       },
       required: ['fact'],
     },
@@ -156,9 +164,14 @@ const CALENDAR_TOOLS = [
 async function executeTool(ownerId, name, input) {
   if (name === 'save_memory') {
     const memoryService = require('./services/memoryService');
+    const memoryItems = require('./services/memoryItemsService');
     try {
-      const id = await memoryService.addMemory(ownerId, input.fact, input.category || 'general');
-      return id ? { ok: true, id } : { error: 'Failed to save' };
+      const category = input.category || 'general';
+      const kind = category === 'preference' ? 'preference' : category === 'correction' ? 'correction' : 'fact';
+      const key = memoryItems.slugify(input.fact);
+      await memoryItems.addMemoryItem(ownerId, kind, key, input.fact);
+      const id = await memoryService.addMemory(ownerId, input.fact, category);
+      return id ? { ok: true, id } : { ok: true };
     } catch (err) {
       return { error: err.message };
     }
@@ -190,9 +203,42 @@ async function executeTool(ownerId, name, input) {
  * @param {string|null} [mode] – BRIEF_ME | DRAFT_REVIEW | EXECUTE_GUARDED
  * @returns {Promise<{reply:string, model:string, tokens:{input:number,output:number}}>}
  */
+// Map question keywords to fact keys for direct lookup (conflict protection)
+const FACT_KEY_PATTERNS = [
+  { keys: ['date_of_birth'], regex: /(?:date\s+de\s+naissance|birth\s*(?:date)?|date\s+of\s+birth|d\.o\.b\.?)/i },
+  { keys: ['passport_number'], regex: /(?:num[eé]ro\s*(?:passeport|passport)?|passport\s*number)/i },
+  { keys: ['nationality'], regex: /(?:nationalit[eé]|nationality)/i },
+  { keys: ['visa_expiry_date'], regex: /(?:visa\s*expir|date\s+d['']expiration)/i },
+  { keys: ['next_flight_shanghai', 'flight_departure_date', 'flight_arrival_date'], regex: /(?:vol\s+shanghai|flight\s+shanghai|pvg|mon\s+vol)/i },
+  { keys: ['invoice_due_date'], regex: /(?:[eé]ch[eé]ance|due\s+date|date\s+d[''][eé]ch[eé]ance)/i },
+];
+
 async function reply(userMessage, history = [], ownerId = null, mode = null) {
   const client = getClient();
   const model = process.env.EVA_CHAT_MODEL || 'claude-sonnet-4-20250514';
+
+  // Step 5: Direct fact lookup when EVA_STRUCTURED_MEMORY=true — prevent hallucination
+  if (ownerId && process.env.EVA_STRUCTURED_MEMORY === 'true') {
+    try {
+      const factsService = require('./services/factsService');
+      const msg = (userMessage || '').trim().toLowerCase();
+      for (const { keys, regex } of FACT_KEY_PATTERNS) {
+        if (!regex.test(msg)) continue;
+        for (const key of keys) {
+          const fact = await factsService.getFactByKey(ownerId, key);
+          if (fact && (fact.confidence || 0.8) >= 0.8) {
+            return {
+              reply: fact.value,
+              model,
+              tokens: { input: 0, output: 0 },
+            };
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[EVA Chat] Direct fact lookup failed:', err.message);
+    }
+  }
 
   // Build email context: search on keywords, or inject recent when ALWAYS_INJECT
   let emailContext = '';
@@ -233,9 +279,14 @@ async function reply(userMessage, history = [], ownerId = null, mode = null) {
       const docProcessor = require('./services/documentProcessor');
       const shouldInject = ALWAYS_INJECT_RECENT || DOCUMENT_KEYWORDS.test(userMessage);
       if (shouldInject) {
-        const docResults = DOCUMENT_KEYWORDS.test(userMessage)
+        const useSearch = DOCUMENT_KEYWORDS.test(userMessage);
+        let docResults = useSearch
           ? await docProcessor.searchDocuments(ownerId, userMessage, 8)
           : await docProcessor.getRecentDocuments(ownerId, 5);
+        // Fallback: if search returns nothing, try recent (e.g. query too short)
+        if (docResults.length === 0 && useSearch) {
+          docResults = await docProcessor.getRecentDocuments(ownerId, 5);
+        }
         documentContext = '\n\n## Documents (Memory Vault)\n';
         if (docResults.length > 0) {
           documentContext += 'Use these for flights, tickets, billets, invoices, Shanghai, travel. Cite the document. For dates: use EXACT values (2 mars not 1 mars). Check --- FLIGHT DATES --- block if present.\n\n';
@@ -245,6 +296,10 @@ async function reply(userMessage, history = [], ownerId = null, mode = null) {
           });
         } else {
           documentContext += '(No documents found. User can upload in Documents page.)\n';
+          if (process.env.EVA_DEBUG === 'true') {
+            const stats = await docProcessor.getDocumentStats(ownerId);
+            console.warn('[EVA Chat] No documents for owner', ownerId, '| stats:', JSON.stringify(stats), '| Tip: Re-index documents in Documents page if status is uploaded/error');
+          }
         }
       }
     } catch (err) {
@@ -252,18 +307,64 @@ async function reply(userMessage, history = [], ownerId = null, mode = null) {
     }
   }
 
-  // Memory context: facts EVA has learned (always inject)
+  // STRUCTURED FACT MEMORY (when EVA_STRUCTURED_MEMORY=true) — authoritative, before other context
+  let structuredFactsContext = '';
+  if (ownerId && process.env.EVA_STRUCTURED_MEMORY === 'true') {
+    try {
+      const factsService = require('./services/factsService');
+      const facts = await factsService.getFacts(ownerId, 50);
+      if (facts.length > 0) {
+        structuredFactsContext = '\n\n## STRUCTURED FACT MEMORY (Authoritative)\n';
+        structuredFactsContext += 'These facts override any conflicting information from documents or emails.\n';
+        structuredFactsContext += 'If uncertain, say "Missing data" or "Je n\'ai pas cette info". Never guess.\n\n';
+        facts.forEach((f) => {
+          const source = f.source_type || 'unknown';
+          structuredFactsContext += `- ${f.key}: ${f.value} (${source}, priority ${f.priority})\n`;
+        });
+      }
+    } catch (err) {
+      console.warn('[EVA Chat] Structured facts lookup failed:', err.message);
+    }
+  }
+
+  // PERSISTENT MEMORY: corrections > preferences > facts + feedback (EVA learns)
   let memoryContext = '';
   if (ownerId) {
     try {
+      const memoryItems = require('./services/memoryItemsService');
+      const feedbackService = require('./services/feedbackService');
       const memoryService = require('./services/memoryService');
-      const memories = await memoryService.getMemories(ownerId, 30);
-      if (memories.length > 0) {
-        memoryContext = '\n\n## Memories (what you learned about the user)\n';
-        memoryContext += 'Use these to answer. You learned these from past conversations.\n\n';
-        memories.forEach((m) => {
-          memoryContext += `- ${m.fact}\n`;
+      const [items, feedback, legacyMemories] = await Promise.all([
+        memoryItems.getMemoryItems(ownerId, 30),
+        feedbackService.getRecentFeedback(ownerId, 10),
+        memoryService.getMemories(ownerId, 15),
+      ]);
+      const lines = [];
+      if (items.length > 0) {
+        lines.push('**Corrections et préférences (priorité maximale — utilise ces valeurs):**');
+        items.forEach((m) => {
+          const label = m.kind === 'correction' ? '[CORRECTION]' : m.kind === 'preference' ? '[PRÉFÉRENCE]' : '[FACT]';
+          lines.push(`- ${label} ${m.key} = ${m.value}`);
         });
+      }
+      if (feedback.length > 0) {
+        lines.push('\n**Feedback passé (à éviter / corriger):**');
+        feedback.forEach((f) => {
+          if (f.feedback_type === 'correction' && f.corrected_text) {
+            lines.push(`- Éviter: "${(f.original_text || '').slice(0, 80)}..." → Utiliser: "${(f.corrected_text || '').slice(0, 80)}..."`);
+          } else if (f.feedback_type === 'thumbs_down' && f.original_text) {
+            lines.push(`- Éviter ce type de réponse: "${(f.original_text || '').slice(0, 100)}..."`);
+          }
+        });
+      }
+      if (legacyMemories.length > 0 && lines.length < 5) {
+        lines.push('\n**Mémoires (save_memory):**');
+        legacyMemories.slice(0, 10).forEach((m) => lines.push(`- ${m.fact}`));
+      }
+      if (lines.length > 0) {
+        memoryContext = '\n\n## PERSISTENT MEMORY (ce que tu as appris — utilise-le)\n';
+        memoryContext += 'Les corrections et préférences ci-dessus OVERRIDE tout sauf instruction explicite de l\'utilisateur.\n\n';
+        memoryContext += lines.join('\n') + '\n';
       }
     } catch (err) {
       console.warn('[EVA Chat] Memory context lookup failed:', err.message);
@@ -299,7 +400,7 @@ async function reply(userMessage, history = [], ownerId = null, mode = null) {
     }
   }
 
-  let systemPrompt = EVA_SYSTEM + memoryContext + emailContext + documentContext + calendarContext;
+  let systemPrompt = EVA_SYSTEM + structuredFactsContext + memoryContext + emailContext + documentContext + calendarContext;
   if (mode && MODE_HINTS[mode]) {
     systemPrompt += `\n\n## Current Mode: ${mode}\n${MODE_HINTS[mode]}`;
   }
@@ -418,9 +519,13 @@ async function createReplyStream(userMessage, history = [], ownerId = null, mode
       const docProcessor = require('./services/documentProcessor');
       const shouldInject = ALWAYS_INJECT_RECENT || DOCUMENT_KEYWORDS.test(userMessage);
       if (shouldInject) {
-        const docResults = DOCUMENT_KEYWORDS.test(userMessage)
+        const useSearch = DOCUMENT_KEYWORDS.test(userMessage);
+        let docResults = useSearch
           ? await docProcessor.searchDocuments(ownerId, userMessage, 5)
           : await docProcessor.getRecentDocuments(ownerId, 5);
+        if (docResults.length === 0 && useSearch) {
+          docResults = await docProcessor.getRecentDocuments(ownerId, 5);
+        }
         documentContext = '\n\n## Documents (Memory Vault)\n';
         if (docResults.length > 0) {
           documentContext += 'Use these for flights, tickets, invoices, travel, etc. Cite the document. For dates: use EXACT values (2 mars not 1 mars). Check --- FLIGHT DATES --- block if present.\n\n';
@@ -437,15 +542,57 @@ async function createReplyStream(userMessage, history = [], ownerId = null, mode
     }
   }
 
-  // Memory context in stream mode
+  // STRUCTURED FACT MEMORY in stream mode (when EVA_STRUCTURED_MEMORY=true)
+  let structuredFactsStream = '';
+  if (ownerId && process.env.EVA_STRUCTURED_MEMORY === 'true') {
+    try {
+      const factsService = require('./services/factsService');
+      const facts = await factsService.getFacts(ownerId, 50);
+      if (facts.length > 0) {
+        structuredFactsStream = '\n\n## STRUCTURED FACT MEMORY (Authoritative)\n';
+        structuredFactsStream += 'These facts override any conflicting information. If uncertain, say "Missing data". Never guess.\n\n';
+        facts.forEach((f) => {
+          structuredFactsStream += `- ${f.key}: ${f.value} (${f.source_type || 'unknown'}, priority ${f.priority})\n`;
+        });
+      }
+    } catch (err) {
+      console.warn('[EVA Chat] Structured facts failed:', err.message);
+    }
+  }
+
+  // Memory context in stream mode (same as reply — memory_items + feedback)
   let memoryContextStream = '';
   if (ownerId) {
     try {
+      const memoryItems = require('./services/memoryItemsService');
+      const feedbackService = require('./services/feedbackService');
       const memoryService = require('./services/memoryService');
-      const memories = await memoryService.getMemories(ownerId, 30);
-      if (memories.length > 0) {
-        memoryContextStream = '\n\n## Memories (what you learned)\n';
-        memories.forEach((m) => { memoryContextStream += `- ${m.fact}\n`; });
+      const [items, feedback, legacyMemories] = await Promise.all([
+        memoryItems.getMemoryItems(ownerId, 30),
+        feedbackService.getRecentFeedback(ownerId, 10),
+        memoryService.getMemories(ownerId, 15),
+      ]);
+      const lines = [];
+      if (items.length > 0) {
+        items.forEach((m) => {
+          const label = m.kind === 'correction' ? '[CORRECTION]' : m.kind === 'preference' ? '[PRÉFÉRENCE]' : '[FACT]';
+          lines.push(`- ${label} ${m.key} = ${m.value}`);
+        });
+      }
+      if (feedback.length > 0) {
+        feedback.forEach((f) => {
+          if (f.feedback_type === 'correction' && f.corrected_text) {
+            lines.push(`- Éviter: "${(f.original_text || '').slice(0, 60)}..." → Utiliser: "${(f.corrected_text || '').slice(0, 60)}..."`);
+          } else if (f.feedback_type === 'thumbs_down' && f.original_text) {
+            lines.push(`- Éviter: "${(f.original_text || '').slice(0, 80)}..."`);
+          }
+        });
+      }
+      if (legacyMemories.length > 0 && lines.length < 5) {
+        legacyMemories.slice(0, 10).forEach((m) => lines.push(`- ${m.fact}`));
+      }
+      if (lines.length > 0) {
+        memoryContextStream = '\n\n## PERSISTENT MEMORY\n' + lines.join('\n') + '\n';
       }
     } catch (err) {
       console.warn('[EVA Chat] Memory context failed:', err.message);
@@ -481,7 +628,7 @@ async function createReplyStream(userMessage, history = [], ownerId = null, mode
     }
   }
 
-  let systemPrompt = EVA_SYSTEM + memoryContextStream + emailContext + documentContext + calendarContextStream;
+  let systemPrompt = EVA_SYSTEM + structuredFactsStream + memoryContextStream + emailContext + documentContext + calendarContextStream;
   if (mode && MODE_HINTS[mode]) {
     systemPrompt += `\n\n## Current Mode: ${mode}\n${MODE_HINTS[mode]}`;
   }

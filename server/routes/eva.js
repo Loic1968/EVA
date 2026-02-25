@@ -112,7 +112,49 @@ router.post('/chat', async (req, res, next) => {
       return res.status(400).json({ error: 'message (string) required' });
     }
 
-    const { command, message: parsedMsg, mode } = evaChat.parseCommand(message.trim());
+    const parsed = evaChat.parseCommand(message.trim());
+    const { command, message: parsedMsg, mode } = parsed;
+
+    // Memory commands => no LLM call
+    if (command === 'remember' || command === 'correct' || command === 'forget' || command === 'memory') {
+      const memoryItems = require('../services/memoryItemsService');
+      const useStructured = process.env.EVA_STRUCTURED_MEMORY === 'true';
+      const factsService = useStructured ? require('../services/factsService') : null;
+      try {
+        if (command === 'remember') {
+          const id = await memoryItems.addMemoryItem(req.ownerId, 'preference', parsed.key, parsed.value);
+          if (useStructured && factsService) await factsService.addRemember(req.ownerId, parsed.key, parsed.value);
+          return res.json({ reply: id ? `Noté. Préférence "${parsed.key}" enregistrée.` : 'Erreur.', model: null, tokens: { input: 0, output: 0 } });
+        }
+        if (command === 'correct') {
+          const id = await memoryItems.addMemoryItem(req.ownerId, 'correction', parsed.key, parsed.value);
+          if (useStructured && factsService) await factsService.addCorrection(req.ownerId, parsed.key, parsed.value);
+          return res.json({ reply: id ? `Correction enregistrée : ${parsed.key} = ${parsed.value}` : 'Erreur.', model: null, tokens: { input: 0, output: 0 } });
+        }
+        if (command === 'forget') {
+          let ok = await memoryItems.deleteByKey(req.ownerId, parsed.key);
+          if (useStructured && factsService) ok = (await factsService.deleteFact(req.ownerId, parsed.key)) || ok;
+          return res.json({ reply: ok ? `Oublié : ${parsed.key}` : `Aucune mémoire trouvée pour "${parsed.key}"`, model: null, tokens: { input: 0, output: 0 } });
+        }
+        if (command === 'memory') {
+          let keys = [];
+          if (useStructured && factsService) {
+            const facts = await factsService.getFacts(req.ownerId, 50);
+            keys = facts.map((f) => f.key);
+          }
+          if (keys.length === 0) {
+            const miKeys = await memoryItems.listKeys(req.ownerId);
+            keys = miKeys.map((k) => k.key);
+          } else {
+            const miKeys = await memoryItems.listKeys(req.ownerId);
+            const seen = new Set(keys);
+            miKeys.forEach((k) => { if (!seen.has(k.key)) keys.push(k.key); });
+          }
+          const list = keys.length ? keys.join(', ') : '(vide)';
+          return res.json({ reply: `Mémoire : ${list}`, model: null, tokens: { input: 0, output: 0 } });
+        }
+      } catch (e) { return next(e); }
+    }
 
     // /reset => create new conversation, no LLM call
     if (command === 'reset') {
@@ -170,6 +212,14 @@ router.post('/chat', async (req, res, next) => {
          WHERE id = $1 AND owner_id = $2`,
         [convId, req.ownerId, message.trim().slice(0, 100)]
       );
+      // Learn from conversation (async, fire-and-forget)
+      const conversationLearning = require('../services/conversationLearningService');
+      const historyWithNewTurn = [
+        ...chatHistory,
+        { role: 'user', content: message.trim() },
+        { role: 'assistant', content: result.reply },
+      ];
+      conversationLearning.learnFromConversation(req.ownerId, historyWithNewTurn);
     }
 
     // Audit log
@@ -207,7 +257,51 @@ router.post('/chat/stream', async (req, res, next) => {
       return res.status(400).json({ error: 'message (string) required' });
     }
 
-    const { command, message: parsedMsg, mode } = evaChat.parseCommand(message.trim());
+    const parsedStream = evaChat.parseCommand(message.trim());
+    const { command, message: parsedMsg, mode } = parsedStream;
+
+    if (command === 'remember' || command === 'correct' || command === 'forget' || command === 'memory') {
+      const memoryItems = require('../services/memoryItemsService');
+      const useStructured = process.env.EVA_STRUCTURED_MEMORY === 'true';
+      const factsService = useStructured ? require('../services/factsService') : null;
+      try {
+        let reply = '';
+        if (command === 'remember') {
+          const id = await memoryItems.addMemoryItem(req.ownerId, 'preference', parsedStream.key, parsedStream.value);
+          if (useStructured && factsService) await factsService.addRemember(req.ownerId, parsedStream.key, parsedStream.value);
+          reply = id ? `Noté. Préférence "${parsedStream.key}" enregistrée.` : 'Erreur.';
+        } else if (command === 'correct') {
+          const id = await memoryItems.addMemoryItem(req.ownerId, 'correction', parsedStream.key, parsedStream.value);
+          if (useStructured && factsService) await factsService.addCorrection(req.ownerId, parsedStream.key, parsedStream.value);
+          reply = id ? `Correction enregistrée : ${parsedStream.key} = ${parsedStream.value}` : 'Erreur.';
+        } else if (command === 'forget') {
+          let ok = await memoryItems.deleteByKey(req.ownerId, parsedStream.key);
+          if (useStructured && factsService) ok = (await factsService.deleteFact(req.ownerId, parsedStream.key)) || ok;
+          reply = ok ? `Oublié : ${parsedStream.key}` : `Aucune mémoire trouvée pour "${parsedStream.key}"`;
+        } else if (command === 'memory') {
+          let keys = [];
+          if (useStructured && factsService) {
+            const facts = await factsService.getFacts(req.ownerId, 50);
+            keys = facts.map((f) => f.key);
+          }
+          if (keys.length === 0) {
+            const miKeys = await memoryItems.listKeys(req.ownerId);
+            keys = miKeys.map((k) => k.key);
+          } else {
+            const miKeys = await memoryItems.listKeys(req.ownerId);
+            const seen = new Set(keys);
+            miKeys.forEach((k) => { if (!seen.has(k.key)) keys.push(k.key); });
+          }
+          reply = keys.length ? keys.join(', ') : '(vide)';
+        }
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        res.flushHeaders?.();
+        res.write(`data: ${JSON.stringify({ type: 'done', reply, model: null, tokens: { input: 0, output: 0 } })}\n\n`);
+        return res.end();
+      } catch (e) { return next(e); }
+    }
 
     if (command === 'reset') {
       const r = await db.query(
@@ -271,6 +365,13 @@ router.post('/chat/stream', async (req, res, next) => {
           `UPDATE eva.conversations SET updated_at = now(), title = COALESCE(NULLIF(title, ''), $3) WHERE id = $1 AND owner_id = $2`,
           [convId, req.ownerId, message.trim().slice(0, 100)]
         );
+        const conversationLearning = require('../services/conversationLearningService');
+        const historyWithNewTurn = [
+          ...chatHistory,
+          { role: 'user', content: message.trim() },
+          { role: 'assistant', content: result.reply },
+        ];
+        conversationLearning.learnFromConversation(req.ownerId, historyWithNewTurn);
       }
       await db.query(
         `INSERT INTO eva.audit_logs (owner_id, action_type, channel, details) VALUES ($1, 'query', 'chat', $2)`,

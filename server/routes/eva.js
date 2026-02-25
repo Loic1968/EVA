@@ -11,7 +11,7 @@ const fs = require('fs');
 const googleOAuth = require('../services/googleOAuth');
 const gmailSync = require('../services/gmailSync');
 const calendarSync = require('../services/calendarSync');
-const { getKillSwitch, getShadowMode } = require('../services/settingsService');
+const { getKillSwitch, getShadowMode, getAutonomousMode, getStyleProfile } = require('../services/settingsService');
 
 const { verifyAuth } = require('../middleware/auth');
 router.use(verifyAuth);
@@ -504,11 +504,13 @@ router.post('/drafts', async (req, res, next) => {
     if (!channel || body == null) {
       return res.status(400).json({ error: 'channel and body required' });
     }
+    const autonomousOn = await getAutonomousMode(req.ownerId);
+    const initialStatus = autonomousOn ? 'approved' : 'pending';
     const r = await db.query(
       `INSERT INTO eva.drafts (owner_id, channel, thread_id, subject_or_preview, body, confidence_score, status)
-       VALUES ($1, $2, $3, $4, $5, $6, 'pending')
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING id, channel, thread_id, subject_or_preview, body, confidence_score, status, created_at`,
-      [req.ownerId, channel, thread_id || null, subject_or_preview || null, body, confidence_score != null ? Number(confidence_score) : null]
+      [req.ownerId, channel, thread_id || null, subject_or_preview || null, body, confidence_score != null ? Number(confidence_score) : null, initialStatus]
     );
     res.status(201).json(r.rows[0]);
   } catch (e) {
@@ -1193,6 +1195,12 @@ router.get('/stats', async (req, res, next) => {
     const totalDrafts = Object.values(draftsByStatus).reduce((a, b) => a + b, 0);
     const realtimeEnabled = !!(process.env.OPENAI_API_KEY || '').trim();
 
+    const [styleProfileText, autonomousOn] = await Promise.all([
+      getStyleProfile(req.ownerId),
+      getAutonomousMode(req.ownerId),
+    ]);
+    const hasStyleProfile = !!(styleProfileText && styleProfileText.length > 0);
+
     const hasMemoryVaultData = docs > 0 || emails > 0 || calendarEvents > 0;
     const hasMemoryVault = hasMemoryVaultData || gmailAccounts > 0;
     const hasVoice = realtimeEnabled;
@@ -1224,15 +1232,15 @@ router.get('/stats', async (req, res, next) => {
         phase: 4,
         label: 'Fine-Tuned Model',
         desc: 'Your voice, your style',
-        status: 'planned',
-        pct: 0,
+        status: hasStyleProfile ? 'live' : 'building',
+        pct: hasStyleProfile ? 100 : (hasDrafts ? 30 : 0),
       },
       {
         phase: 5,
         label: 'Autonomous Proxy',
         desc: 'Full delegation',
-        status: 'planned',
-        pct: 0,
+        status: autonomousOn ? 'live' : 'planned',
+        pct: autonomousOn ? 100 : 0,
       },
     ];
 

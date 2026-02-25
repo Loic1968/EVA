@@ -124,7 +124,14 @@ export default function Emails() {
 
   const safeHtml = (html) => {
     if (!html || typeof html !== 'string') return '';
-    return html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '').replace(/on\w+\s*=/gi, '');
+    let out = html
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+      .replace(/\s*on\w+\s*=\s*["'][^"']*["']/gi, '')
+      .replace(/\s*on\w+\s*=\s*[^\s>]+/gi, '');
+    out = out.replace(/<a\s+/gi, (m) => m + 'target="_blank" rel="noopener noreferrer" ');
+    out = out.replace(/href\s*=\s*["']\s*javascript:[^"']*["']/gi, 'href="#"');
+    out = out.replace(/href\s*=\s*["']\s*vbscript:[^"']*["']/gi, 'href="#"');
+    return out;
   };
 
   return (

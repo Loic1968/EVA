@@ -145,6 +145,51 @@ export default function Settings() {
     }
   };
 
+  const setEmailSyncDays = async (days) => {
+    setSaving(true);
+    setSaved(false);
+    try {
+      await api.setSetting('email_sync_days', { days });
+      setSettings((s) => ({ ...s, email_sync_days: { days } }));
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const setStyleProfile = async (text) => {
+    setSaving(true);
+    setSaved(false);
+    try {
+      await api.setSetting('voice_profile', { text: text || '', updated_at: new Date().toISOString() });
+      setSettings((s) => ({ ...s, voice_profile: { text: text || '' } }));
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const setAutonomousMode = async (enabled) => {
+    setSaving(true);
+    setSaved(false);
+    try {
+      await api.setSetting('autonomous_mode', { enabled, updated_at: new Date().toISOString() });
+      setSettings((s) => ({ ...s, autonomous_mode: { enabled } }));
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const DEFAULT_TIERS = {
     gmail: { channel: 'Email (Gmail)', read: true, draft: true, send: false },
     whatsapp: { channel: 'WhatsApp', read: false, draft: false, send: false, soon: true },
@@ -191,6 +236,7 @@ export default function Settings() {
 
   const killSwitchOn = settings.kill_switch?.enabled === true;
   const shadowModeOn = settings.shadow_mode?.enabled === true;
+  const autonomousModeOn = settings.autonomous_mode?.enabled === true;
 
   return (
     <div className="space-y-8">
@@ -278,6 +324,97 @@ export default function Settings() {
             <option value={60}>1 hour</option>
             <option value={120}>2 hours</option>
           </select>
+          {saving && <span className="text-slate-500 dark:text-eva-muted text-sm">Saving...</span>}
+          {saved && <span className="text-emerald-600 dark:text-emerald-400 text-sm">Saved</span>}
+        </div>
+      </div>
+
+      {/* Email sync period */}
+      <div className="bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 p-6 max-w-2xl">
+        <h2 className="text-lg font-medium text-slate-900 dark:text-white mb-2">Email sync period</h2>
+        <p className="text-slate-500 dark:text-eva-muted text-sm mb-4">
+          How many days of emails to fetch from Gmail. Older messages are not synced. Applies on next sync.
+        </p>
+        <div className="flex items-center gap-3">
+          <select
+            value={settings.email_sync_days?.days ?? 90}
+            onChange={(e) => setEmailSyncDays(Number(e.target.value))}
+            disabled={saving}
+            className="bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-2 text-slate-900 dark:text-white focus:ring-2 focus:ring-cyan-500 focus:border-transparent disabled:opacity-50"
+          >
+            <option value={30}>30 days</option>
+            <option value={60}>60 days</option>
+            <option value={90}>90 days</option>
+            <option value={180}>180 days</option>
+            <option value={365}>365 days</option>
+          </select>
+          {saving && <span className="text-slate-500 dark:text-eva-muted text-sm">Saving...</span>}
+          {saved && <span className="text-emerald-600 dark:text-emerald-400 text-sm">Saved</span>}
+        </div>
+      </div>
+
+      {/* P4: Style / Voice Profile */}
+      <div className="bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 p-6 max-w-2xl">
+        <h2 className="text-lg font-medium text-slate-900 dark:text-white mb-2 flex items-center gap-2">
+          Style (P4)
+          <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-600 dark:text-cyan-400">Fine-tuned model</span>
+        </h2>
+        <p className="text-slate-500 dark:text-eva-muted text-sm mb-4">
+          Describe how you write: tone, phrases, formality. EVA will match this style when responding.
+        </p>
+        <textarea
+          value={settings.voice_profile?.text ?? ''}
+          onChange={(e) => setSettings((s) => ({ ...s, voice_profile: { ...(s.voice_profile || {}), text: e.target.value } }))}
+          placeholder="e.g. I write short, direct emails. I use « tu » in French. I avoid jargon. I often start with « Bonjour » and end with « Cordialement »."
+          rows={4}
+          disabled={saving}
+          className="w-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-3 text-slate-900 dark:text-white focus:ring-2 focus:ring-cyan-500 focus:border-transparent disabled:opacity-50 resize-y"
+        />
+        <div className="flex items-center gap-2 mt-2">
+          <button
+            type="button"
+            onClick={() => setStyleProfile(settings.voice_profile?.text ?? '')}
+            disabled={saving}
+            className="px-4 py-2 rounded-lg bg-cyan-600 text-white hover:bg-cyan-500 disabled:opacity-50"
+          >
+            Save
+          </button>
+          {saving && <span className="text-slate-500 dark:text-eva-muted text-sm">Saving...</span>}
+          {saved && <span className="text-emerald-600 dark:text-emerald-400 text-sm">Saved</span>}
+        </div>
+      </div>
+
+      {/* P5: Autonomous Mode */}
+      <div className={`rounded-xl border p-6 max-w-2xl transition-colors ${
+        autonomousModeOn ? 'bg-amber-500/5 border-amber-500/30' : 'bg-white dark:bg-eva-panel border-slate-200 dark:border-slate-700/40'
+      }`}>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-medium text-slate-900 dark:text-white flex items-center gap-2">
+              Autonomous Mode (P5)
+              <span className={`text-xs px-2 py-0.5 rounded-full ${autonomousModeOn ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400' : 'bg-slate-300 dark:bg-slate-600/40 text-slate-600 dark:text-slate-500'}`}>
+                {autonomousModeOn ? 'ON' : 'OFF'}
+              </span>
+            </h2>
+            <p className="text-slate-500 dark:text-eva-muted text-sm mt-2">
+              When ON, drafts are created as pre-approved (status: approved) instead of pending. Use only if you trust EVA to draft without explicit review. Kill Switch and Shadow Mode override this.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 mt-4">
+          <button
+            onClick={() => setAutonomousMode(!autonomousModeOn)}
+            disabled={saving || killSwitchOn || shadowModeOn}
+            className={`px-5 py-2.5 rounded-lg font-medium transition-all ${
+              autonomousModeOn
+                ? 'bg-slate-600 text-white hover:bg-slate-500'
+                : 'bg-amber-600 text-white hover:bg-amber-500'
+            } disabled:opacity-50`}
+            title={killSwitchOn || shadowModeOn ? 'Disable Kill Switch and Shadow Mode first' : ''}
+          >
+            {autonomousModeOn ? 'Disable Autonomous Mode' : 'Enable Autonomous Mode'}
+          </button>
+          {(killSwitchOn || shadowModeOn) && <span className="text-slate-500 dark:text-eva-muted text-xs">Disable Kill Switch and Shadow Mode first</span>}
           {saving && <span className="text-slate-500 dark:text-eva-muted text-sm">Saving...</span>}
           {saved && <span className="text-emerald-600 dark:text-emerald-400 text-sm">Saved</span>}
         </div>

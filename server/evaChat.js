@@ -398,6 +398,18 @@ async function reply(userMessage, history = [], ownerId = null, mode = null) {
 
   systemPrompt = EVA_SYSTEM + structuredFactsContext + memoryContext + emailContext + documentContext + calendarContext;
   }
+  // P4: Style / voice profile injection
+  if (ownerId) {
+    try {
+      const { getStyleProfile } = require('./services/settingsService');
+      const styleText = await getStyleProfile(ownerId);
+      if (styleText) {
+        systemPrompt += `\n\n## User's communication style (P4)\nMatch this tone and style when responding.\n${styleText}\n`;
+      }
+    } catch (err) {
+      console.warn('[EVA Chat] Style profile lookup failed:', err.message);
+    }
+  }
   if (mode && MODE_HINTS[mode]) {
     systemPrompt += `\n\n## Current Mode: ${mode}\n${MODE_HINTS[mode]}`;
   }
@@ -634,6 +646,18 @@ async function createReplyStream(userMessage, history = [], ownerId = null, mode
   }
 
   let systemPrompt = EVA_SYSTEM + structuredFactsStream + memoryContextStream + emailContext + documentContext + calendarContextStream;
+  // P4: Style / voice profile injection
+  if (ownerId) {
+    try {
+      const { getStyleProfile } = require('./services/settingsService');
+      const styleText = await getStyleProfile(ownerId);
+      if (styleText) {
+        systemPrompt += `\n\n## User's communication style (P4)\nMatch this tone and style when responding.\n${styleText}\n`;
+      }
+    } catch (err) {
+      console.warn('[EVA Chat] Style profile lookup failed:', err.message);
+    }
+  }
   if (mode && MODE_HINTS[mode]) {
     systemPrompt += `\n\n## Current Mode: ${mode}\n${MODE_HINTS[mode]}`;
   }

@@ -5,11 +5,26 @@
 const db = require('../db');
 const googleOAuth = require('./googleOAuth');
 
-const GMAIL_FETCH_DAYS = parseInt(process.env.GMAIL_FETCH_DAYS || '30', 10);
+const DEFAULT_FETCH_DAYS = 90; // default: last 90 days (overridable in Settings)
+
+async function getEmailSyncDays(ownerId) {
+  try {
+    const r = await db.query(
+      `SELECT value FROM eva.settings WHERE owner_id = $1 AND key = 'email_sync_days'`,
+      [ownerId]
+    );
+    const val = r.rows[0]?.value;
+    const days = typeof val === 'object' && val?.days != null ? Number(val.days) : Number(val);
+    const n = Number.isFinite(days) && days >= 7 && days <= 365 ? days : null;
+    return n ?? parseInt(process.env.GMAIL_FETCH_DAYS || String(DEFAULT_FETCH_DAYS), 10);
+  } catch {
+    return parseInt(process.env.GMAIL_FETCH_DAYS || String(DEFAULT_FETCH_DAYS), 10);
+  }
+}
 
 /**
  * Sync emails for a given Gmail account.
- * On first run: fetches last N days. On subsequent runs: fetches only new messages.
+ * On first run: fetches last N days (from Settings or default 90). On subsequent runs: fetches only new messages.
  */
 async function syncEmails(ownerId, gmailAccountId) {
   // 1. Get account credentials
@@ -48,11 +63,12 @@ async function syncEmails(ownerId, gmailAccountId) {
   );
 
   const gmail = googleOAuth.getGmailClient(accessToken, acct.refresh_token);
+  const fetchDays = await getEmailSyncDays(ownerId);
 
   try {
-    // 4. Build query: last N days
+    // 4. Build query: last N days (from Settings, default 90)
     const afterDate = new Date();
-    afterDate.setDate(afterDate.getDate() - GMAIL_FETCH_DAYS);
+    afterDate.setDate(afterDate.getDate() - fetchDays);
     const afterEpoch = Math.floor(afterDate.getTime() / 1000);
     const query = `after:${afterEpoch}`;
 

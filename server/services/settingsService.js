@@ -32,4 +32,20 @@ async function getShadowMode(ownerId) {
   return s?.enabled === true;
 }
 
-module.exports = { getSetting, getKillSwitch, getShadowMode };
+/** @returns {Promise<boolean>} true = autonomous mode ON (drafts auto-approved) */
+async function getAutonomousMode(ownerId) {
+  const s = await getSetting(ownerId, 'autonomous_mode');
+  return s?.enabled === true;
+}
+
+/** @returns {Promise<string|null>} user's voice/style profile text for P4 */
+async function getStyleProfile(ownerId) {
+  const s = await getSetting(ownerId, 'voice_profile');
+  if (!s) return null;
+  const text = (typeof s === 'object' && s != null && s.text != null)
+    ? String(s.text)
+    : (typeof s === 'string' ? s : null);
+  return text ? text.trim() : null;
+}
+
+module.exports = { getSetting, getKillSwitch, getShadowMode, getAutonomousMode, getStyleProfile };

@@ -272,13 +272,19 @@ async function storeEmail(ownerId, gmailAccountId, parsed) {
 
 /**
  * Search emails using PostgreSQL full-text search.
+ * @param {string} folder - 'inbox' | 'sent' | 'draft' | 'all' | null (default inbox)
  */
-async function searchEmails(ownerId, queryText, limit = 5, gmailAccountId = null) {
+async function searchEmails(ownerId, queryText, limit = 5, gmailAccountId = null, folder = 'inbox') {
   if (!queryText || queryText.trim().length === 0) return [];
 
   const words = queryText.trim().split(/\s+/).filter(w => w.length > 2);
   if (words.length === 0) return [];
   const tsquery = words.map(w => w.replace(/[^a-zA-Z0-9]/g, '')).filter(Boolean).join(' | ');
+
+  const folderLabel = folder === 'sent' ? 'SENT' : folder === 'draft' ? 'DRAFT' : folder === 'all' ? null : 'INBOX';
+  const labelCondition = folderLabel
+    ? ` AND (labels::jsonb @> '["${folderLabel}"]'::jsonb OR labels::text LIKE '%"${folderLabel}"%')`
+    : '';
 
   let query = `SELECT id, gmail_account_id, from_email, from_name, subject, snippet,
         left(body_plain, 300) as body_preview,
@@ -286,7 +292,7 @@ async function searchEmails(ownerId, queryText, limit = 5, gmailAccountId = null
      FROM eva.emails
      WHERE owner_id = $1
        AND to_tsvector('english', coalesce(subject,'') || ' ' || coalesce(body_plain,''))
-           @@ to_tsquery('english', $2)`;
+           @@ to_tsquery('english', $2)${labelCondition}`;
   const params = [ownerId, tsquery];
   if (gmailAccountId) {
     query += ' AND gmail_account_id = $3';

@@ -168,8 +168,12 @@ export const api = {
   disconnectGmail: (accountId) => request(`/gmail/accounts/${accountId}`, { method: 'DELETE' }),
   getEmails: (params) => request('/gmail/emails?' + new URLSearchParams(params || {})),
   getEmail: (id) => request(`/gmail/emails/${id}`),
-  searchEmails: (q, limit = 20, gmailAccountId) =>
-    request(`/gmail/emails?q=${encodeURIComponent(q)}&limit=${limit}` + (gmailAccountId ? `&gmail_account_id=${gmailAccountId}` : '')),
+  searchEmails: (q, limit = 20, gmailAccountId, folder) => {
+    const p = new URLSearchParams({ q, limit });
+    if (gmailAccountId) p.set('gmail_account_id', gmailAccountId);
+    if (folder) p.set('folder', folder);
+    return request(`/gmail/emails?${p}`);
+  },
 
   // Confidence summary
   getConfidenceSummary: () => request('/confidence-summary'),

@@ -4,6 +4,7 @@ import { api } from '../api';
 export default function Emails() {
   const [emails, setEmails] = useState([]);
   const [gmailAccounts, setGmailAccounts] = useState([]);
+  const [folder, setFolder] = useState('inbox');
   const [activeTab, setActiveTab] = useState('all');
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -25,12 +26,12 @@ export default function Emails() {
     setLoading(true);
     setError(null);
     try {
-      const params = { limit: PAGE_SIZE, offset: pageNum * PAGE_SIZE };
+      const params = { limit: PAGE_SIZE, offset: pageNum * PAGE_SIZE, folder };
       if (accountId && accountId !== 'all') params.gmail_account_id = accountId;
 
       let result;
       if (searchQuery.trim()) {
-        result = await api.searchEmails(searchQuery, PAGE_SIZE, accountId && accountId !== 'all' ? accountId : undefined);
+        result = await api.searchEmails(searchQuery, PAGE_SIZE, accountId && accountId !== 'all' ? accountId : undefined, folder);
       } else {
         result = await api.getEmails(params);
       }
@@ -46,7 +47,7 @@ export default function Emails() {
   useEffect(() => { fetchAccounts(); }, []);
   useEffect(() => {
     fetchEmails(search, page, activeTab);
-  }, [activeTab, page]);
+  }, [activeTab, page, folder]);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -178,13 +179,41 @@ export default function Emails() {
 
       {error && <div className="text-red-600 dark:text-red-400 text-sm bg-red-500/10 rounded-lg px-4 py-2 mb-4">{error}</div>}
 
+      {/* Folder tabs (Outlook-style) */}
+      <div className="flex flex-wrap gap-1 mb-3">
+        <button
+          onClick={() => { setFolder('inbox'); setPage(0); setSelectedEmail(null); }}
+          className={`px-4 py-2 rounded-lg text-sm font-medium ${folder === 'inbox' ? 'bg-cyan-500/20 text-cyan-700 dark:text-eva-accent' : 'bg-white dark:bg-eva-panel border border-slate-200 dark:border-slate-700/40 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}
+        >
+          📥 Boîte de réception
+        </button>
+        <button
+          onClick={() => { setFolder('sent'); setPage(0); setSelectedEmail(null); }}
+          className={`px-4 py-2 rounded-lg text-sm font-medium ${folder === 'sent' ? 'bg-cyan-500/20 text-cyan-700 dark:text-eva-accent' : 'bg-white dark:bg-eva-panel border border-slate-200 dark:border-slate-700/40 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}
+        >
+          📤 Envoyés
+        </button>
+        <button
+          onClick={() => { setFolder('draft'); setPage(0); setSelectedEmail(null); }}
+          className={`px-4 py-2 rounded-lg text-sm font-medium ${folder === 'draft' ? 'bg-cyan-500/20 text-cyan-700 dark:text-eva-accent' : 'bg-white dark:bg-eva-panel border border-slate-200 dark:border-slate-700/40 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}
+        >
+          ✏️ Brouillons
+        </button>
+        <button
+          onClick={() => { setFolder('all'); setPage(0); setSelectedEmail(null); }}
+          className={`px-4 py-2 rounded-lg text-sm font-medium ${folder === 'all' ? 'bg-cyan-500/20 text-cyan-700 dark:text-eva-accent' : 'bg-white dark:bg-eva-panel border border-slate-200 dark:border-slate-700/40 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}
+        >
+          ✉ Tous
+        </button>
+      </div>
+
       {/* Tabs par boîte mail */}
       <div className="flex flex-wrap gap-1 mb-4">
         <button
           onClick={() => { setActiveTab('all'); setPage(0); setSelectedEmail(null); }}
           className={`px-4 py-2 rounded-lg text-sm font-medium ${activeTab === 'all' ? 'bg-cyan-500/20 text-cyan-700 dark:text-eva-accent' : 'bg-white dark:bg-eva-panel border border-slate-200 dark:border-slate-700/40 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}
         >
-          ✉ Tous
+          Tous les comptes
         </button>
         {gmailAccounts.map((acct) => (
           <button
@@ -252,7 +281,9 @@ export default function Emails() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-0.5">
                           <span className={`text-sm truncate ${!email.is_read ? 'text-slate-900 dark:text-white font-medium' : 'text-slate-600 dark:text-slate-300'}`}>
-                            {email.from_name || email.from_email}
+                            {folder === 'sent'
+                              ? (Array.isArray(email.to_emails) ? email.to_emails.join(', ') : email.to_emails || '—')
+                              : (email.from_name || email.from_email)}
                           </span>
                           {email.is_starred && <span className="text-amber-400 text-xs">★</span>}
                           {email.has_attachments && <span className="text-slate-500 text-xs">📎</span>}

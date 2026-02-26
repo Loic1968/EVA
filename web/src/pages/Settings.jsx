@@ -45,7 +45,7 @@ export default function Settings() {
       .then((st) => {
         setSettings(st);
         const ac = st?.accent_color?.color;
-        if (ac === 'blue' || ac === 'red') setAccentColor(ac);
+        if (['blue', 'red', 'purple', 'green', 'orange', 'pink'].includes(ac)) setAccentColor(ac);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -450,33 +450,31 @@ export default function Settings() {
         <p className="text-slate-500 dark:text-eva-muted text-sm mb-4">
           Choose the accent color for buttons, links, and highlights across EVA.
         </p>
-        <div className="flex flex-wrap gap-3">
-          <button
-            type="button"
-            onClick={() => setAccentColorSave('blue')}
-            disabled={saving}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 font-medium transition-colors ${
-              accentColor === 'blue'
-                ? 'border-cyan-500 bg-cyan-500/15 text-cyan-600 dark:text-cyan-400'
-                : 'border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-400'
-            } disabled:opacity-50`}
-          >
-            <span className="w-4 h-4 rounded-full bg-cyan-500" />
-            Blue
-          </button>
-          <button
-            type="button"
-            onClick={() => setAccentColorSave('red')}
-            disabled={saving}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 font-medium transition-colors ${
-              accentColor === 'red'
-                ? 'border-red-500 bg-red-500/15 text-red-600 dark:text-red-400'
-                : 'border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-400'
-            } disabled:opacity-50`}
-          >
-            <span className="w-4 h-4 rounded-full bg-red-500" />
-            Red
-          </button>
+        <div className="flex flex-wrap gap-2">
+          {[
+            { id: 'blue', color: '#06b6d4', label: 'Blue' },
+            { id: 'red', color: '#DC2626', label: 'Red' },
+            { id: 'purple', color: '#8B5CF6', label: 'Purple' },
+            { id: 'green', color: '#10B981', label: 'Green' },
+            { id: 'orange', color: '#F59E0B', label: 'Orange' },
+            { id: 'pink', color: '#EC4899', label: 'Pink' },
+          ].map(({ id, color, label }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setAccentColorSave(id)}
+              disabled={saving}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border-2 font-medium text-sm transition-colors ${
+                accentColor === id
+                  ? 'border-current'
+                  : 'border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-400'
+              } disabled:opacity-50`}
+              style={accentColor === id ? { borderColor: color, color, backgroundColor: `${color}20` } : undefined}
+            >
+              <span className="w-3.5 h-3.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+              {label}
+            </button>
+          ))}
         </div>
         {saved && <span className="text-emerald-600 dark:text-emerald-400 text-sm mt-2 block">Saved</span>}
       </div>

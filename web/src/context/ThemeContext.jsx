@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 
 const ACCENT_KEY = 'eva_accent_color';
-const VALID_ACCENTS = ['blue', 'red'];
+const VALID_ACCENTS = ['blue', 'red', 'purple', 'green', 'orange', 'pink'];
 
 const ThemeContext = createContext();
 

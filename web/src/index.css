@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Accent color themes — blue default, red available via Settings */
+/* Accent color themes — blue default, more options in Settings */
 :root {
   --eva-accent: #06b6d4;
   --eva-accent-dark: #0891b2;
@@ -16,6 +16,34 @@
   --eva-accent-hover: #f87171;
   --eva-accent-bg: rgba(220, 38, 38, 0.2);
   --eva-tap-highlight: rgba(220, 38, 38, 0.2);
+}
+[data-eva-accent="purple"] {
+  --eva-accent: #8B5CF6;
+  --eva-accent-dark: #7C3AED;
+  --eva-accent-hover: #a78bfa;
+  --eva-accent-bg: rgba(139, 92, 246, 0.2);
+  --eva-tap-highlight: rgba(139, 92, 246, 0.2);
+}
+[data-eva-accent="green"] {
+  --eva-accent: #10B981;
+  --eva-accent-dark: #059669;
+  --eva-accent-hover: #34d399;
+  --eva-accent-bg: rgba(16, 185, 129, 0.2);
+  --eva-tap-highlight: rgba(16, 185, 129, 0.2);
+}
+[data-eva-accent="orange"] {
+  --eva-accent: #F59E0B;
+  --eva-accent-dark: #D97706;
+  --eva-accent-hover: #fbbf24;
+  --eva-accent-bg: rgba(245, 158, 11, 0.2);
+  --eva-tap-highlight: rgba(245, 158, 11, 0.2);
+}
+[data-eva-accent="pink"] {
+  --eva-accent: #EC4899;
+  --eva-accent-dark: #DB2777;
+  --eva-accent-hover: #f472b6;
+  --eva-accent-bg: rgba(236, 72, 153, 0.2);
+  --eva-tap-highlight: rgba(236, 72, 153, 0.2);
 }
 
 html, body {

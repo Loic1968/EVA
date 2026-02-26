@@ -48,6 +48,7 @@ export default function Chat() {
 
   const [evaDisabledReason, setEvaDisabledReason] = useState(null);
   const [shadowMode, setShadowMode] = useState(false);
+  const [aiProvider, setAiProvider] = useState('claude');
   useEffect(() => {
     api.status()
       .then((r) => {
@@ -58,7 +59,11 @@ export default function Chat() {
   }, []);
   useEffect(() => {
     api.getSettings()
-      .then((s) => setShadowMode(s.shadow_mode?.enabled === true))
+      .then((s) => {
+        setShadowMode(s.shadow_mode?.enabled === true);
+        const p = s?.ai_provider?.provider ?? s?.ai_provider ?? 'claude';
+        setAiProvider(p === 'gpt' ? 'gpt' : 'claude');
+      })
       .catch(() => {});
   }, []);
 
@@ -223,6 +228,7 @@ export default function Chat() {
             const reply = event.reply || accumulated;
             streamingTextRef.current = reply;
             streamDoneRef.current = true;
+            if (event.ai_provider) setAiProvider(event.ai_provider);
             if (event.reset && event.conversation_id) {
               setActiveConvId(event.conversation_id);
               setMessages([]);
@@ -239,9 +245,10 @@ export default function Chat() {
         }
       } catch (streamErr) {
         if (usedStream) throw streamErr;
-        const { reply, reset, conversation_id } = await api.chat(msgForEva, [], convId, documentIds);
+        const { reply, reset, conversation_id, ai_provider } = await api.chat(msgForEva, [], convId, documentIds);
         streamingTextRef.current = reply || '';
         streamDoneRef.current = true;
+        if (ai_provider) setAiProvider(ai_provider);
         if (reset && conversation_id) {
           setActiveConvId(conversation_id);
           setMessages([]);
@@ -371,6 +378,9 @@ export default function Chat() {
           <span className="text-sm font-medium text-slate-900 dark:text-white flex items-center gap-2">
             <EvaLogo size="xs" variant="icon" className="shrink-0" />
             <EvaLogo variant="text" className="text-sm font-medium" />
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${aiProvider === 'gpt' ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' : 'bg-amber-500/20 text-amber-600 dark:text-amber-400'}`} title={aiProvider === 'gpt' ? 'ChatGPT' : 'Claude'}>
+              {aiProvider === 'gpt' ? 'GPT' : 'Claude'}
+            </span>
             {shadowMode && <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/25 text-red-600 dark:text-red-400 font-medium">Shadow</span>}
           </span>
           <div className="flex items-center gap-1">
@@ -462,16 +472,22 @@ export default function Chat() {
               </div>
             )}
             <div className="flex gap-2 items-end">
-              <input ref={fileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.gif,.heic,.txt,application/pdf,image/*,text/plain" multiple className="hidden" onChange={onFileSelect} />
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={loading || attachedFiles.length >= 5}
-                className="shrink-0 w-12 h-12 rounded-xl flex items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700/60 hover:text-red-600 dark:hover:text-red-400 disabled:opacity-40 transition-colors"
+              <label
+                className={`relative shrink-0 w-12 h-12 rounded-xl flex items-center justify-center cursor-pointer text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700/60 hover:text-red-600 dark:hover:text-red-400 transition-colors ${(loading || attachedFiles.length >= 5) ? 'pointer-events-none opacity-40' : ''}`}
                 title={lang === 'fr' ? 'Joindre un document ou une image' : 'Attach document or image'}
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
-              </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png,.webp,.gif,.heic,.txt,application/pdf,image/*,text/plain"
+                  multiple
+                  disabled={loading || attachedFiles.length >= 5}
+                  onChange={onFileSelect}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  aria-label={lang === 'fr' ? 'Joindre un fichier' : 'Attach file'}
+                />
+                <svg className="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
+              </label>
               {voiceInput.supported && (
                 <button
                   type="button"

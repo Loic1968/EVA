@@ -38,6 +38,8 @@ export default function Settings() {
     { id: 'security', label: 'Security', icon: '🔒' },
   ];
 
+  const [openaiAvailable, setOpenaiAvailable] = useState(false);
+
   useEffect(() => {
     api.getSettings()
       .then((st) => {
@@ -48,6 +50,10 @@ export default function Settings() {
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [setAccentColor]);
+
+  useEffect(() => {
+    api.status().then((r) => setOpenaiAvailable(r.openai_available === true)).catch(() => {});
+  }, []);
 
   useEffect(() => {
     api.getLocation()
@@ -189,6 +195,23 @@ export default function Settings() {
     try {
       await api.setSetting('kill_switch', { enabled, updated_at: new Date().toISOString() });
       setSettings((s) => ({ ...s, kill_switch: { enabled } }));
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const aiProvider = settings.ai_provider?.provider ?? settings.ai_provider ?? 'claude';
+
+  const setAIPProviderSave = async (provider) => {
+    setSaving(true);
+    setSaved(false);
+    try {
+      await api.setSetting('ai_provider', { provider, updated_at: new Date().toISOString() });
+      setSettings((s) => ({ ...s, ai_provider: { provider } }));
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {
@@ -455,6 +478,43 @@ export default function Settings() {
             Red
           </button>
         </div>
+        {saved && <span className="text-emerald-600 dark:text-emerald-400 text-sm mt-2 block">Saved</span>}
+      </div>
+
+      {/* AI Provider */}
+      <div className="bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 p-6 max-w-2xl">
+        <h2 className="text-lg font-medium text-slate-900 dark:text-white mb-2">Chat AI</h2>
+        <p className="text-slate-500 dark:text-eva-muted text-sm mb-4">
+          Choose which AI powers EVA chat. Claude (default) has calendar &amp; memory tools. GPT requires OPENAI_API_KEY.
+        </p>
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={() => setAIPProviderSave('claude')}
+            disabled={saving}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 font-medium transition-colors ${
+              aiProvider === 'claude'
+                ? 'border-amber-600 bg-amber-500/15 text-amber-700 dark:text-amber-400'
+                : 'border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-400'
+            } disabled:opacity-50`}
+          >
+            <span className="text-amber-600 dark:text-amber-400 font-bold">Claude</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setAIPProviderSave('gpt')}
+            disabled={saving || !openaiAvailable}
+            title={!openaiAvailable ? 'Set OPENAI_API_KEY in server config to use GPT' : ''}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 font-medium transition-colors ${
+              aiProvider === 'gpt'
+                ? 'border-emerald-600 bg-emerald-500/15 text-emerald-700 dark:text-emerald-400'
+                : 'border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-400'
+            } disabled:opacity-50`}
+          >
+            <span className="text-emerald-600 dark:text-emerald-400 font-bold">GPT</span>
+          </button>
+        </div>
+        {!openaiAvailable && <p className="text-amber-600 dark:text-amber-400 text-xs mt-2">GPT unavailable — OPENAI_API_KEY not set.</p>}
         {saved && <span className="text-emerald-600 dark:text-emerald-400 text-sm mt-2 block">Saved</span>}
       </div>
 

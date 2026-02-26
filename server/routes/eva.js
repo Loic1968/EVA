@@ -11,7 +11,7 @@ const fs = require('fs');
 const googleOAuth = require('../services/googleOAuth');
 const gmailSync = require('../services/gmailSync');
 const calendarSync = require('../services/calendarSync');
-const { getKillSwitch, getShadowMode, getAutonomousMode, getStyleProfile } = require('../services/settingsService');
+const { getKillSwitch, getShadowMode, getAutonomousMode, getStyleProfile, getAIProvider } = require('../services/settingsService');
 const gmailSend = require('../services/gmailSend');
 
 const { verifyAuth } = require('../middleware/auth');
@@ -23,6 +23,7 @@ const EVA_ENABLED = !!(process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_K
 router.get('/status', (req, res) => {
   res.json({
     eva_enabled: EVA_ENABLED,
+    openai_available: !!(process.env.OPENAI_API_KEY || '').trim(),
     ...(EVA_ENABLED ? {} : { error: 'Set ANTHROPIC_API_KEY (or CLAUDE_API_KEY) in Render → Environment.' }),
   });
 });
@@ -230,7 +231,11 @@ router.post('/chat', async (req, res, next) => {
       }
     }
     if (!result) {
-      result = await evaChat.reply(msgToSend, chatHistory, req.ownerId, mode, { attachedDocuments });
+      const aiProvider = await getAIProvider(req.ownerId);
+      result = await evaChat.reply(msgToSend, chatHistory, req.ownerId, mode, {
+        attachedDocuments,
+        aiProvider,
+      });
     }
 
     // Persist messages if we have a conversation
@@ -277,6 +282,7 @@ router.post('/chat', async (req, res, next) => {
     res.json({
       reply: result.reply,
       model: result.model,
+      ai_provider: result.ai_provider || 'claude',
       tokens: result.tokens,
       conversation_id: convId,
     });
@@ -419,7 +425,13 @@ router.post('/chat/stream', async (req, res, next) => {
         const preAnswer = await preAnswerService.tryPreAnswer(req.ownerId, msgToSend);
         if (preAnswer) result = { reply: preAnswer.reply, model: 'pre-answer', tokens: { input: 0, output: 0 } };
       }
-      if (!result) result = await evaChat.reply(msgToSend, chatHistory, req.ownerId, mode, { attachedDocuments: attachedDocumentsStream });
+      if (!result) {
+        const aiProvider = await getAIProvider(req.ownerId);
+        result = await evaChat.reply(msgToSend, chatHistory, req.ownerId, mode, {
+          attachedDocuments: attachedDocumentsStream,
+          aiProvider,
+        });
+      }
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
@@ -463,6 +475,7 @@ router.post('/chat/stream', async (req, res, next) => {
         type: 'done',
         reply: result.reply,
         model: result.model,
+        ai_provider: result.ai_provider || 'claude',
         tokens: result.tokens,
         conversation_id: convId,
       })}\n\n`);

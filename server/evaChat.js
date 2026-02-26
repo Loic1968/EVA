@@ -1,9 +1,9 @@
 /**
- * EVA AI – conversation with Claude (agent persona).
- * Enhanced system prompt with full behavioral context for Loic / HaliSoft.
+ * EVA AI – conversation with Claude or GPT (user choice).
  * Phase 2: Email context injection from Gmail sync.
  */
 const Anthropic = require('@anthropic-ai/sdk');
+const OpenAI = require('openai');
 
 // Lazy-load gmailSync and calendarSync to avoid circular dependency issues at startup
 let gmailSync = null;
@@ -119,6 +119,12 @@ function getClient() {
   const key = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
   if (!key) throw new Error('ANTHROPIC_API_KEY or CLAUDE_API_KEY required for EVA chat');
   return new Anthropic({ apiKey: key.trim() });
+}
+
+function getOpenAIClient() {
+  const key = process.env.OPENAI_API_KEY || '';
+  if (!key.trim()) throw new Error('OPENAI_API_KEY required when using GPT');
+  return new OpenAI({ apiKey: key.trim() });
 }
 
 // Keywords that suggest the user is asking about emails (widened for French)
@@ -311,8 +317,10 @@ async function executeTool(ownerId, name, input) {
  * @returns {Promise<{reply:string, model:string, tokens:{input:number,output:number}}>}
  */
 async function reply(userMessage, history = [], ownerId = null, mode = null, opts = {}) {
-  const client = getClient();
-  const model = process.env.EVA_CHAT_MODEL || 'claude-sonnet-4-20250514';
+  const aiProvider = opts.aiProvider === 'gpt' ? 'gpt' : 'claude';
+  const model = aiProvider === 'gpt'
+    ? (process.env.EVA_GPT_MODEL || 'gpt-4o')
+    : (process.env.EVA_CHAT_MODEL || 'claude-sonnet-4-20250514');
 
   let systemPrompt;
   if (process.env.EVA_SMART_CONTEXT === 'true' && ownerId) {
@@ -549,6 +557,38 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
     }
   }
 
+  // GPT path (no tools) — when user selected GPT
+  if (aiProvider === 'gpt') {
+    try {
+      const openai = getOpenAIClient();
+      const oaiMessages = [
+        { role: 'system', content: systemPrompt },
+        ...messages,
+      ];
+      const completion = await openai.chat.completions.create({
+        model,
+        messages: oaiMessages,
+        max_tokens: 4096,
+      });
+      const text = completion.choices?.[0]?.message?.content || 'No response.';
+      return {
+        reply: text,
+        model,
+        ai_provider: 'gpt',
+        tokens: {
+          input: completion.usage?.prompt_tokens || 0,
+          output: completion.usage?.completion_tokens || 0,
+        },
+      };
+    } catch (e) {
+      if (/OPENAI_API_KEY|API key/i.test(String(e.message))) {
+        throw new Error('GPT requires OPENAI_API_KEY. Set it in Settings or switch to Claude.');
+      }
+      throw e;
+    }
+  }
+
+  const client = getClient();
   let response;
   let currentMessages = [...messages];
   let totalInputTokens = 0;
@@ -588,6 +628,7 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
   return {
     reply: replyText,
     model: response.model || model,
+    ai_provider: 'claude',
     tokens: {
       input: totalInputTokens || response.usage?.input_tokens || 0,
       output: totalOutputTokens || response.usage?.output_tokens || 0,

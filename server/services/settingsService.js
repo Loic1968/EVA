@@ -73,4 +73,11 @@ async function getEmailImportancePreferences(ownerId) {
   return { enabled: s.enabled === true, priorityLevel: level };
 }
 
-module.exports = { getSetting, getKillSwitch, getShadowMode, getAutonomousMode, getStyleProfile, getNotificationPreferences, getEmailImportancePreferences };
+/** @returns {Promise<'claude'|'gpt'>} chat AI provider */
+async function getAIProvider(ownerId) {
+  const s = await getSetting(ownerId, 'ai_provider');
+  const v = (s && typeof s === 'object' ? s.provider : s) || 'claude';
+  return v === 'gpt' ? 'gpt' : 'claude';
+}
+
+module.exports = { getSetting, getKillSwitch, getShadowMode, getAutonomousMode, getStyleProfile, getNotificationPreferences, getEmailImportancePreferences, getAIProvider };

@@ -2,6 +2,8 @@
  * EvaTopBar - HaliSoft-branded top bar for EVA Digital Twin
  * Shows auth state, dark/light toggle, hamburger on mobile, links to HaliSoft ecosystem
  */
+import { Link } from 'react-router-dom';
+import EvaLogo from './EvaLogo';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 
@@ -54,21 +56,17 @@ export default function EvaTopBar({ onMenuClick }) {
               </svg>
             </button>
           )}
-        <ExternalLink
-          href="https://halisoft.biz"
+        <Link
+          to="/voice"
           className="flex items-center gap-2 sm:gap-3 hover:opacity-90 transition-opacity -my-1.5 -mx-2 px-2 py-1.5 rounded-lg min-w-[44px] min-h-[44px] touch-manipulation"
         >
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center text-white font-bold text-sm shrink-0">
-            E
+          <EvaLogo size="sm" variant="icon" className="shrink-0" />
+          <div className="hidden sm:flex sm:items-center sm:gap-1.5">
+            <EvaLogo variant="text" className="text-base" />
+            <span className="text-slate-500 dark:text-slate-400 text-sm">·</span>
+            <span className="text-sm text-slate-500 dark:text-slate-400">by HaliSoft</span>
           </div>
-          <div className="hidden sm:block">
-            <span className="font-bold text-base text-slate-900 dark:text-white">
-              Hali<span className="text-[#3B82F6]">Soft</span>
-            </span>
-            <span className="text-slate-500 dark:text-slate-400 text-sm ml-1.5">·</span>
-            <span className="text-sm text-cyan-500 dark:text-cyan-400 font-medium ml-1.5">EVA</span>
-          </div>
-        </ExternalLink>
+        </Link>
         </div>
 
         {/* Right: theme toggle + auth + links (hide external links on mobile) */}

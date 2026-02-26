@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import EvaLoading from '../components/EvaLoading';
 import { api } from '../api';
 
 const FOLDERS = [
@@ -269,7 +270,7 @@ export default function Emails() {
           <div className={`flex flex-col border-r border-slate-200 dark:border-slate-700/40 ${selectedEmail ? 'hidden md:flex w-80 lg:w-96 flex-shrink-0' : 'flex-1 min-w-0 flex flex-col'}`}>
             {loading ? (
               <div className="flex items-center justify-center flex-1">
-                <div className="flex gap-1"><div className="w-2 h-2 rounded-full bg-[#0078D4] animate-pulse" /><div className="w-2 h-2 rounded-full bg-[#0078D4] animate-pulse" /><div className="w-2 h-2 rounded-full bg-[#0078D4] animate-pulse" /></div>
+                <EvaLoading />
               </div>
             ) : emails.length === 0 ? (
               <div className="flex-1 flex items-center justify-center p-8">

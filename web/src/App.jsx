@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
+import EvaLoading from './components/EvaLoading';
 import Dashboard from './pages/Dashboard';
 import Drafts from './pages/Drafts';
 import AuditLog from './pages/AuditLog';
@@ -20,11 +21,7 @@ import { useAuth } from './context/AuthContext';
 function LoadingScreen() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-eva-dark">
-      <div className="flex gap-1">
-        <div className="w-2 h-2 rounded-full bg-eva-accent eva-dot" />
-        <div className="w-2 h-2 rounded-full bg-eva-accent eva-dot" />
-        <div className="w-2 h-2 rounded-full bg-eva-accent eva-dot" />
-      </div>
+      <EvaLoading />
     </div>
   );
 }

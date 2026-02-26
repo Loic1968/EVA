@@ -3,6 +3,7 @@
  * Phone-style UI: Call → Connected → Hang up.
  */
 import { useEffect, useRef, useState, useCallback } from 'react';
+import EvaLoading from '../components/EvaLoading';
 
 function getApiBase() {
   if (import.meta.env.VITE_EVA_API_URL)
@@ -258,7 +259,7 @@ export default function ChatRealtime() {
         </div>
       ) : status === 'connecting' ? (
         <div className="flex flex-col items-center gap-4">
-          <div className="w-16 h-16 rounded-full border-2 border-red-500 dark:border-red-400 border-t-transparent animate-spin" />
+          <EvaLoading />
           <p className="text-slate-600 dark:text-slate-400">Connecting…</p>
         </div>
       ) : status === 'disconnected' ? (

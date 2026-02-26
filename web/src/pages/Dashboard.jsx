@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import EvaLoading from '../components/EvaLoading';
 import { api } from '../api';
 
 function StatCard({ label, value, sub, color = 'text-slate-900 dark:text-white', link }) {
@@ -38,11 +39,7 @@ export default function Dashboard() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="flex gap-1">
-          <div className="w-2 h-2 rounded-full bg-eva-accent eva-dot" />
-          <div className="w-2 h-2 rounded-full bg-eva-accent eva-dot" />
-          <div className="w-2 h-2 rounded-full bg-eva-accent eva-dot" />
-        </div>
+        <EvaLoading />
       </div>
     );
   }

@@ -23,13 +23,14 @@ if (!DATABASE_URL) {
 }
 if (useProd) console.log('[Migrations] Target: PRODUCTION\n');
 
-// Render and other clouds use self-signed certs for internal DB
-const needInsecureSSL = process.env.NODE_ENV === 'production' ||
-  process.env.RENDER === 'true' ||
-  (DATABASE_URL || '').includes('render.com');
+// Render/Neon/Supabase etc. use self-signed certs — accept when connecting to any remote DB
+const isLocalDb = (DATABASE_URL || '').match(/localhost|127\.0\.0\.1/);
+const sslConfig = isLocalDb
+  ? false
+  : { rejectUnauthorized: false };
 const pool = new Pool({
   connectionString: DATABASE_URL,
-  ssl: needInsecureSSL ? { rejectUnauthorized: false } : false,
+  ssl: sslConfig,
 });
 const migrationsDir = require('path').join(__dirname, '../migrations');
 const files = fs.readdirSync(migrationsDir).filter((f) => f.endsWith('.sql')).sort();

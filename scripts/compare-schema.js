@@ -26,7 +26,8 @@ if (!PROD_URL) {
 }
 
 async function getSchema(connString, label) {
-  const ssl = connString.includes('render.com') ? { rejectUnauthorized: false } : false;
+  const isLocal = (connString || '').match(/localhost|127\.0\.0\.1/);
+  const ssl = isLocal ? false : { rejectUnauthorized: false };
   const pool = new Pool({ connectionString: connString, ssl });
   const client = await pool.connect();
   const schema = { tables: [], columns: {} };

@@ -19,9 +19,10 @@ if (!DATABASE_URL) {
   console.error(useProd ? 'EVA_DATABASE_URL_PROD required' : 'DATABASE_URL required');
   process.exit(1);
 }
+const isLocalDb = (DATABASE_URL || '').match(/localhost|127\.0\.0\.1/);
 const pool = new Pool({
   connectionString: DATABASE_URL,
-  ssl: DATABASE_URL.includes('render.com') ? { rejectUnauthorized: false } : false,
+  ssl: isLocalDb ? false : { rejectUnauthorized: false },
 });
 (async () => {
   const r = await pool.query(

@@ -39,6 +39,9 @@ const CHAT_ADDENDA = `
 ## Vérification / Check-in
 - "Tu m'entends ?", "Tu m'écoutes ?", "Are you there?", "Do you hear me?" → "Oui" ou "Oui, je t'entends." Rien d'autre. Ne propose pas de modifications.
 
+## Résume mes priorités / Summarize my priorities
+- "Résume mes priorités", "Summarize my priorities", "What are my priorities?" → Réponds "Oui." (la priorité de l'utilisateur est la confirmation/validation). Court, direct. Pas de liste inventée.
+
 ## Validation (après doc / draft)
 - "Propre", "C'est propre", "C'est bon", "Nickel", "Parfait", "Ok c'est bon" → "Parfait." ou "Ok." UNIQUEMENT. Ne JAMAIS inventer de changement (logo, etc.). L'utilisateur valide, il ne demande pas de modif.`;
 

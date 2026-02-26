@@ -20,6 +20,7 @@ export default function Emails() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState(null);
   const [page, setPage] = useState(0);
+  const [foldersOpen, setFoldersOpen] = useState(false);
   const PAGE_SIZE = 30;
 
   const fetchAccounts = async () => {
@@ -149,12 +150,14 @@ export default function Emails() {
     setFolder(f);
     setPage(0);
     setSelectedEmail(null);
+    setFoldersOpen(false);
   };
 
   const setAccountAndReset = (tab) => {
     setActiveTab(tab);
     setPage(0);
     setSelectedEmail(null);
+    setFoldersOpen(false);
   };
 
   const safeHtml = (html) => {
@@ -170,9 +173,16 @@ export default function Emails() {
   };
 
   return (
-    <div className="flex h-[calc(100vh-6rem)] overflow-hidden bg-white dark:bg-eva-panel">
-      {/* Left sidebar — Outlook-style folders */}
-      <aside className="w-52 flex-shrink-0 border-r border-slate-200 dark:border-slate-700/40 flex flex-col bg-slate-50 dark:bg-slate-900/30">
+    <div className="flex h-[calc(100vh-6rem)] md:min-h-[500px] overflow-hidden bg-white dark:bg-eva-panel">
+      {/* Mobile overlay */}
+      {foldersOpen && (
+        <div className="fixed inset-0 bg-black/40 z-40 md:hidden" onClick={() => setFoldersOpen(false)} aria-hidden />
+      )}
+      {/* Left sidebar — collapsible on mobile */}
+      <aside className={`fixed md:static inset-y-0 left-0 z-50 md:z-auto w-64 max-w-[85vw] md:w-52 flex-shrink-0 border-r border-slate-200 dark:border-slate-700/40 flex flex-col bg-slate-50 dark:bg-slate-900/30 transform transition-transform duration-200 ease-out top-[calc(3rem+env(safe-area-inset-top))] md:top-0 ${foldersOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
+        <div className="md:hidden p-2 border-b border-slate-200 dark:border-slate-700/40 flex justify-end">
+          <button onClick={() => setFoldersOpen(false)} className="p-2 rounded text-slate-500 hover:text-slate-900 dark:hover:text-white min-h-[44px] min-w-[44px] touch-manipulation" aria-label="Fermer">✕</button>
+        </div>
         <a
           href="https://mail.google.com/mail/?view=cm"
           target="_blank"
@@ -228,17 +238,20 @@ export default function Emails() {
 
       {/* Main: message list + reading pane */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Toolbar: search */}
+        {/* Toolbar: search + mobile folders button */}
         <div className="flex-shrink-0 flex items-center gap-2 px-3 py-2 border-b border-slate-200 dark:border-slate-700/40 bg-white dark:bg-eva-panel">
-          <form onSubmit={handleSearch} className="flex-1 flex gap-2">
+          <button type="button" onClick={() => setFoldersOpen(true)} className="md:hidden min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 touch-manipulation" aria-label="Dossiers">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
+          </button>
+          <form onSubmit={handleSearch} className="flex-1 flex gap-2 min-w-0">
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Rechercher des messages"
+              placeholder="Rechercher"
               className="flex-1 min-w-0 px-3 py-2 bg-slate-100 dark:bg-slate-800/60 border-0 rounded text-sm text-slate-900 dark:text-white placeholder:text-slate-500 focus:ring-2 focus:ring-[#0078D4]/30 focus:ring-inset"
             />
-            <button type="submit" className="px-4 py-2 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded text-sm font-medium hover:bg-slate-300 dark:hover:bg-slate-600">
+            <button type="submit" className="px-4 py-2 min-h-[44px] bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded text-sm font-medium hover:bg-slate-300 dark:hover:bg-slate-600 touch-manipulation">
               Rechercher
             </button>
           </form>
@@ -286,7 +299,7 @@ export default function Emails() {
                           <button
                             key={email.id}
                             onClick={() => openEmail(email)}
-                            className={`w-full text-left grid grid-cols-[1fr_1fr_auto] gap-2 px-3 py-2.5 border-b border-slate-100 dark:border-slate-700/20 hover:bg-slate-50 dark:hover:bg-slate-700/20 ${
+                            className={`w-full text-left grid grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_auto] gap-2 px-3 py-3 md:py-2.5 min-h-[52px] border-b border-slate-100 dark:border-slate-700/20 hover:bg-slate-50 dark:hover:bg-slate-700/20 active:bg-slate-100 dark:active:bg-slate-700/30 touch-manipulation ${
                               selectedEmail?.id === email.id ? 'bg-[#0078D4]/10 dark:bg-[#0078D4]/15 border-l-2 border-l-[#0078D4]' : ''
                             } ${!email.is_read ? 'bg-blue-50/50 dark:bg-blue-900/10' : ''}`}
                           >
@@ -300,7 +313,7 @@ export default function Emails() {
                             <div className={`min-w-0 truncate text-sm ${!email.is_read ? 'font-medium text-slate-800 dark:text-slate-200' : 'text-slate-500 dark:text-slate-400'}`}>
                               {email.subject || '(sans objet)'}
                             </div>
-                            <span className="text-[11px] text-slate-400 dark:text-slate-500 whitespace-nowrap shrink-0" title={new Date(email.received_at).toLocaleString('fr-FR')}>
+                            <span className="text-[11px] text-slate-400 dark:text-slate-500 whitespace-nowrap shrink-0 self-center" title={new Date(email.received_at).toLocaleString('fr-FR')}>
                               {formatDate(email.received_at)}
                             </span>
                           </button>
@@ -314,8 +327,8 @@ export default function Emails() {
                   <div className="flex-shrink-0 flex items-center justify-between px-3 py-2 border-t border-slate-200 dark:border-slate-700/40 text-[11px] text-slate-500 dark:text-eva-muted">
                     <span>Page {page + 1} / {Math.ceil(total / PAGE_SIZE)}</span>
                     <div className="flex gap-1">
-                      <button onClick={() => handlePageChange(page - 1)} disabled={page === 0} className="px-2 py-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-30">←</button>
-                      <button onClick={() => handlePageChange(page + 1)} disabled={(page + 1) * PAGE_SIZE >= total} className="px-2 py-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-30">→</button>
+                      <button onClick={() => handlePageChange(page - 1)} disabled={page === 0} className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-30 touch-manipulation">←</button>
+                      <button onClick={() => handlePageChange(page + 1)} disabled={(page + 1) * PAGE_SIZE >= total} className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-30 touch-manipulation">→</button>
                     </div>
                   </div>
                 )}
@@ -332,7 +345,7 @@ export default function Emails() {
             ) : selectedEmail ? (
               <>
                 <div className="flex-shrink-0 p-4 border-b border-slate-200 dark:border-slate-700/40 bg-white dark:bg-eva-panel relative">
-                  <button onClick={() => setSelectedEmail(null)} className="md:hidden absolute top-2 left-2 p-2 text-slate-500 hover:text-slate-900 dark:hover:text-white" aria-label="Retour">←</button>
+                  <button onClick={() => setSelectedEmail(null)} className="md:hidden absolute top-2 left-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-slate-500 hover:text-slate-900 dark:hover:text-white touch-manipulation" aria-label="Retour">←</button>
                   <h1 className="text-lg font-semibold text-slate-900 dark:text-white pr-8">{selectedEmail.subject || '(sans objet)'}</h1>
                   <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600 dark:text-slate-400">
                     <span><strong className="text-slate-500 dark:text-slate-500">De:</strong> {selectedEmail.from_name ? `${selectedEmail.from_name} <${selectedEmail.from_email}>` : selectedEmail.from_email}</span>

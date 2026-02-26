@@ -1,4 +1,4 @@
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import EvaTopBar from './EvaTopBar';
 import { useAuth } from '../context/AuthContext';
@@ -20,6 +20,8 @@ const nav = [
 export default function Layout({ children }) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { pathname } = useLocation();
+  const fullBleed = pathname === '/emails' || pathname === '/calendar';
   const [evaStatus, setEvaStatus] = useState(null); // null=loading, true=active, false=offline
   const { user, logout, requireAuth } = useAuth();
   const navigate = useNavigate();
@@ -110,7 +112,7 @@ export default function Layout({ children }) {
         </div>
       </aside>
       <main className="flex-1 overflow-auto min-w-0">
-        <div className="max-w-7xl mx-auto p-4 sm:p-6 pb-[max(1rem,env(safe-area-inset-bottom))]">{children}</div>
+        <div className={fullBleed ? 'w-full min-h-[calc(100vh-3rem)] pb-[max(1rem,env(safe-area-inset-bottom))]' : 'max-w-7xl mx-auto p-4 sm:p-6 pb-[max(1rem,env(safe-area-inset-bottom))]'}>{children}</div>
       </main>
       </div>
     </div>

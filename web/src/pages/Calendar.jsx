@@ -285,7 +285,7 @@ export default function Calendar() {
                   return (
                     <div
                       key={key}
-                      className={`bg-white dark:bg-eva-panel flex flex-col min-h-[60px] sm:min-h-[80px] ${!isCurrentMonth ? 'opacity-50' : ''}`}
+                      className={`bg-white dark:bg-eva-panel flex flex-col min-h-[70px] sm:min-h-[80px] ${!isCurrentMonth ? 'opacity-50' : ''}`}
                     >
                       <div
                         className={`shrink-0 py-1 px-2 text-xs font-medium ${isToday ? 'bg-cyan-500 text-white rounded-full w-6 h-6 flex items-center justify-center' : 'text-slate-600 dark:text-slate-400'}`}
@@ -355,7 +355,7 @@ export default function Calendar() {
                             {g.events.map((ev) => (
                               <div
                                 key={ev.id}
-                                className="flex gap-4 p-4 rounded-xl bg-white dark:bg-eva-panel border border-slate-200 dark:border-slate-700/40"
+                                className="flex gap-4 p-4 min-h-[56px] rounded-xl bg-white dark:bg-eva-panel border border-slate-200 dark:border-slate-700/40"
                               >
                                 <div className="shrink-0 w-16 text-sm text-slate-500">
                                   {ev.is_all_day ? 'All day' : `${new Date(ev.start_at).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })} – ${new Date(ev.end_at).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}`}

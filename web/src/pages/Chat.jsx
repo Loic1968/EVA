@@ -385,7 +385,7 @@ export default function Chat() {
                 <p className="text-slate-500 dark:text-slate-400 text-sm mb-8">{lang === 'fr' ? 'Comment puis-je t\'aider ?' : 'How can I help?'}</p>
                 <div className="flex flex-wrap gap-2 justify-center max-w-md">
                   {[lang === 'fr' ? 'Résume mes priorités' : 'Summarize my priorities', lang === 'fr' ? 'Rédige un email' : 'Draft an email', 'Draft a follow-up', lang === 'fr' ? 'Réponds à une demande de délai' : 'Payment extension reply'].slice(0, 4).map((q) => (
-                    <button key={q} onClick={() => { setInput(q); inputRef.current?.focus(); }} className="px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700/60 hover:text-slate-900 dark:hover:text-slate-300 text-sm">
+                    <button key={q} onClick={() => send(q)} disabled={loading || !evaEnabled} className="px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700/60 hover:text-slate-900 dark:hover:text-slate-300 text-sm touch-manipulation min-h-[44px] disabled:opacity-50">
                       {q}
                     </button>
                   ))}

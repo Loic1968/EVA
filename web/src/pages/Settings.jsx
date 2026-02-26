@@ -48,9 +48,22 @@ export default function Settings() {
     }
   }, []);
 
+  const urlBase64ToUint8Array = (base64) => {
+    const padding = '='.repeat((4 - (base64.length % 4)) % 4);
+    const b64 = (base64 + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const raw = atob(b64);
+    const arr = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+    return arr;
+  };
+
   const enablePushNotifications = async () => {
     if (!('Notification' in window) || !('serviceWorker' in navigator)) {
       setPushError('Push notifications not supported in this browser');
+      return;
+    }
+    if (!window.isSecureContext) {
+      setPushError('Push requires HTTPS');
       return;
     }
     setPushLoading(true);
@@ -65,26 +78,24 @@ export default function Settings() {
         setPushLoading(false);
         return;
       }
-      const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
-      await reg.update();
-      let sw = reg.installing || reg.waiting || reg.active;
-      let attempts = 0;
-      while (!sw && attempts < 10) {
-        await new Promise((r) => setTimeout(r, 200));
-        sw = reg.installing || reg.waiting || reg.active;
-        attempts++;
+      await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+      const reg = await navigator.serviceWorker.ready;
+      if (!reg?.pushManager) {
+        throw new Error('Push not supported in this browser. Use HTTPS and a supported browser.');
       }
-      if (!sw) throw new Error('Service worker not ready');
       const vapid = await api.getPushVapidPublic();
       if (!vapid?.publicKey) throw new Error('Push not configured on server');
-      const sub = await sw.pushManager.subscribe({
+      const keyStr = String(vapid.publicKey).trim();
+      const key = urlBase64ToUint8Array(keyStr);
+      const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: vapid.publicKey,
+        applicationServerKey: key,
       });
       await api.subscribePush(sub.toJSON());
       setPushStatus((prev) => ({ ...prev, subscribed: true, configured: true, thisDeviceSubscribed: true }));
     } catch (e) {
-      setPushError(e.message || 'Failed to enable push');
+      const msg = e?.message || 'Failed to enable push';
+      setPushError(msg.includes('subscribe') ? 'Push not available. Use HTTPS and Chrome/Firefox/Edge.' : msg);
     } finally {
       setPushLoading(false);
     }
@@ -463,7 +474,7 @@ export default function Settings() {
             </button>
           )}
         </div>
-        {pushError && <p className="text-red-600 dark:text-red-400 text-sm mt-2">{pushError}</p>}
+        {pushError && <p className="text-sm mt-2" style={{ color: '#dc2626' }}>{pushError}</p>}
       </div>
 
       {/* Notifications */}
@@ -518,13 +529,14 @@ export default function Settings() {
         <div className="space-y-3">
           <div className="flex items-center gap-3">
             <button
+              type="button"
               onClick={() => setEmailImportancePrefs(settings.email_importance_preferences?.enabled !== true ? true : false)}
               disabled={saving}
-              className={`px-4 py-2 rounded-lg font-medium ${
+              className={`px-4 py-2 rounded-lg font-medium cursor-pointer transition-colors border-2 disabled:opacity-50 disabled:cursor-not-allowed ${
                 settings.email_importance_preferences?.enabled === true
-                  ? 'bg-cyan-600 text-white hover:bg-cyan-500'
-                  : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
-              } disabled:opacity-50`}
+                  ? 'bg-cyan-600 border-cyan-600 text-white hover:bg-cyan-500'
+                  : 'bg-transparent border-slate-500 text-slate-300 hover:border-cyan-500 hover:text-cyan-400'
+              }`}
             >
               {settings.email_importance_preferences?.enabled === true ? 'Alerts ON' : 'Alerts OFF'}
             </button>

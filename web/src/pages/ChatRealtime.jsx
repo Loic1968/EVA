@@ -129,11 +129,17 @@ export default function ChatRealtime() {
           navigator.wakeLock.request('screen').then((wl) => { wakeLockRef.current = wl; }).catch(() => {});
       });
 
+      const STOP_PHRASES = /^(stop|tais[- ]?toi|arr[eê]te|silence)$/i;
       dc.addEventListener('message', (ev) => {
         try {
           const event = JSON.parse(ev.data);
           if (event.type === 'conversation.item.input_audio_transcription.completed' && event.transcript) {
-            setTranscript((t) => [...t, { role: 'user', text: event.transcript }]);
+            const t = (event.transcript || '').trim();
+            if (STOP_PHRASES.test(t)) {
+              stopSession();
+              return;
+            }
+            setTranscript((prev) => [...prev, { role: 'user', text: event.transcript }]);
           } else if (event.type === 'conversation.item.added' && event.item?.role === 'assistant') {
             const content = event.item?.content?.[0];
             if (content?.transcript) {

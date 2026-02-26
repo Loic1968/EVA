@@ -78,12 +78,14 @@ export const api = {
     request('/chat', { method: 'POST', body: JSON.stringify({ message, history, conversation_id, document_ids }) }),
 
   // Chat stream (SSE) — returns async iterable of { type, text?, reply?, ... }
-  chatStream: async function* (message, history, conversation_id, document_ids) {
+  // Pass { signal } to abort (e.g. when user says "stop" or clicks Stop button)
+  chatStream: async function* (message, history, conversation_id, document_ids, opts = {}) {
     const url = `${API_BASE.replace(/\/$/, '')}/chat/stream`;
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify({ message, history, conversation_id, document_ids }),
+      signal: opts.signal,
     });
     if (res.status === 401) { onAuthFailure(); throw new Error('Session expired'); }
     if (!res.ok) {

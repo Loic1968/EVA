@@ -60,8 +60,10 @@ Tu réponds UNIQUEMENT au DERNIER message de l'utilisateur. Tu ne fabriques JAMA
 # FLUX AVANT CHAQUE RÉPONSE
 1. Lis le dernier message. Qu'a-t-il LITTÉRALEMENT dit?
 2. Question explicite? ("où je suis né?", "ma date de naissance?") → Réponds à CETTE question UNIQUEMENT. Une réponse courte.
-3. Énoncé de fait? ("suis Marie", "j'ai habité 9 ans") → save_memory + "Noté."
-4. Ni l'un ni l'autre? ("c'est chaud", "système", "ciel", "ok", "...") → "Oui ?"
+3. Check-in? ("tu m'entends ?", "tu m'écoutes ?") → "Oui" ou "Oui, je t'entends." Rien d'autre.
+4. Validation? ("propre", "c'est bon", "nickel", "parfait") → "Parfait." ou "Ok." Ne JAMAIS inventer de modif (logo, etc.).
+5. Énoncé de fait? ("suis Marie", "j'ai habité 9 ans") → save_memory + "Noté."
+6. Ni l'un ni l'autre? ("c'est chaud", "système", "ciel", "ok", "...") → "Oui ?"
 
 # UNE QUESTION = UNE RÉPONSE
 - "Où je suis né?" → "Lille." Pas de date, pas de nationalité.
@@ -71,6 +73,7 @@ Tu réponds UNIQUEMENT au DERNIER message de l'utilisateur. Tu ne fabriques JAMA
 # INTERDITS (NON-NÉGOCIABLES)
 - "Je comprends" — jamais. Inventer des plages d'années.
 - "je note" / "D'accord, je note" + fait que l'utilisateur N'A PAS dit dans son message → JAMAIS. Si tu n'as pas lu le fait dans son message LITTÉRAL, ne sauvegarde rien.
+- "Propre", "c'est bon", "nickel" = validation, pas demande de modif. Réponds "Parfait." ou "Ok." Ne propose JAMAIS de changer le logo ou autre.
 - Déduire du passeport/documents (taille, poids, yeux, adresse) et dire "je note" → JAMAIS. Les documents sont pour RÉPONDRE aux questions, pas pour inventer ce que l'utilisateur "aurait dit".
 - "c'est chaud", "système", "que peut-être", ".", "Bonjour" seul → pas des énoncés. Réponds "Oui ?" ou "Bonjour.", pas de save_memory.
 
@@ -131,11 +134,14 @@ const CALENDAR_KEYWORDS = /agenda|calendrier|calendar|meeting|rendez-vous|rdv|r[
 const ALWAYS_INJECT_RECENT = true;
 
 // Message trop court ou sans question/fait clair → ne pas injecter documents/facts (évite hallucination)
-const MINIMAL_WORDS = /^(ciel|ok|oui|non|d\'accord|\.\.\.|bonjour|salut|hello|hi|yo|ah|euh|hum|quoi|merci|hein|voilà|voila|c\'est chaud|système|que peut-être)$/i;
+const MINIMAL_WORDS = /^(ciel|ok|oui|non|d\'accord|\.\.\.|bonjour|salut|hello|hi|yo|ah|euh|hum|quoi|merci|hein|voilà|voila|c\'est chaud|système|que peut-être|propre|c\'est propre|c\'est bon|nickel|parfait)$/i;
+// Check-in ou validation courte → pas de contexte doc/emails (sinon le modèle confond et propose des modifs)
+const CHECKIN_OR_VALIDATION = /^(tu m\'entends\s*\??|tu m\'écoutes\s*\??|t\'entends\s*\??|t\'écoutes\s*\??|are you there\s*\??|do you hear me\s*\??|ok c\'est bon)$/i;
 function isMinimalMessage(msg) {
   const t = (msg || '').trim();
-  if (!t || t.length < 6) return true; // vide, "ciel", "ok", "..."
-  if (MINIMAL_WORDS.test(t)) return true; // mot seul sans intention claire
+  if (!t || t.length < 6) return true; // vide, "ciel", "ok"
+  if (MINIMAL_WORDS.test(t)) return true; // mot seul
+  if (CHECKIN_OR_VALIDATION.test(t)) return true; // "tu m'entends ?", "propre", etc. → pas de contexte lourd
   return false;
 }
 
@@ -315,9 +321,9 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
     const attachedBlock = attached ? `\n\n## Attached by user (analyse first)\n${attached}\n` : '';
     systemPrompt = EVA_SYSTEM + attachedBlock + (context || '');
   } else {
-  // Build email context: search on keywords, or inject recent when ALWAYS_INJECT
+  // Build email context: search on keywords, or inject recent when ALWAYS_INJECT (skip if minimal — évite confusion)
   let emailContext = '';
-  if (ownerId) {
+  if (ownerId && !isMinimalMessage(userMessage)) {
     try {
       const sync = getGmailSync();
       if (sync) {
@@ -465,9 +471,9 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
     }
   }
 
-  // Calendar context: upcoming events when keywords match or always inject
+  // Calendar context: upcoming events (skip if minimal — évite confusion)
   let calendarContext = '';
-  if (ownerId) {
+  if (ownerId && !isMinimalMessage(userMessage)) {
     try {
       const calSync = getCalendarSync();
       if (calSync) {
@@ -594,9 +600,9 @@ async function createReplyStream(userMessage, history = [], ownerId = null, mode
   const client = getClient();
   const model = process.env.EVA_CHAT_MODEL || 'claude-sonnet-4-20250514';
 
-  // Email context: same logic as reply() — always inject recent OR search on keywords
+  // Email context: same logic as reply() — skip if minimal (évite confusion)
   let emailContext = '';
-  if (ownerId) {
+  if (ownerId && !isMinimalMessage(userMessage)) {
     try {
       const sync = getGmailSync();
       if (sync) {
@@ -721,9 +727,9 @@ async function createReplyStream(userMessage, history = [], ownerId = null, mode
     }
   }
 
-  // Calendar context in stream mode
+  // Calendar context in stream mode (skip if minimal)
   let calendarContextStream = '';
-  if (ownerId) {
+  if (ownerId && !isMinimalMessage(userMessage)) {
     try {
       const calSync = getCalendarSync();
       if (calSync) {

@@ -11,11 +11,17 @@ if (fs.existsSync(parentEnv)) require('dotenv').config({ path: parentEnv });
 if (fs.existsSync(evaEnv)) require('dotenv').config({ path: evaEnv });
 const { Pool } = require('pg');
 
-const DATABASE_URL = process.env.EVA_DATABASE_URL || process.env.DATABASE_URL;
+const useProd = process.argv.includes('--prod');
+const DATABASE_URL = useProd
+  ? (process.env.EVA_DATABASE_URL_PROD || process.env.PROD_DATABASE_URL)
+  : (process.env.EVA_DATABASE_URL || process.env.DATABASE_URL);
 if (!DATABASE_URL) {
-  console.error('DATABASE_URL or EVA_DATABASE_URL required');
+  console.error(useProd
+    ? 'EVA_DATABASE_URL_PROD required for --prod (set in eva/.env)'
+    : 'DATABASE_URL or EVA_DATABASE_URL required');
   process.exit(1);
 }
+if (useProd) console.log('[Migrations] Target: PRODUCTION\n');
 
 // Render and other clouds use self-signed certs for internal DB
 const needInsecureSSL = process.env.NODE_ENV === 'production' ||

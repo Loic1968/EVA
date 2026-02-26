@@ -29,6 +29,9 @@ export default function Chat() {
   const speakingRef = useRef(false);
   const streamDoneRef = useRef(false);
   const streamingTextRef = useRef('');
+  const abortControllerRef = useRef(null);
+
+  const STOP_COMMAND = /^(stop|tais[- ]?toi|arr[eê]te|silence)$/i;
 
   const voiceInput = useVoiceInput(lang);
   const voiceOutput = useVoiceOutput(lang);
@@ -127,9 +130,26 @@ export default function Chat() {
     }
   }, [autoPlayVoice, voiceOutput]);
 
+  const stopEva = useCallback(() => {
+    abortControllerRef.current?.abort();
+    voiceOutput.stop();
+    setLoading(false);
+    setStreamingContent('');
+    streamDoneRef.current = true;
+    streamingTextRef.current = '';
+    spokenEndRef.current = 0;
+    speakingRef.current = false;
+  }, [voiceOutput]);
+
   const send = useCallback(async (overrideText) => {
     const text = (overrideText ?? input).toString().trim();
     if ((!text && attachedFiles.length === 0) || loading) return;
+
+    if (STOP_COMMAND.test(text)) {
+      stopEva();
+      setInput('');
+      return;
+    }
 
     setInput('');
     setError(null);
@@ -173,11 +193,13 @@ export default function Chat() {
     }
 
     const msgForEva = text || (documentIds.length ? (lang === 'fr' ? 'Analyse ce document que je viens de partager.' : 'Analyze this document I just shared.') : '');
+    const ac = new AbortController();
+    abortControllerRef.current = ac;
     let accumulated = '';
     try {
       let usedStream = false;
       try {
-        for await (const event of api.chatStream(msgForEva, [], convId, documentIds)) {
+        for await (const event of api.chatStream(msgForEva, [], convId, documentIds, { signal: ac.signal })) {
           usedStream = true;
           if (event.type === 'chunk' && event.text) {
             accumulated += event.text;
@@ -217,13 +239,18 @@ export default function Chat() {
         loadConversations();
       }
     } catch (e) {
-      setError(e.body?.error || e.message || 'Error');
-      setMessages((m) => m.slice(0, -1));
-      setStreamingContent('');
+      if (e.name === 'AbortError') {
+        setStreamingContent('');
+      } else {
+        setError(e.body?.error || e.message || 'Error');
+        setMessages((m) => m.slice(0, -1));
+        setStreamingContent('');
+      }
     } finally {
+      abortControllerRef.current = null;
       setLoading(false);
     }
-  }, [input, loading, activeConvId, loadConversations, trySpeakNext]);
+  }, [input, loading, activeConvId, loadConversations, trySpeakNext, stopEva]);
 
   // Hold to talk: appuyer = enregistrer, relâcher = envoyer
   const onVoicePressStart = useCallback(async () => {
@@ -333,6 +360,11 @@ export default function Chat() {
             {shadowMode && <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/25 text-cyan-600 dark:text-cyan-400 font-medium">Shadow</span>}
           </span>
           <div className="flex items-center gap-1">
+            {(loading || voiceOutput.isSpeaking) && (
+              <button onClick={stopEva} className="flex items-center gap-1.5 px-3 py-2 min-h-[44px] rounded-lg bg-red-500/20 text-red-600 dark:text-red-400 hover:bg-red-500/30 text-sm font-medium" title={lang === 'fr' ? 'Arrêter' : 'Stop'}>
+                ■ {lang === 'fr' ? 'Stop' : 'Stop'}
+              </button>
+            )}
             <Link to="/chat/realtime" className="flex items-center gap-1.5 px-3 py-2 min-h-[44px] rounded-lg bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 hover:bg-cyan-500/30 text-sm font-medium touch-manipulation" title={lang === 'fr' ? 'Appeler EVA (voix temps réel)' : 'Voice call (Realtime)'}>
               🎤 <span className="hidden sm:inline">{lang === 'fr' ? 'Appel vocal' : 'Voice call'}</span>
             </Link>

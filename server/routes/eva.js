@@ -124,14 +124,16 @@ router.post('/chat', async (req, res, next) => {
           [id, req.ownerId]
         );
         const doc = r.rows[0];
-        if (!doc) continue;
+        if (!doc) { console.warn('[EVA] Chat document not found:', id, 'owner:', req.ownerId); continue; }
         if (!doc.content_text && ['uploaded', 'processing', 'error'].includes(doc.status)) {
-          try { await docProcessor.processDocument(id, req.ownerId); } catch (_) {}
+          try { await docProcessor.processDocument(id, req.ownerId); } catch (e) { console.warn('[EVA] processDocument failed:', e.message); }
           const up = await db.query('SELECT content_text FROM eva.documents WHERE id = $1', [id]);
           doc.content_text = up.rows[0]?.content_text || '';
         }
+        if (!doc.content_text) console.warn('[EVA] Document', id, doc.filename, 'has no content_text');
         attachedDocuments.push({ id: doc.id, filename: doc.filename, content_text: doc.content_text });
       }
+      if (attachedDocuments.length > 0) console.log('[EVA] Chat with', attachedDocuments.length, 'attached doc(s)');
     }
 
     const parsed = evaChat.parseCommand(message.trim());
@@ -306,14 +308,16 @@ router.post('/chat/stream', async (req, res, next) => {
           [id, req.ownerId]
         );
         const doc = r.rows[0];
-        if (!doc) continue;
+        if (!doc) { console.warn('[EVA] Stream doc not found:', id, 'owner:', req.ownerId); continue; }
         if (!doc.content_text && ['uploaded', 'processing', 'error'].includes(doc.status)) {
-          try { await docProcessor.processDocument(id, req.ownerId); } catch (_) {}
+          try { await docProcessor.processDocument(id, req.ownerId); } catch (e) { console.warn('[EVA] processDocument failed:', e.message); }
           const up = await db.query('SELECT content_text FROM eva.documents WHERE id = $1', [id]);
           doc.content_text = up.rows[0]?.content_text || '';
         }
+        if (!doc.content_text) console.warn('[EVA] Stream doc', id, doc.filename, 'has no content_text');
         attachedDocumentsStream.push({ id: doc.id, filename: doc.filename, content_text: doc.content_text });
       }
+      if (attachedDocumentsStream.length > 0) console.log('[EVA] Stream with', attachedDocumentsStream.length, 'attached doc(s)');
     }
 
     const parsedStream = evaChat.parseCommand(message.trim());
@@ -1349,6 +1353,7 @@ router.get('/stats', async (req, res, next) => {
         desc: 'Archive & indexing',
         status: hasMemoryVault ? 'live' : 'building',
         pct: hasMemoryVaultData ? 100 : (gmailAccounts > 0 ? 50 : 20),
+        why: hasMemoryVault ? null : (gmailAccounts > 0 ? 'Connect Gmail and upload docs to reach 100%' : 'Upload documents, connect Gmail or add calendar to build your vault'),
       },
       {
         phase: 2,
@@ -1356,6 +1361,7 @@ router.get('/stats', async (req, res, next) => {
         desc: 'Real-time voice + observation',
         status: hasVoice ? 'live' : 'planned',
         pct: hasVoice ? 100 : 0,
+        why: hasVoice ? null : 'Requires OpenAI API key for real-time voice. Set OPENAI_API_KEY in server config.',
       },
       {
         phase: 3,
@@ -1363,6 +1369,7 @@ router.get('/stats', async (req, res, next) => {
         desc: 'Approve-before-send',
         status: hasDrafts ? 'live' : 'building',
         pct: hasDrafts ? 80 : 40,
+        why: hasDrafts ? null : 'Create drafts (emails, messages) for EVA to propose — you approve before send.',
       },
       {
         phase: 4,
@@ -1370,6 +1377,7 @@ router.get('/stats', async (req, res, next) => {
         desc: 'Your voice, your style',
         status: hasStyleProfile ? 'live' : 'building',
         pct: hasStyleProfile ? 100 : (hasDrafts ? 30 : 0),
+        why: hasStyleProfile ? null : (hasDrafts ? 'Add your style profile in Settings so EVA matches your voice and tone' : 'Complete P3 drafts first, then add your style profile in Settings'),
       },
       {
         phase: 5,
@@ -1377,6 +1385,7 @@ router.get('/stats', async (req, res, next) => {
         desc: 'Full delegation',
         status: autonomousOn ? 'live' : 'planned',
         pct: autonomousOn ? 100 : 0,
+        why: autonomousOn ? null : 'Enable Autonomous Mode in Settings to allow EVA to act without per-action approval.',
       },
     ];
 

@@ -15,6 +15,7 @@ const nav = [
   { to: '/audit', label: 'Audit Log', icon: '◎' },
   { to: '/sources', label: 'Data Sources', icon: '◐' },
   { to: '/settings', label: 'Settings', icon: '◑' },
+  { to: '/about', label: 'About', icon: 'ℹ' },
 ];
 
 export default function Layout({ children }) {

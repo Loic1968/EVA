@@ -137,7 +137,7 @@ function extractTxtFromBuffer(buffer) {
   }
 }
 
-const IMAGE_MEDIA_TYPES = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif' };
+const IMAGE_MEDIA_TYPES = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', heic: 'image/heic' };
 const MAX_IMAGE_FOR_CLAUDE_MB = 5;
 
 // Images now route through extractViaClaude via extractImageOcr (with doc type detection)
@@ -175,7 +175,7 @@ async function extractText(filePathOrBuffer, fileType, filename = '') {
       return null;
     }
   }
-  if (['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext)) {
+  if (['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic'].includes(ext)) {
     const buffer = isBuffer ? filePathOrBuffer : fs.readFileSync(filePathOrBuffer);
     return extractImageOcr(buffer, ext, filename);
   }

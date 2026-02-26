@@ -138,11 +138,11 @@ export default function Dashboard() {
           <h2 className="text-sm font-medium text-slate-900 dark:text-white mb-4">EVA Phases</h2>
           <div className="space-y-4">
             {(stats?.phases || [
-              { phase: 1, label: 'Memory Vault', desc: 'Archive & indexing', status: 'building', pct: 0 },
-              { phase: 2, label: 'Voice + Shadow', desc: 'Real-time voice + observation', status: 'planned', pct: 0 },
-              { phase: 3, label: 'Limited Proxy', desc: 'Approve-before-send', status: 'planned', pct: 0 },
-              { phase: 4, label: 'Fine-Tuned Model', desc: 'Your voice, your style', status: 'planned', pct: 0 },
-              { phase: 5, label: 'Autonomous Proxy', desc: 'Full delegation', status: 'planned', pct: 0 },
+              { phase: 1, label: 'Memory Vault', desc: 'Archive & indexing', status: 'building', pct: 0, why: 'Upload documents or connect data sources' },
+              { phase: 2, label: 'Voice + Shadow', desc: 'Real-time voice + observation', status: 'planned', pct: 0, why: 'Requires OpenAI API key (server config)' },
+              { phase: 3, label: 'Limited Proxy', desc: 'Approve-before-send', status: 'planned', pct: 0, why: 'Create drafts for EVA to propose' },
+              { phase: 4, label: 'Fine-Tuned Model', desc: 'Your voice, your style', status: 'planned', pct: 0, why: 'Add your style profile in Settings' },
+              { phase: 5, label: 'Autonomous Proxy', desc: 'Full delegation', status: 'planned', pct: 0, why: 'Enable Autonomous Mode in Settings' },
             ]).map((p) => (
               <div key={p.phase}>
                 <div className="flex items-center justify-between mb-1">
@@ -165,6 +165,9 @@ export default function Dashboard() {
                   />
                 </div>
                 <p className="text-[11px] text-slate-500 dark:text-eva-muted mt-0.5">{p.desc}</p>
+                {p.why && p.pct < 100 && (
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 italic">{p.why}</p>
+                )}
               </div>
             ))}
           </div>

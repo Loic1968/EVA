@@ -14,6 +14,7 @@ import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import Emails from './pages/Emails';
 import Calendar from './pages/Calendar';
+import About from './pages/About';
 import { useAuth } from './context/AuthContext';
 
 function LoadingScreen() {
@@ -57,6 +58,7 @@ function AppRoutes() {
         <Route path="/audit" element={<AuditLog />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/sources" element={<DataSources />} />
+        <Route path="/about" element={<About />} />
       </Routes>
     </Layout>
   );

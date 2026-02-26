@@ -166,11 +166,14 @@ export const api = {
     });
     if (res.status === 401) { onAuthFailure(); throw new Error('Session expired'); }
     if (!res.ok) {
-      let msg = 'Upload failed';
+      let msg = res.status === 413 ? 'File too large (max 50 MB)' : 'Upload failed';
       try {
         const body = await res.json();
         if (body?.error) msg = body.error;
-      } catch (_) {}
+      } catch (_) {
+        const txt = await res.text().catch(() => '');
+        if (txt && txt.length < 200) msg = txt;
+      }
       throw new Error(msg);
     }
     return res.json();

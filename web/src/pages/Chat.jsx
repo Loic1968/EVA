@@ -180,13 +180,24 @@ export default function Chat() {
     let documentIds = [];
     if (filesToSend.length > 0) {
       try {
-        for (const file of filesToSend) {
+        setError(null);
+        for (let i = 0; i < filesToSend.length; i++) {
+          const file = filesToSend[i];
+          setStreamingContent(lang === 'fr' ? `Envoi de ${file.name}…` : `Uploading ${file.name}…`);
           const doc = await api.uploadDocument(file);
           if (doc?.id) documentIds.push(doc.id);
         }
+        setStreamingContent('');
+        if (documentIds.length === 0 && filesToSend.length > 0) {
+          throw new Error(lang === 'fr' ? 'Upload échoué : aucun document créé.' : 'Upload failed: no document created.');
+        }
       } catch (upErr) {
-        setError(upErr.message || 'Upload failed');
+        const isNetworkErr = upErr.name === 'TypeError' || (upErr.message && /fetch|network|Failed to fetch/i.test(upErr.message));
+        const msg = isNetworkErr ? (lang === 'fr' ? 'Connexion impossible. Vérifiez votre réseau.' : 'Network error. Check your connection.') : (upErr.message || (lang === 'fr' ? 'Échec upload. Vérifiez la connexion et la taille (< 50 Mo).' : 'Upload failed. Check connection and file size (< 50 MB).'));
+        setError(msg);
         setLoading(false);
+        setStreamingContent('');
+        setAttachedFiles(filesToSend);
         setMessages((m) => m.slice(0, -1));
         return;
       }
@@ -291,8 +302,8 @@ export default function Chat() {
 
   const onFileSelect = (e) => {
     const files = Array.from(e.target.files || []);
-    const allowed = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'text/plain'];
-    const valid = files.filter((f) => allowed.includes(f.type) || /\.(pdf|jpg|jpeg|png|webp|gif|txt)$/i.test(f.name));
+    const allowed = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'text/plain'];
+    const valid = files.filter((f) => allowed.includes(f.type) || /\.(pdf|jpg|jpeg|png|webp|gif|heic|txt)$/i.test(f.name) || (f.type === '' && f.name));
     setAttachedFiles((prev) => [...prev, ...valid].slice(0, 5));
     e.target.value = '';
   };
@@ -455,7 +466,7 @@ export default function Chat() {
               </div>
             )}
             <div className="flex gap-2 items-end">
-              <input ref={fileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.gif,.txt,application/pdf,image/*,text/plain" multiple className="hidden" onChange={onFileSelect} />
+              <input ref={fileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.gif,.heic,.txt,application/pdf,image/*,text/plain" multiple className="hidden" onChange={onFileSelect} />
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}

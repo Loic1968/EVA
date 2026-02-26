@@ -80,7 +80,22 @@ export default function Emails() {
     }
   };
 
-  /** Outlook-style: Today 14:30, Yesterday 14:30, or day/month for older */
+  /** Outlook-style section labels: Today, Yesterday, This Week, Last Week, Last Month, Older */
+  const getDateSection = (d) => {
+    const date = new Date(d);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const dDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const diffDays = Math.floor((today - dDate) / 86400000);
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays <= 7) return 'This Week';
+    if (diffDays <= 14) return 'Last Week';
+    if (diffDays <= 31) return 'Last Month';
+    return 'Older';
+  };
+
+  /** Outlook-style: time for Today, Yesterday + time, or date for older */
   const formatDate = (d) => {
     const date = new Date(d);
     const today = new Date();
@@ -89,12 +104,24 @@ export default function Emails() {
     yesterday.setDate(yesterday.getDate() - 1);
     const isYesterday = date.toDateString() === yesterday.toDateString();
     const time = date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-    if (isToday) return `Aujourd'hui ${time}`;
-    if (isYesterday) return `Hier ${time}`;
+    if (isToday) return time;
+    if (isYesterday) return `Yesterday ${time}`;
     if (date.getFullYear() !== today.getFullYear()) {
       return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
     }
     return date.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+  };
+
+  const SECTION_ORDER = ['Today', 'Yesterday', 'This Week', 'Last Week', 'Last Month', 'Older'];
+  const groupEmailsBySection = (list) => {
+    const groups = {};
+    SECTION_ORDER.forEach((s) => { groups[s] = []; });
+    (list || []).forEach((email) => {
+      const section = getDateSection(email.received_at);
+      if (groups[section]) groups[section].push(email);
+      else groups.Older.push(email);
+    });
+    return groups;
   };
 
   const formatSyncTime = (d) => {
@@ -245,29 +272,43 @@ export default function Emails() {
                   <span className="text-right">Date</span>
                 </div>
                 <div className="flex-1 overflow-y-auto">
-                  {emails.map((email) => (
-                    <button
-                      key={email.id}
-                      onClick={() => openEmail(email)}
-                      className={`w-full text-left grid grid-cols-[1fr_1fr_auto] gap-2 px-3 py-2.5 border-b border-slate-100 dark:border-slate-700/20 hover:bg-slate-50 dark:hover:bg-slate-700/20 ${
-                        selectedEmail?.id === email.id ? 'bg-[#0078D4]/10 dark:bg-[#0078D4]/15 border-l-2 border-l-[#0078D4]' : ''
-                      } ${!email.is_read ? 'bg-blue-50/50 dark:bg-blue-900/10' : ''}`}
-                    >
-                      <div className="min-w-0 flex items-center gap-1">
-                        <span className={`truncate text-sm ${!email.is_read ? 'font-semibold text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-300'}`}>
-                          {folder === 'sent' ? (Array.isArray(email.to_emails) ? email.to_emails[0] || '—' : email.to_emails || '—') : (email.from_name || email.from_email)}
-                        </span>
-                        {email.is_starred && <span className="text-amber-500 shrink-0">★</span>}
-                        {email.has_attachments && <span className="text-slate-400 shrink-0">📎</span>}
+                  {(() => {
+                    const grouped = groupEmailsBySection(emails);
+                    return SECTION_ORDER.map((section) => {
+                      const sectionEmails = grouped[section];
+                      if (!sectionEmails?.length) return null;
+                    return (
+                      <div key={section}>
+                        <div className="sticky top-0 z-10 px-3 py-1.5 bg-slate-200/80 dark:bg-slate-700/60 text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wider border-b border-slate-200 dark:border-slate-700/40">
+                          {section}
+                        </div>
+                        {sectionEmails.map((email) => (
+                          <button
+                            key={email.id}
+                            onClick={() => openEmail(email)}
+                            className={`w-full text-left grid grid-cols-[1fr_1fr_auto] gap-2 px-3 py-2.5 border-b border-slate-100 dark:border-slate-700/20 hover:bg-slate-50 dark:hover:bg-slate-700/20 ${
+                              selectedEmail?.id === email.id ? 'bg-[#0078D4]/10 dark:bg-[#0078D4]/15 border-l-2 border-l-[#0078D4]' : ''
+                            } ${!email.is_read ? 'bg-blue-50/50 dark:bg-blue-900/10' : ''}`}
+                          >
+                            <div className="min-w-0 flex items-center gap-1">
+                              <span className={`truncate text-sm ${!email.is_read ? 'font-semibold text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-300'}`}>
+                                {folder === 'sent' ? (Array.isArray(email.to_emails) ? email.to_emails[0] || '—' : email.to_emails || '—') : (email.from_name || email.from_email)}
+                              </span>
+                              {email.is_starred && <span className="text-amber-500 shrink-0">★</span>}
+                              {email.has_attachments && <span className="text-slate-400 shrink-0">📎</span>}
+                            </div>
+                            <div className={`min-w-0 truncate text-sm ${!email.is_read ? 'font-medium text-slate-800 dark:text-slate-200' : 'text-slate-500 dark:text-slate-400'}`}>
+                              {email.subject || '(sans objet)'}
+                            </div>
+                            <span className="text-[11px] text-slate-400 dark:text-slate-500 whitespace-nowrap shrink-0" title={new Date(email.received_at).toLocaleString('fr-FR')}>
+                              {formatDate(email.received_at)}
+                            </span>
+                          </button>
+                        ))}
                       </div>
-                      <div className={`min-w-0 truncate text-sm ${!email.is_read ? 'font-medium text-slate-800 dark:text-slate-200' : 'text-slate-500 dark:text-slate-400'}`}>
-                        {email.subject || '(sans objet)'}
-                      </div>
-                      <span className="text-[11px] text-slate-400 dark:text-slate-500 whitespace-nowrap shrink-0" title={new Date(email.received_at).toLocaleString('fr-FR')}>
-                        {formatDate(email.received_at)}
-                      </span>
-                    </button>
-                  ))}
+                    );
+                    });
+                  })()}
                 </div>
                 {total > PAGE_SIZE && (
                   <div className="flex-shrink-0 flex items-center justify-between px-3 py-2 border-t border-slate-200 dark:border-slate-700/40 text-[11px] text-slate-500 dark:text-eva-muted">

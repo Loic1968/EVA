@@ -83,7 +83,8 @@ async function syncEmails(ownerId, gmailAccountId) {
     const afterEpoch = Math.floor(afterDate.getTime() / 1000);
     const query = `after:${afterEpoch}`;
 
-    // 5. List message IDs (paginated)
+    // 5. List message IDs (paginated). Cap scales with fetch days for proper 180-day history.
+    const maxMessages = Math.min(10000, Math.max(1000, fetchDays * 25));
     let allMessageIds = [];
     let pageToken = null;
     do {
@@ -96,9 +97,9 @@ async function syncEmails(ownerId, gmailAccountId) {
       const messages = listResult.data.messages || [];
       allMessageIds = allMessageIds.concat(messages.map(m => m.id));
       pageToken = listResult.data.nextPageToken;
-    } while (pageToken && allMessageIds.length < 500); // cap at 500 for safety
+    } while (pageToken && allMessageIds.length < maxMessages);
 
-    console.log(`[Gmail Sync] Found ${allMessageIds.length} messages for account ${gmailAccountId}`);
+    console.log(`[Gmail Sync] Found ${allMessageIds.length} messages for account ${gmailAccountId} (max ${maxMessages} for ${fetchDays} days)`);
 
     // 6. Fetch and store each message
     let newCount = 0;

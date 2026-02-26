@@ -526,7 +526,7 @@ export default function Settings() {
       <div className="bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 p-6 max-w-2xl">
         <h2 className="text-lg font-medium text-slate-900 dark:text-white mb-2">Email sync period</h2>
         <p className="text-slate-500 dark:text-eva-muted text-sm mb-4">
-          How many days of emails to fetch from Gmail. Sync runs automatically (see frequency above). Change applies on next sync.
+          How many days of emails to fetch from Gmail (30–365). Sync runs automatically; change applies on next sync. For 180+ days, go to Data Sources → Sync Now after saving. First full sync may take a few minutes.
         </p>
         <div className="flex items-center gap-3">
           <select
@@ -684,7 +684,7 @@ export default function Settings() {
       {/* P5: Autonomous Mode */}
       <div className={`rounded-xl border p-6 max-w-2xl transition-colors ${
         autonomousModeOn ? 'bg-amber-500/5 border-amber-500/30' : 'bg-white dark:bg-eva-panel border-slate-200 dark:border-slate-700/40'
-      }`}>
+      } ${(killSwitchOn || shadowModeOn) ? 'ring-2 ring-amber-400/50' : ''}`}>
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-lg font-medium text-slate-900 dark:text-white flex items-center gap-2">
@@ -698,9 +698,15 @@ export default function Settings() {
             </p>
           </div>
         </div>
+        {(killSwitchOn || shadowModeOn) && (
+          <div className="mt-4 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-sm text-amber-800 dark:text-amber-200">
+            <strong>Autonomous Mode is locked.</strong> Turn off Kill Switch and Shadow Mode first to enable or disable it.
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-3 mt-4">
           <button
             type="button"
+            data-testid="autonomous-mode-toggle"
             onClick={() => setAutonomousMode(!autonomousModeOn)}
             disabled={saving || killSwitchOn || shadowModeOn}
             className={`px-5 py-2.5 rounded-lg font-medium transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 ${
@@ -738,6 +744,7 @@ export default function Settings() {
         </div>
         <div className="flex items-center gap-3 mt-4">
           <button
+            type="button"
             onClick={() => setKillSwitch(!killSwitchOn)}
             disabled={saving}
             className={`px-5 py-2.5 rounded-lg font-medium transition-all ${
@@ -772,6 +779,7 @@ export default function Settings() {
         </div>
         <div className="flex items-center gap-3 mt-4">
           <button
+            type="button"
             onClick={() => setShadowMode(!shadowModeOn)}
             disabled={saving || killSwitchOn}
             className={`px-5 py-2.5 rounded-lg font-medium transition-all ${

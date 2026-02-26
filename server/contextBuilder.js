@@ -95,22 +95,32 @@ async function buildContext(opts) {
     }
   }
 
-  // 4) Relevant documents (TOP 3) summarized
+  // 4) Relevant documents — search by content + filename ("Emirates ticket" finds billet)
   if (ownerId && total < maxChars) {
     try {
       const docProcessor = require('./services/documentProcessor');
-      const useSearch = /vol|billet|passport|date|naissance|flight|document|fichier/i.test(userMessage);
-      const docs = useSearch
-        ? await docProcessor.searchDocuments(ownerId, userMessage, 3)
-        : (await docProcessor.getRecentDocuments(ownerId, 3));
+      const docKeywords = /vol|billet|avion|passport|date|naissance|flight|emirates|etihad|ticket|document|fichier|shanghai|pvg|voyage|horaire|heure|travel/i;
+      const useSearch = docKeywords.test(userMessage);
+      let docs = useSearch
+        ? await docProcessor.searchDocuments(ownerId, userMessage, 5)
+        : await docProcessor.getRecentDocuments(ownerId, 5);
+      // If user mentions a specific filename (e.g. "Emirates ticket", "Emirates ticket.pdf"), fetch by name
+      const filenameMatch = userMessage.match(/(?:emirates|etihad|flydubai)\s*(?:ticket|billet)?\s*(?:\.pdf)?|ticket\s*emirates|billet\s*emirates|\S+\.pdf/gi);
+      if (filenameMatch) {
+        const byName = await docProcessor.searchDocumentsByFilename(ownerId, filenameMatch[0].trim(), 2);
+        const seen = new Set(docs.map((d) => d.id));
+        byName.filter((d) => !seen.has(d.id)).forEach((d) => { docs.unshift(d); seen.add(d.id); });
+      }
       if (docs.length === 0) {
         append('DOCUMENTS', 'No relevant source found.');
       } else {
+        // 2000 chars per doc for flight tickets (--- FLIGHT DATES --- block needs full content)
+        const maxPerDoc = 2000;
         const lines = docs.map((d, i) => {
-          const text = (d.content_text || d.content_preview || '').slice(0, 400).replace(/\n/g, ' ');
-          return `[${i + 1}] ${d.filename}\n  ${text}...`;
+          const text = (d.content_text || d.content_preview || '').slice(0, maxPerDoc).replace(/\n/g, '\n  ');
+          return `[${i + 1}] ${d.filename}\n  ${text}${(d.content_text || '').length > maxPerDoc ? '...' : ''}`;
         }).join('\n\n');
-        append('DOCUMENTS (3)', lines);
+        append('DOCUMENTS', lines);
       }
     } catch (_) {
       append('DOCUMENTS', 'No relevant source found.');
@@ -126,7 +136,7 @@ async function buildContext(opts) {
         const lines = events.map((ev) => {
           const start = new Date(ev.start_at);
           const fmt = ev.is_all_day ? start.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' }) : start.toLocaleString('fr-FR', { weekday: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-          return `- ${ev.title || '(sans titre)'} | ${fmt}`;
+          return `- (id: ${ev.id}) ${ev.title || '(sans titre)'} | ${fmt}`;
         }).join('\n');
         append('CALENDRIER (5)', lines);
       }

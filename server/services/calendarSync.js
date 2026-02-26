@@ -288,14 +288,23 @@ async function resolveEventId(ownerId, eventId) {
 
 /**
  * Delete a calendar event by Google event_id or our DB id.
+ * Handles events on primary and secondary calendars (event_id format: "calId__evId").
  */
 async function deleteEvent(ownerId, eventId) {
-  const gcalId = await resolveEventId(ownerId, eventId);
-  if (!gcalId) throw new Error('Event not found');
+  const storedId = await resolveEventId(ownerId, eventId);
+  if (!storedId) throw new Error('Event not found');
+
+  let calendarId = 'primary';
+  let eventIdForApi = storedId;
+  if (storedId.includes('__')) {
+    const idx = storedId.indexOf('__');
+    calendarId = storedId.slice(0, idx) || 'primary';
+    eventIdForApi = storedId.slice(idx + 2);
+  }
 
   const evRow = await db.query(
     'SELECT gmail_account_id FROM eva.calendar_events WHERE owner_id = $1 AND event_id = $2',
-    [ownerId, gcalId]
+    [ownerId, storedId]
   );
   const acctResult = await db.query(
     'SELECT access_token, refresh_token, expires_at FROM eva.gmail_accounts WHERE id = $1 AND owner_id = $2',
@@ -311,8 +320,8 @@ async function deleteEvent(ownerId, eventId) {
   }
 
   const calendar = googleOAuth.getCalendarClient(accessToken, acct.refresh_token);
-  await calendar.events.delete({ calendarId: 'primary', eventId: gcalId });
-  await db.query('DELETE FROM eva.calendar_events WHERE owner_id = $1 AND event_id = $2', [ownerId, gcalId]);
+  await calendar.events.delete({ calendarId, eventId: eventIdForApi });
+  await db.query('DELETE FROM eva.calendar_events WHERE owner_id = $1 AND event_id = $2', [ownerId, storedId]);
   return { deleted: true };
 }
 

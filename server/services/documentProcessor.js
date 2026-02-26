@@ -266,7 +266,6 @@ function searchDocuments(ownerId, queryText, limit = 5) {
   const q = (queryText || '').trim();
   if (!q || q.length < 2) return Promise.resolve([]);
 
-  const safeQuery = q.replace(/'/g, "''");
   const likePattern = '%' + q.replace(/[%_\\]/g, (c) => '\\' + c) + '%';
 
   // Extract meaningful words (2+ chars) for OR-query — "vol lundi shanghai" finds flight docs
@@ -274,13 +273,21 @@ function searchDocuments(ownerId, queryText, limit = 5) {
     .filter((w) => w.length >= 2 && !SEARCH_STOPWORDS.has(w));
   const orTerms = [...new Set(words)].slice(0, 6).map((w) => w.replace(/'/g, "''").replace(/[^a-z0-9\u00e0-\u00ff]/g, ''));
 
-  let cond = 'content_text ILIKE $2 ESCAPE \'\\\'';
+  // Content match: ILIKE on content_text + optional tsvector
+  let contentCond = 'content_text ILIKE $2 ESCAPE \'\\\'';
   if (orTerms.length > 0) {
     const tsParts = orTerms.map((t, i) => `to_tsvector('simple', content_text) @@ plainto_tsquery('simple', $${i + 3})`).join(' OR ');
-    cond = `(${tsParts}) OR ${cond}`;
+    contentCond = `(${tsParts}) OR ${contentCond}`;
   }
 
-  const params = [ownerId, likePattern, ...orTerms, limit];
+  // Filename match: "Emirates ticket" / "Emirates ticket.pdf" finds docs by name
+  const filenameLike = '%' + q.replace(/[%_\\]/g, (c) => '\\' + c).replace(/'/g, "''") + '%';
+  const filenameParamIdx = 2 + orTerms.length + 1; // $1=ownerId, $2=likePattern, $3..=orTerms, next=filenameLike
+  const filenameCond = `(filename IS NOT NULL AND filename ILIKE $${filenameParamIdx} ESCAPE '\\')`;
+
+  const cond = `(${contentCond}) OR ${filenameCond}`;
+  const params = [ownerId, likePattern, ...orTerms, filenameLike, limit];
+
   return db
     .query(
       `SELECT id, filename, content_text, file_type, created_at
@@ -298,6 +305,31 @@ function searchDocuments(ownerId, queryText, limit = 5) {
       if (/column "content_text" does not exist/i.test(String(e.message))) return [];
       throw e;
     });
+}
+
+/**
+ * Search documents by filename (e.g. "Emirates ticket.pdf").
+ * Used when user explicitly names a file. Returns full content.
+ */
+async function searchDocumentsByFilename(ownerId, filenamePart, limit = 3) {
+  const part = (filenamePart || '').trim();
+  if (!part || part.length < 2) return [];
+  const like = '%' + part.replace(/[%_\\]/g, (c) => '\\' + c).replace(/'/g, "''") + '%';
+  try {
+    const r = await db.query(
+      `SELECT id, filename, content_text, created_at
+       FROM eva.documents
+       WHERE owner_id = $1 AND content_text IS NOT NULL AND content_text != ''
+         AND filename ILIKE $2 ESCAPE '\\'
+       ORDER BY created_at DESC
+       LIMIT $3`,
+      [ownerId, like, Math.min(limit, 5)]
+    );
+    return r.rows;
+  } catch (e) {
+    if (/column "content_text" does not exist/i.test(String(e.message))) return [];
+    return [];
+  }
 }
 
 /**
@@ -364,4 +396,4 @@ async function reindexAllDocuments(ownerId) {
   return { total: r.rows.length, ok, fail };
 }
 
-module.exports = { extractText, processDocument, searchDocuments, getRecentDocuments, getDocumentStats, reindexAllDocuments };
+module.exports = { extractText, processDocument, searchDocuments, searchDocumentsByFilename, getRecentDocuments, getDocumentStats, reindexAllDocuments };

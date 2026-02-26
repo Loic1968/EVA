@@ -102,6 +102,7 @@ You are EVA, a Personal AI Digital Twin for the user. The user may introduce the
 - **When sections appear below**: You CAN read and use them. ## Emails = search there. ## Documents = flight confirmations, billets, invoices. ## Calendar = upcoming events. Never say "je n'ai pas accès" when data is listed — you CAN see it.
 - **When sections are empty**: Say "calendrier non synchronisé" or "aucun document dans le Memory Vault" — invite the user to sync/upload.
 - SEARCH emails + documents first for flight confirmations, Shanghai, travel. If found → use create_calendar_event.
+- **Billets d'avion** : ## Documents override calendar. If user says "regarde dans les documents" or "c'est faux", trust the billet in ## Documents. If no billet in documents → "Je n'ai pas ce billet dans les documents que je vois."
 - If asked about something not in the data, say you don't have it.
 
 ## Style
@@ -120,8 +121,8 @@ function getClient() {
 // Keywords that suggest the user is asking about emails (widened for French)
 const EMAIL_KEYWORDS = /email|mail|envoy[eé]|re[çc]u|message|from|sent|wrote|[eé]crit|r[eé]pondu|contact[eé]|inbox|courrier|correspondance|dernier|dit|demand[eé]|r[eé]ponse|qui m'a|pierre|jean|paul|marie/i;
 
-// Keywords for travel/documents (vol, billet, Shanghai, passport, date de naissance, etc.)
-const DOCUMENT_KEYWORDS = /vol|billet|avion|train|Shanghai|PVG|voyage|travel|flight|lundi|mardi|mercredi|jeudi|vendredi|semaine|document|fichier|upload|upload[eé]|passport|passeport|date\s*de\s*naissance|birth\s*date|naissance|identit[eé]|cni/i;
+// Keywords for travel/documents (vol, billet, Shanghai, Emirates, passport, etc.)
+const DOCUMENT_KEYWORDS = /vol|billet|avion|train|Shanghai|PVG|voyage|travel|flight|emirates|etihad|ticket|document|fichier|upload|upload[eé]|passport|passeport|date\s*de\s*naissance|birth\s*date|naissance|identit[eé]|cni|horaire|heure/i;
 
 // Keywords for calendar (agenda, meeting, vol, rendez-vous, schedule)
 const CALENDAR_KEYWORDS = /agenda|calendrier|calendar|meeting|rendez-vous|rdv|r[eé]union|schedule|plann|event|[eé]v[eé]nement|prochain|vol|lundi|mardi|mercredi|jeudi|vendredi|demain|aujourd'hui|this week|add.*(to|au)|ajout(e|er).*(au|to)/i;
@@ -165,6 +166,17 @@ const CALENDAR_TOOLS = [
         location: { type: 'string', description: 'Optional location (e.g. PVG, Dubai office)' },
       },
       required: ['title', 'start'],
+    },
+  },
+  {
+    name: 'delete_calendar_event',
+    description: 'Remove an event from the user\'s Google Calendar. Use when the user asks to delete, remove, cancel, or cancel a flight/meeting/event (e.g. "enlève le vol de dimanche", "supprime le meeting de lundi"). Pass the event_id from the ## Calendar context — each event shows (id: X).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        event_id: { type: 'string', description: 'Event ID from the calendar context (e.g. "42" or the id shown next to the event to delete)' },
+      },
+      required: ['event_id'],
     },
   },
   {
@@ -247,6 +259,18 @@ async function executeTool(ownerId, name, input) {
         subject: draft.subject_or_preview,
         message: draft.status === 'approved' ? 'Draft created (pre-approved). User can send from Drafts page.' : 'Draft created. User will review in Drafts page.',
       };
+    } catch (err) {
+      return { error: err.message };
+    }
+  }
+  if (name === 'delete_calendar_event') {
+    const calSync = getCalendarSync();
+    if (!calSync?.deleteEvent) return { error: 'Calendar not available' };
+    try {
+      const eventId = (input.event_id || '').toString().trim();
+      if (!eventId) return { error: 'event_id required' };
+      await calSync.deleteEvent(ownerId, eventId);
+      return { ok: true, deleted: true, message: 'Event removed from calendar.' };
     } catch (err) {
       return { error: err.message };
     }
@@ -350,9 +374,16 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
         if (docResults.length === 0 && useSearch) {
           docResults = await docProcessor.getRecentDocuments(ownerId, 5);
         }
+        // If user mentions a specific filename ("Emirates ticket", "Emirates ticket.pdf"), fetch by name
+        const filenameMatch = userMessage.match(/(?:emirates|etihad|flydubai)\s*(?:ticket|billet)?\s*(?:\.pdf)?|ticket\s*emirates|billet\s*emirates|\S+\.pdf/gi);
+        if (filenameMatch) {
+          const byName = await docProcessor.searchDocumentsByFilename(ownerId, filenameMatch[0].trim(), 3);
+          const seen = new Set(docResults.map((d) => d.id));
+          byName.filter((d) => !seen.has(d.id)).forEach((d) => { docResults.unshift(d); seen.add(d.id); });
+        }
         documentContext = '\n\n## Documents (Memory Vault)\n';
         if (docResults.length > 0) {
-          documentContext += 'Use these for flights, tickets, billets, invoices, Shanghai, travel. Cite the document. For dates: use EXACT values (2 mars not 1 mars). Check --- FLIGHT DATES --- block if present.\n\n';
+          documentContext += 'Use these for flights, tickets, billets, invoices, Shanghai, travel. Cite the document. For dates: use EXACT values (2 mars not 1 mars). Check --- FLIGHT DATES --- block if present. DOCUMENTS override calendar for flight times — if user says "regarde dans les documents" or "c\'est faux", trust document over calendar.\n\n';
           docResults.forEach((d, i) => {
             const text = (d.content_text || d.content_preview || '').slice(0, 20000);
             documentContext += `**${d.filename}:**\n${text}\n\n`;
@@ -445,13 +476,13 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
           const events = await calSync.getUpcomingEvents(ownerId, 10, 14);
           calendarContext = '\n\n## Calendar (upcoming events)\n';
           if (events.length > 0) {
-            calendarContext += 'Use these to answer questions about meetings, schedule, agenda.\n\n';
+            calendarContext += 'Use these to answer questions about meetings, schedule, agenda. To delete an event, use delete_calendar_event with the event id.\n\n';
             events.forEach((ev, i) => {
               const start = new Date(ev.start_at);
               const fmt = ev.is_all_day
                 ? start.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
                 : start.toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-              calendarContext += `**Event ${i + 1}:** ${ev.title || '(no title)'} | ${fmt}${ev.location ? ` @ ${ev.location}` : ''}${ev.gmail_address ? ` [${ev.gmail_address}]` : ''}\n`;
+              calendarContext += `**Event ${i + 1}** (id: ${ev.id}): ${ev.title || '(no title)'} | ${fmt}${ev.location ? ` @ ${ev.location}` : ''}${ev.gmail_address ? ` [${ev.gmail_address}]` : ''}\n`;
             });
           } else {
             calendarContext += '(No events — sync Google Calendar in Settings > Data Sources to see upcoming events.)\n';
@@ -605,14 +636,20 @@ async function createReplyStream(userMessage, history = [], ownerId = null, mode
       if (shouldInject) {
         const useSearch = DOCUMENT_KEYWORDS.test(userMessage);
         let docResults = useSearch
-          ? await docProcessor.searchDocuments(ownerId, userMessage, 5)
+          ? await docProcessor.searchDocuments(ownerId, userMessage, 8)
           : await docProcessor.getRecentDocuments(ownerId, 5);
         if (docResults.length === 0 && useSearch) {
           docResults = await docProcessor.getRecentDocuments(ownerId, 5);
         }
+        const filenameMatch = userMessage.match(/(?:emirates|etihad|flydubai)\s*(?:ticket|billet)?\s*(?:\.pdf)?|ticket\s*emirates|billet\s*emirates|\S+\.pdf/gi);
+        if (filenameMatch) {
+          const byName = await docProcessor.searchDocumentsByFilename(ownerId, filenameMatch[0].trim(), 3);
+          const seen = new Set(docResults.map((d) => d.id));
+          byName.filter((d) => !seen.has(d.id)).forEach((d) => { docResults.unshift(d); seen.add(d.id); });
+        }
         documentContext = '\n\n## Documents (Memory Vault)\n';
         if (docResults.length > 0) {
-          documentContext += 'Use these for flights, tickets, invoices, travel, etc. Cite the document. For dates: use EXACT values (2 mars not 1 mars). Check --- FLIGHT DATES --- block if present.\n\n';
+          documentContext += 'Use these for flights, tickets, invoices, travel, etc. Cite the document. For dates: use EXACT values. Check --- FLIGHT DATES --- block if present. DOCUMENTS override calendar when user says "regarde dans les documents" or "c\'est faux".\n\n';
           docResults.forEach((d, i) => {
             const text = (d.content_text || d.content_preview || '').slice(0, 20000);
             documentContext += `**${d.filename}:**\n${text}\n\n`;
@@ -695,13 +732,13 @@ async function createReplyStream(userMessage, history = [], ownerId = null, mode
           const events = await calSync.getUpcomingEvents(ownerId, 10, 14);
           calendarContextStream = '\n\n## Calendar (upcoming events)\n';
           if (events.length > 0) {
-            calendarContextStream += 'Use these to answer questions about meetings, schedule, agenda.\n\n';
+            calendarContextStream += 'Use these to answer questions about meetings, schedule, agenda. To delete an event, use delete_calendar_event with the event id.\n\n';
             events.forEach((ev, i) => {
               const start = new Date(ev.start_at);
               const fmt = ev.is_all_day
                 ? start.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
                 : start.toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-              calendarContextStream += `**Event ${i + 1}:** ${ev.title || '(no title)'} | ${fmt}${ev.location ? ` @ ${ev.location}` : ''}${ev.gmail_address ? ` [${ev.gmail_address}]` : ''}\n`;
+              calendarContextStream += `**Event ${i + 1}** (id: ${ev.id}): ${ev.title || '(no title)'} | ${fmt}${ev.location ? ` @ ${ev.location}` : ''}${ev.gmail_address ? ` [${ev.gmail_address}]` : ''}\n`;
             });
           } else {
             calendarContextStream += '(No events — sync Google Calendar in Settings > Data Sources to see upcoming events.)\n';
@@ -755,10 +792,11 @@ function needsCalendarTools(message) {
   const m = message.trim();
   const calendarIntent = /ajout(e|er)\s+(mon|ma|le|la)?\s*(vol|vols|meeting|event)|add\s+(my|the)\s+(flight|meeting|event)|mets?\s+(au|dans)\s+(mon\s+)?calendrier|create\s+(event|calendar)|cre[eé]e?r?\s+(un\s+)?(e?v[eé]nement|event)/i.test(m)
     || (/\bvol\b.*\b(shanghai|pvg|dubai)\b|\b(flight|vol)\b.*\bcalendrier\b/i.test(m));
+  const deleteCalendarIntent = /enl[eè]v(e|er)?\s+(le\s+)?(vol|meeting|event|rdv)|supprim(e|er)?\s+(le\s+)?(vol|meeting|event|rdv)|retir(e|er)?\s+(le\s+)?(vol|meeting|event|rdv)|cancel\s+(the\s+)?(flight|meeting|event)|delete\s+(the\s+)?(flight|meeting|event)/i.test(m);
   const memoryIntent = /retiens?\s+(que|ça)|note\s+(que|ça)|souviens?-toi|je\s+pr[eé]f[eè]re|j'aime\s+(pas\s+)?[a-z]|mon\s+(pr[eé]f[eè]rence|vol|meeting)\s+est|remember\s+that|note\s+that|i\s+prefer/i.test(m);
   const correctionIntent = /c'est\s+faux|non\s+c'est\s+le|corrige|tu\s+as\s+faux|rev[eé]rifie|je\s+te\s+corrige/i.test(m);
   const draftIntent = /r[eé]dig(e|er)?\s+(une?\s+)?(r[eé]ponse|email|mail)|r[eé]ponds?\s+(à|a)\s+(cet|ce)\s+email|draft\s+(a\s+)?reply|write\s+(an?\s+)?(email|reply)|envoie?\s+(une?\s+)?(r[eé]ponse|email)|r[eé]ponse\s+à\s+(cet|ce)\s+mail/i.test(m);
-  return calendarIntent || memoryIntent || correctionIntent || draftIntent;
+  return calendarIntent || deleteCalendarIntent || memoryIntent || correctionIntent || draftIntent;
 }
 
 module.exports = { reply, createReplyStream, parseCommand, getClient, EVA_SYSTEM, MODE_HINTS, needsCalendarTools };

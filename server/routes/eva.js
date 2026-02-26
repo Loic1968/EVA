@@ -194,11 +194,11 @@ router.post('/chat', async (req, res, next) => {
       });
     }
 
-    // If conversation_id provided, load history from DB
-    let chatHistory = Array.isArray(history) ? history : [];
+    // History: when conversation_id provided, ALWAYS load from DB (never trust client-supplied history)
+    let chatHistory = [];
     let convId = conversation_id ? Number(conversation_id) : null;
 
-    if (convId && chatHistory.length === 0) {
+    if (convId) {
       const histResult = await db.query(
         `SELECT role, content FROM eva.messages
          WHERE conversation_id = $1 AND owner_id = $2
@@ -206,9 +206,14 @@ router.post('/chat', async (req, res, next) => {
         [convId, req.ownerId]
       );
       chatHistory = histResult.rows;
+    } else if (Array.isArray(history)) {
+      chatHistory = history
+        .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+        .slice(-100)
+        .map((m) => ({ role: m.role, content: String(m.content).slice(0, 50000) }));
     }
 
-    const msgToSend = parsedMsg || message.trim();
+    const msgToSend = (parsedMsg || message.trim()).slice(0, 50000);
     if (!msgToSend) {
       return res.status(400).json({ error: 'message required after command' });
     }
@@ -378,10 +383,11 @@ router.post('/chat/stream', async (req, res, next) => {
       return res.end();
     }
 
-    let chatHistory = Array.isArray(history) ? history : [];
+    // History: when conversation_id provided, ALWAYS load from DB (never trust client-supplied history)
+    let chatHistory = [];
     let convId = conversation_id ? Number(conversation_id) : null;
 
-    if (convId && chatHistory.length === 0) {
+    if (convId) {
       const histResult = await db.query(
         `SELECT role, content FROM eva.messages
          WHERE conversation_id = $1 AND owner_id = $2
@@ -389,9 +395,14 @@ router.post('/chat/stream', async (req, res, next) => {
         [convId, req.ownerId]
       );
       chatHistory = histResult.rows;
+    } else if (Array.isArray(history)) {
+      chatHistory = history
+        .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+        .slice(-100)
+        .map((m) => ({ role: m.role, content: String(m.content).slice(0, 50000) }));
     }
 
-    const msgToSend = parsedMsg || message.trim();
+    const msgToSend = (parsedMsg || message.trim()).slice(0, 50000);
     if (!msgToSend) {
       return res.status(400).json({ error: 'message required after command' });
     }

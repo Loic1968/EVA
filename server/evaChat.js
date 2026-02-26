@@ -234,13 +234,14 @@ async function executeTool(ownerId, name, input) {
   if (name === 'create_draft') {
     const db = require('./db');
     const { getKillSwitch, getShadowMode, getAutonomousMode } = require('./services/settingsService');
+    const MAX_DRAFT_BODY = 50000;
     try {
       if (!ownerId) return { error: 'Must be logged in to create drafts' };
       const killOn = await getKillSwitch(ownerId);
       if (killOn) return { error: 'EVA is paused (kill switch)' };
       const shadowOn = await getShadowMode(ownerId);
       if (shadowOn) return { error: 'Drafts disabled in Shadow Mode' };
-      const body = (input.body || '').trim();
+      const body = (input.body || '').trim().slice(0, MAX_DRAFT_BODY);
       if (!body) return { error: 'body is required' };
       const autonomousOn = await getAutonomousMode(ownerId);
       const initialStatus = autonomousOn ? 'approved' : 'pending';

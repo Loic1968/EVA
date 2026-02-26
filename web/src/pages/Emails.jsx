@@ -80,13 +80,21 @@ export default function Emails() {
     }
   };
 
+  /** Outlook-style: Today 14:30, Yesterday 14:30, or day/month for older */
   const formatDate = (d) => {
     const date = new Date(d);
-    const now = new Date();
-    const diff = now - date;
-    if (diff < 86400000) return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-    if (diff < 604800000) return date.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' });
-    return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+    const today = new Date();
+    const isToday = date.toDateString() === today.toDateString();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const isYesterday = date.toDateString() === yesterday.toDateString();
+    const time = date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    if (isToday) return `Aujourd'hui ${time}`;
+    if (isYesterday) return `Hier ${time}`;
+    if (date.getFullYear() !== today.getFullYear()) {
+      return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+    }
+    return date.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
   };
 
   const formatSyncTime = (d) => {

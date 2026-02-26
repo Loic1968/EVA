@@ -13,7 +13,14 @@ async function getEmailSyncDays(ownerId) {
       `SELECT value FROM eva.settings WHERE owner_id = $1 AND key = 'email_sync_days'`,
       [ownerId]
     );
-    const val = r.rows[0]?.value;
+    let val = r.rows[0]?.value;
+    if (typeof val === 'string') {
+      try {
+        val = JSON.parse(val);
+      } catch {
+        val = null;
+      }
+    }
     const days = typeof val === 'object' && val?.days != null ? Number(val.days) : Number(val);
     const n = Number.isFinite(days) && days >= 7 && days <= 365 ? days : null;
     return n ?? parseInt(process.env.GMAIL_FETCH_DAYS || String(DEFAULT_FETCH_DAYS), 10);

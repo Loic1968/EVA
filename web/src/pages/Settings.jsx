@@ -24,6 +24,15 @@ export default function Settings() {
   const [pushStatus, setPushStatus] = useState({ subscribed: false, configured: false });
   const [pushLoading, setPushLoading] = useState(false);
   const [pushError, setPushError] = useState(null);
+  const [activeTab, setActiveTab] = useState('general');
+
+  const TABS = [
+    { id: 'general', label: 'General', icon: '⚙️' },
+    { id: 'sync', label: 'Sync & Data', icon: '📧' },
+    { id: 'notifications', label: 'Notifications', icon: '🔔' },
+    { id: 'control', label: 'Control', icon: '🛡️' },
+    { id: 'security', label: 'Security', icon: '🔒' },
+  ];
 
   useEffect(() => {
     api.getSettings()
@@ -363,12 +372,34 @@ export default function Settings() {
   const autonomousModeOn = settings.autonomous_mode?.enabled === true;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">Settings</h1>
         <p className="text-slate-500 dark:text-eva-muted text-sm mt-1">Control EVA's behavior and security settings</p>
       </div>
 
+      {/* Tabs */}
+      <div className="flex flex-wrap gap-1 border-b border-slate-200 dark:border-slate-700/40 pb-2">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setActiveTab(t.id)}
+            className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+              activeTab === t.id
+                ? 'bg-white dark:bg-eva-panel border border-slate-200 dark:border-slate-700/40 border-b-0 -mb-px text-cyan-600 dark:text-cyan-400'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/50'
+            }`}
+          >
+            <span className="mr-1.5">{t.icon}</span>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* General */}
+      {activeTab === 'general' && (
+      <div className="space-y-6">
       {/* Chat Language */}
       <div className="bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 p-6 max-w-2xl">
         <h2 className="text-lg font-medium text-slate-900 dark:text-white mb-2">Chat language</h2>
@@ -428,11 +459,47 @@ export default function Settings() {
         {saved && <span className="text-emerald-600 dark:text-emerald-400 text-sm mt-2">Saved</span>}
       </div>
 
+      {/* P4: Style / Voice Profile */}
+      <div className="bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 p-6 max-w-2xl">
+        <h2 className="text-lg font-medium text-slate-900 dark:text-white mb-2 flex items-center gap-2">
+          Style (P4)
+          <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-600 dark:text-cyan-400">Fine-tuned model</span>
+        </h2>
+        <p className="text-slate-500 dark:text-eva-muted text-sm mb-4">
+          Describe how you write: tone, phrases, formality. EVA will match this style when responding.
+        </p>
+        <textarea
+          value={settings.voice_profile?.text ?? ''}
+          onChange={(e) => setSettings((s) => ({ ...s, voice_profile: { ...(s.voice_profile || {}), text: e.target.value } }))}
+          placeholder="e.g. I write short, direct emails. I use « tu » in French. I avoid jargon. I often start with « Bonjour » and end with « Cordialement »."
+          rows={4}
+          disabled={saving}
+          className="w-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-3 text-slate-900 dark:text-white focus:ring-2 focus:ring-cyan-500 focus:border-transparent disabled:opacity-50 resize-y"
+        />
+        <div className="flex items-center gap-2 mt-2">
+          <button
+            type="button"
+            onClick={() => setStyleProfile(settings.voice_profile?.text ?? '')}
+            disabled={saving}
+            className="px-4 py-2 rounded-lg bg-cyan-600 text-white hover:bg-cyan-500 disabled:opacity-50"
+          >
+            Save
+          </button>
+          {saving && <span className="text-slate-500 dark:text-eva-muted text-sm">Saving...</span>}
+          {saved && <span className="text-emerald-600 dark:text-emerald-400 text-sm">Saved</span>}
+        </div>
+      </div>
+      </div>
+      )}
+
+      {/* Sync & Data */}
+      {activeTab === 'sync' && (
+      <div className="space-y-6">
       {/* Sync Frequency */}
       <div className="bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 p-6 max-w-2xl">
-        <h2 className="text-lg font-medium text-slate-900 dark:text-white mb-2">Gmail sync frequency</h2>
+        <h2 className="text-lg font-medium text-slate-900 dark:text-white mb-2">Gmail sync (automatic)</h2>
         <p className="text-slate-500 dark:text-eva-muted text-sm mb-4">
-          How often EVA fetches your new emails. More frequent = fresher data, but more API requests.
+          How often EVA automatically fetches your new emails. More frequent = fresher data, but more API requests.
         </p>
         <div className="flex items-center gap-3">
           <select
@@ -453,6 +520,35 @@ export default function Settings() {
         </div>
       </div>
 
+      {/* Email sync period */}
+      <div className="bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 p-6 max-w-2xl">
+        <h2 className="text-lg font-medium text-slate-900 dark:text-white mb-2">Email sync period</h2>
+        <p className="text-slate-500 dark:text-eva-muted text-sm mb-4">
+          How many days of emails to fetch from Gmail. Sync runs automatically (see frequency above). Change applies on next sync.
+        </p>
+        <div className="flex items-center gap-3">
+          <select
+            value={settings.email_sync_days?.days ?? 90}
+            onChange={(e) => setEmailSyncDays(Number(e.target.value))}
+            disabled={saving}
+            className="bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-2 text-slate-900 dark:text-white focus:ring-2 focus:ring-cyan-500 focus:border-transparent disabled:opacity-50"
+          >
+            <option value={30}>30 days</option>
+            <option value={60}>60 days</option>
+            <option value={90}>90 days</option>
+            <option value={180}>180 days</option>
+            <option value={365}>365 days</option>
+          </select>
+          {saving && <span className="text-slate-500 dark:text-eva-muted text-sm">Saving...</span>}
+          {saved && <span className="text-emerald-600 dark:text-emerald-400 text-sm">Saved</span>}
+        </div>
+      </div>
+      </div>
+      )}
+
+      {/* Notifications */}
+      {activeTab === 'notifications' && (
+      <div className="space-y-6">
       {/* Push notifications (phone & laptop) */}
       <div className="bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 p-6 max-w-2xl">
         <h2 className="text-lg font-medium text-slate-900 dark:text-white mb-2">Push notifications (phone & laptop)</h2>
@@ -577,62 +673,12 @@ export default function Settings() {
           {saved && <span className="text-emerald-600 dark:text-emerald-400 text-sm">Saved</span>}
         </div>
       </div>
-
-      {/* Email sync period */}
-      <div className="bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 p-6 max-w-2xl">
-        <h2 className="text-lg font-medium text-slate-900 dark:text-white mb-2">Email sync period</h2>
-        <p className="text-slate-500 dark:text-eva-muted text-sm mb-4">
-          How many days of emails to fetch from Gmail. Older messages are not synced. Applies on next sync.
-        </p>
-        <div className="flex items-center gap-3">
-          <select
-            value={settings.email_sync_days?.days ?? 90}
-            onChange={(e) => setEmailSyncDays(Number(e.target.value))}
-            disabled={saving}
-            className="bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-2 text-slate-900 dark:text-white focus:ring-2 focus:ring-cyan-500 focus:border-transparent disabled:opacity-50"
-          >
-            <option value={30}>30 days</option>
-            <option value={60}>60 days</option>
-            <option value={90}>90 days</option>
-            <option value={180}>180 days</option>
-            <option value={365}>365 days</option>
-          </select>
-          {saving && <span className="text-slate-500 dark:text-eva-muted text-sm">Saving...</span>}
-          {saved && <span className="text-emerald-600 dark:text-emerald-400 text-sm">Saved</span>}
-        </div>
       </div>
+      )}
 
-      {/* P4: Style / Voice Profile */}
-      <div className="bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 p-6 max-w-2xl">
-        <h2 className="text-lg font-medium text-slate-900 dark:text-white mb-2 flex items-center gap-2">
-          Style (P4)
-          <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-600 dark:text-cyan-400">Fine-tuned model</span>
-        </h2>
-        <p className="text-slate-500 dark:text-eva-muted text-sm mb-4">
-          Describe how you write: tone, phrases, formality. EVA will match this style when responding.
-        </p>
-        <textarea
-          value={settings.voice_profile?.text ?? ''}
-          onChange={(e) => setSettings((s) => ({ ...s, voice_profile: { ...(s.voice_profile || {}), text: e.target.value } }))}
-          placeholder="e.g. I write short, direct emails. I use « tu » in French. I avoid jargon. I often start with « Bonjour » and end with « Cordialement »."
-          rows={4}
-          disabled={saving}
-          className="w-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-3 text-slate-900 dark:text-white focus:ring-2 focus:ring-cyan-500 focus:border-transparent disabled:opacity-50 resize-y"
-        />
-        <div className="flex items-center gap-2 mt-2">
-          <button
-            type="button"
-            onClick={() => setStyleProfile(settings.voice_profile?.text ?? '')}
-            disabled={saving}
-            className="px-4 py-2 rounded-lg bg-cyan-600 text-white hover:bg-cyan-500 disabled:opacity-50"
-          >
-            Save
-          </button>
-          {saving && <span className="text-slate-500 dark:text-eva-muted text-sm">Saving...</span>}
-          {saved && <span className="text-emerald-600 dark:text-emerald-400 text-sm">Saved</span>}
-        </div>
-      </div>
-
+      {/* Control */}
+      {activeTab === 'control' && (
+      <div className="space-y-6">
       {/* P5: Autonomous Mode */}
       <div className={`rounded-xl border p-6 max-w-2xl transition-colors ${
         autonomousModeOn ? 'bg-amber-500/5 border-amber-500/30' : 'bg-white dark:bg-eva-panel border-slate-200 dark:border-slate-700/40'
@@ -783,8 +829,12 @@ export default function Settings() {
         {saving && <span className="text-eva-muted text-xs mt-2 block">Saving...</span>}
         {saved && <span className="text-emerald-400 text-xs mt-2 block">Saved</span>}
       </div>
+      </div>
+      )}
 
-      {/* Security info */}
+      {/* Security */}
+      {activeTab === 'security' && (
+      <div className="space-y-6">
       <div className="bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 p-6 max-w-2xl">
         <h2 className="text-lg font-medium text-slate-900 dark:text-white mb-2">Security & Privacy</h2>
         <div className="space-y-2 text-sm text-slate-600 dark:text-slate-400">
@@ -794,6 +844,8 @@ export default function Settings() {
           <p>API access requires EVA_API_KEY when set in production.</p>
         </div>
       </div>
+      </div>
+      )}
     </div>
   );
 }

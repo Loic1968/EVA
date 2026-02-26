@@ -682,11 +682,24 @@ router.post('/audit-logs', async (req, res, next) => {
 // ════════════════════════════════════════════════════════════════
 // SETTINGS (kill switch, permission tiers)
 // ════════════════════════════════════════════════════════════════
+function parseSettingValue(val) {
+  if (val == null) return val;
+  if (typeof val === 'object') return val;
+  if (typeof val === 'string') {
+    try {
+      return JSON.parse(val);
+    } catch {
+      return val;
+    }
+  }
+  return val;
+}
+
 router.get('/settings', async (req, res, next) => {
   try {
     const r = await db.query('SELECT key, value FROM eva.settings WHERE owner_id = $1', [req.ownerId]);
     const settings = {};
-    r.rows.forEach((row) => { settings[row.key] = row.value; });
+    r.rows.forEach((row) => { settings[row.key] = parseSettingValue(row.value); });
     res.json(settings);
   } catch (e) {
     next(e);

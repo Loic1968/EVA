@@ -16,7 +16,14 @@ async function getSyncIntervalMinutes(ownerId) {
       `SELECT value FROM eva.settings WHERE owner_id = $1 AND key = 'sync_frequency_minutes'`,
       [ownerId]
     );
-    const val = r.rows[0]?.value;
+    let val = r.rows[0]?.value;
+    if (typeof val === 'string') {
+      try {
+        val = JSON.parse(val);
+      } catch {
+        val = null;
+      }
+    }
     const minutes = typeof val === 'object' && val?.minutes != null ? Number(val.minutes) : Number(val);
     return Number.isFinite(minutes) && minutes >= 1 && minutes <= 1440 ? minutes : DEFAULT_MINUTES;
   } catch {

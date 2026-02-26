@@ -531,7 +531,7 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
   const useThinking = process.env.EVA_USE_THINKING !== 'false';
   const createOptions = {
     model,
-    max_tokens: 2048,
+    max_tokens: 4096, // Must be > thinking.budget_tokens when thinking enabled
     system: systemPrompt,
     messages,
     tools: ownerId ? CALENDAR_TOOLS : [],

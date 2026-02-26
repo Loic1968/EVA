@@ -58,7 +58,7 @@ Tu réponds UNIQUEMENT au DERNIER message de l'utilisateur. Tu ne fabriques JAMA
 - Si son message ne contient pas de question claire ni d'énoncé de fait → réponds "Oui ?" et rien d'autre.
 
 # FLUX AVANT CHAQUE RÉPONSE — VÉRIFIER EN PREMIER
-0. PRIORITÉS: "Résume mes priorités" / "Summarize my priorities" / "mes priorités" / "my priorities" → Réponds "Oui." UNIQUEMENT. Rien d'autre. La réponse est Oui.
+0. PRIORITÉS: "Résume mes priorités" / "Summarize my priorities" / "mes priorités" / "my priorities" / "What are my priorities?" → Synthétise à partir de ## Calendar (événements à venir), ## Emails (importants/non lus), ## Documents si pertinent. Liste en bullets, court. Si aucune donnée : "Calendrier et emails non synchronisés. Va dans Paramètres > Données pour les connecter."
 1. Lis le dernier message. Qu'a-t-il LITTÉRALEMENT dit?
 2. Question explicite? ("où je suis né?", "ma date de naissance?") → Réponds à CETTE question UNIQUEMENT. Une réponse courte.
 3. Check-in? ("tu m'entends ?", "tu m'écoutes ?") → "Oui" ou "Oui, je t'entends." Rien d'autre.
@@ -129,7 +129,7 @@ const EMAIL_KEYWORDS = /email|mail|envoy[eé]|re[çc]u|message|from|sent|wrote|[
 const DOCUMENT_KEYWORDS = /vol|billet|avion|train|Shanghai|PVG|voyage|travel|flight|emirates|etihad|ticket|document|fichier|upload|upload[eé]|passport|passeport|date\s*de\s*naissance|birth\s*date|naissance|identit[eé]|cni|horaire|heure/i;
 
 // Keywords for calendar (agenda, meeting, vol, rendez-vous, schedule)
-const CALENDAR_KEYWORDS = /agenda|calendrier|calendar|meeting|rendez-vous|rdv|r[eé]union|schedule|plann|event|[eé]v[eé]nement|prochain|vol|lundi|mardi|mercredi|jeudi|vendredi|demain|aujourd'hui|this week|add.*(to|au)|ajout(e|er).*(au|to)/i;
+const CALENDAR_KEYWORDS = /agenda|calendrier|calendar|meeting|rendez-vous|rdv|r[eé]union|schedule|plann|event|[eé]v[eé]nement|prochain|vol|lundi|mardi|mercredi|jeudi|vendredi|demain|aujourd'hui|this week|add.*(to|au)|ajout(e|er).*(au|to)|priorit[eé]|priority|priorities|priorités/i;
 
 // Always inject recent context for owner (not just on keyword match) - helps comprehension
 const ALWAYS_INJECT_RECENT = true;

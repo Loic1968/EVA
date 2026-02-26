@@ -709,10 +709,10 @@ router.get('/settings', async (req, res, next) => {
 router.put('/settings/:key', async (req, res, next) => {
   try {
     const { key } = req.params;
-    const value = req.body;
+    const value = req.body && typeof req.body === 'object' ? req.body : {};
     await db.query(
-      `INSERT INTO eva.settings (owner_id, key, value, updated_at) VALUES ($1, $2, $3, now())
-       ON CONFLICT (owner_id, key) DO UPDATE SET value = $3, updated_at = now()`,
+      `INSERT INTO eva.settings (owner_id, key, value, updated_at) VALUES ($1, $2, $3::jsonb, now())
+       ON CONFLICT (owner_id, key) DO UPDATE SET value = $3::jsonb, updated_at = now()`,
       [req.ownerId, key, JSON.stringify(value)]
     );
     res.json({ key, value });

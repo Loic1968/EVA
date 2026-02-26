@@ -25,6 +25,7 @@ export default function Settings() {
   const [pushLoading, setPushLoading] = useState(false);
   const [pushError, setPushError] = useState(null);
   const [activeTab, setActiveTab] = useState('general');
+  const [controlError, setControlError] = useState(null);
 
   const TABS = [
     { id: 'general', label: 'General', icon: '⚙️' },
@@ -309,6 +310,7 @@ export default function Settings() {
   };
 
   const setAutonomousMode = async (enabled) => {
+    setControlError(null);
     setSaving(true);
     setSaved(false);
     try {
@@ -317,7 +319,7 @@ export default function Settings() {
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {
-      setError(e.message);
+      setControlError(e?.message || 'Failed to save. Try again.');
     } finally {
       setSaving(false);
     }
@@ -696,22 +698,24 @@ export default function Settings() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3 mt-4">
+        <div className="flex flex-wrap items-center gap-3 mt-4">
           <button
+            type="button"
             onClick={() => setAutonomousMode(!autonomousModeOn)}
             disabled={saving || killSwitchOn || shadowModeOn}
-            className={`px-5 py-2.5 rounded-lg font-medium transition-all ${
+            className={`px-5 py-2.5 rounded-lg font-medium transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 ${
               autonomousModeOn
                 ? 'bg-slate-600 text-white hover:bg-slate-500'
                 : 'bg-amber-600 text-white hover:bg-amber-500'
-            } disabled:opacity-50`}
-            title={killSwitchOn || shadowModeOn ? 'Disable Kill Switch and Shadow Mode first' : ''}
+            }`}
+            title={killSwitchOn || shadowModeOn ? 'Disable Kill Switch and Shadow Mode first' : (autonomousModeOn ? 'Turn off autonomous mode' : 'Turn on autonomous mode')}
           >
             {autonomousModeOn ? 'Disable Autonomous Mode' : 'Enable Autonomous Mode'}
           </button>
           {(killSwitchOn || shadowModeOn) && <span className="text-slate-500 dark:text-eva-muted text-xs">Disable Kill Switch and Shadow Mode first</span>}
           {saving && <span className="text-slate-500 dark:text-eva-muted text-sm">Saving...</span>}
           {saved && <span className="text-emerald-600 dark:text-emerald-400 text-sm">Saved</span>}
+          {controlError && <span className="text-red-600 dark:text-red-400 text-sm">{controlError}</span>}
         </div>
       </div>
 

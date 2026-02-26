@@ -60,14 +60,14 @@ function DocumentReader({ doc, onClose }) {
               {hasIndexedText && (
                 <button
                   onClick={() => setMode('text')}
-                  className={`px-3 py-1.5 rounded-lg text-sm ${mode === 'text' ? 'bg-cyan-500/20 text-cyan-600 dark:text-cyan-400' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-400'}`}
+                  className={`px-3 py-1.5 rounded-lg text-sm ${mode === 'text' ? 'bg-red-500/20 text-red-600 dark:text-red-400' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-400'}`}
                 >
                   Text
                 </button>
               )}
               <button
                 onClick={() => setMode('file')}
-                className={`px-3 py-1.5 rounded-lg text-sm ${mode === 'file' ? 'bg-cyan-500/20 text-cyan-600 dark:text-cyan-400' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-400'}`}
+                className={`px-3 py-1.5 rounded-lg text-sm ${mode === 'file' ? 'bg-red-500/20 text-red-600 dark:text-red-400' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-400'}`}
               >
                 View file
               </button>
@@ -93,7 +93,7 @@ function DocumentReader({ doc, onClose }) {
                     href={fileBlob}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-sm text-cyan-600 dark:text-cyan-400 hover:underline mb-2 inline-block"
+                    className="text-sm text-red-600 dark:text-red-400 hover:underline mb-2 inline-block"
                   >
                     Open in new tab
                   </a>
@@ -269,7 +269,7 @@ export default function Documents() {
           <button
             onClick={() => cameraRef.current?.click()}
             disabled={uploading}
-            className="flex-1 sm:flex-none min-h-[44px] sm:min-h-0 px-4 py-3 sm:py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-medium rounded-xl hover:from-cyan-400 hover:to-blue-500 disabled:opacity-50 transition-all flex items-center justify-center gap-2 touch-manipulation"
+            className="flex-1 sm:flex-none min-h-[44px] sm:min-h-0 px-4 py-3 sm:py-2.5 bg-gradient-to-r from-red-500 to-blue-600 text-white font-medium rounded-xl hover:from-red-400 hover:to-blue-500 disabled:opacity-50 transition-all flex items-center justify-center gap-2 touch-manipulation"
             title="Take a photo (camera on mobile)"
           >
             <span className="text-xl">📷</span>
@@ -312,7 +312,7 @@ export default function Documents() {
         onDragLeave={onDragLeave}
         onDrop={onDrop}
         className={`border-2 border-dashed rounded-xl p-6 sm:p-8 text-center transition-colors min-h-[100px] flex items-center justify-center ${
-          dragOver ? 'border-cyan-500 dark:border-eva-accent bg-cyan-50 dark:bg-eva-accent/5' : 'border-slate-300 dark:border-slate-700/40 hover:border-slate-400 dark:hover:border-slate-600 active:border-slate-400 dark:active:border-slate-600'
+          dragOver ? 'border-red-500 dark:border-eva-accent bg-red-50 dark:bg-eva-accent/5' : 'border-slate-300 dark:border-slate-700/40 hover:border-slate-400 dark:hover:border-slate-600 active:border-slate-400 dark:active:border-slate-600'
         }`}
       >
         <div className="text-slate-600 dark:text-eva-muted pointer-events-none">
@@ -336,7 +336,7 @@ export default function Documents() {
             <button
               onClick={handleReindexAll}
               disabled={reindexing}
-              className="text-xs px-3 py-2 rounded-lg bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 hover:bg-cyan-500/30 disabled:opacity-50 touch-manipulation"
+              className="text-xs px-3 py-2 rounded-lg bg-red-500/20 text-red-600 dark:text-red-400 hover:bg-red-500/30 disabled:opacity-50 touch-manipulation"
               title="Re-index all documents with AI (Claude)"
             >
               {reindexing ? 'Re-indexing…' : 'Re-index all'}
@@ -378,7 +378,7 @@ export default function Documents() {
                   {(doc.status === 'indexed' || ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp'].includes((doc.file_type || '').toLowerCase())) && (
                     <button
                       onClick={() => setReaderDoc(doc)}
-                      className="text-xs px-3 py-2 sm:py-1 rounded-lg bg-slate-200 dark:bg-slate-600/30 text-slate-600 dark:text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-400 hover:bg-cyan-500/20 transition-colors touch-manipulation"
+                      className="text-xs px-3 py-2 sm:py-1 rounded-lg bg-slate-200 dark:bg-slate-600/30 text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/20 transition-colors touch-manipulation"
                       title="View document in reader"
                     >
                       View
@@ -404,7 +404,7 @@ export default function Documents() {
                     <button
                       onClick={() => handleProcess(doc)}
                       disabled={processingId !== null}
-                      className="text-xs px-4 py-2.5 min-h-[44px] sm:min-h-0 sm:py-1 rounded-lg bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 hover:bg-cyan-500/30 active:bg-cyan-500/40 disabled:opacity-50 touch-manipulation"
+                      className="text-xs px-4 py-2.5 min-h-[44px] sm:min-h-0 sm:py-1 rounded-lg bg-red-500/20 text-red-600 dark:text-red-400 hover:bg-red-500/30 active:bg-red-500/40 disabled:opacity-50 touch-manipulation"
                       title="Extract text so EVA can search it"
                     >
                       {processingId === doc.id ? '…' : 'Index'}

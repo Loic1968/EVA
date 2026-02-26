@@ -124,7 +124,7 @@ export default function DataSources() {
       {connectSuccess && (
         <div className="text-emerald-600 dark:text-emerald-400 text-sm bg-emerald-500/10 rounded-lg px-4 py-2 flex items-center justify-between gap-2 flex-wrap">
           <span className="flex items-center gap-2"><span>✓</span> {connectSuccess}</span>
-          <a href="/calendar" className="text-cyan-600 dark:text-eva-accent hover:underline font-medium">→ Sync Calendar</a>
+          <a href="/calendar" className="text-red-600 dark:text-eva-accent hover:underline font-medium">→ Sync Calendar</a>
         </div>
       )}
 
@@ -152,7 +152,7 @@ export default function DataSources() {
               <span className="text-xs text-emerald-600 dark:text-emerald-400">Connected</span>
               <button
                 onClick={connectGmail}
-                className="text-xs px-3 py-1.5 rounded bg-cyan-500/20 text-cyan-600 dark:text-eva-accent hover:bg-cyan-500/30 dark:hover:bg-eva-accent/30 transition-colors"
+                className="text-xs px-3 py-1.5 rounded bg-red-500/20 text-red-600 dark:text-eva-accent hover:bg-red-500/30 dark:hover:bg-eva-accent/30 transition-colors"
               >
                 + Ajouter un compte Gmail
               </button>
@@ -178,7 +178,7 @@ export default function DataSources() {
                     <button
                       onClick={() => syncGmail(acct.id)}
                       disabled={syncing[acct.id]}
-                      className="min-h-[44px] px-3 py-2 rounded text-sm bg-cyan-500/20 text-cyan-600 dark:text-eva-accent hover:bg-cyan-500/30 disabled:opacity-50 transition-colors touch-manipulation"
+                      className="min-h-[44px] px-3 py-2 rounded text-sm bg-red-500/20 text-red-600 dark:text-eva-accent hover:bg-red-500/30 disabled:opacity-50 transition-colors touch-manipulation"
                     >
                       {syncing[acct.id] ? 'Syncing...' : 'Sync Now'}
                     </button>
@@ -228,8 +228,8 @@ export default function DataSources() {
                     onClick={() => src.oauth || src.calendarFromGmail ? connectGmail() : (src.route ? window.location.assign(src.route) : addSource(src.type))}
                     className={'mt-3 text-xs font-medium transition-colors ' + (
                       (src.oauth || src.calendarFromGmail)
-                        ? 'px-4 py-2 bg-cyan-500/20 text-cyan-600 dark:text-eva-accent rounded-lg hover:bg-cyan-500/30 dark:hover:bg-eva-accent/30'
-                        : 'text-cyan-600 dark:text-eva-accent hover:text-cyan-700 dark:hover:text-cyan-300'
+                        ? 'px-4 py-2 bg-red-500/20 text-red-600 dark:text-eva-accent rounded-lg hover:bg-red-500/30 dark:hover:bg-eva-accent/30'
+                        : 'text-red-600 dark:text-eva-accent hover:text-red-700 dark:hover:text-red-300'
                     )}
                   >
                     {src.oauth || src.calendarFromGmail ? 'Connect Gmail →' : src.route ? 'Go to Documents →' : 'Register source →'}
@@ -237,13 +237,13 @@ export default function DataSources() {
                 )}
                 {connected && src.type === 'gmail' && (
                   <div className="mt-3 flex flex-wrap gap-3">
-                    <a href="/emails" className="text-xs text-cyan-600 dark:text-eva-accent hover:underline">Voir les emails</a>
-                    <button onClick={connectGmail} className="text-xs text-cyan-600 dark:text-eva-accent hover:text-cyan-700 dark:hover:text-cyan-300 transition-colors">+ Ajouter un compte</button>
+                    <a href="/emails" className="text-xs text-red-600 dark:text-eva-accent hover:underline">Voir les emails</a>
+                    <button onClick={connectGmail} className="text-xs text-red-600 dark:text-eva-accent hover:text-red-700 dark:hover:text-red-300 transition-colors">+ Ajouter un compte</button>
                   </div>
                 )}
                 {connected && src.type === 'calendar' && (
                   <div className="mt-3 flex flex-wrap gap-3">
-                    <a href="/calendar" className="text-xs px-4 py-2 bg-cyan-500/20 text-cyan-600 dark:text-eva-accent rounded-lg hover:bg-cyan-500/30 dark:hover:bg-eva-accent/30 font-medium">Sync Calendar →</a>
+                    <a href="/calendar" className="text-xs px-4 py-2 bg-red-500/20 text-red-600 dark:text-eva-accent rounded-lg hover:bg-red-500/30 dark:hover:bg-eva-accent/30 font-medium">Sync Calendar →</a>
                   </div>
                 )}
               </div>

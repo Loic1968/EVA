@@ -320,7 +320,7 @@ export default function Chat() {
             <div className="p-3 border-b border-slate-200 dark:border-slate-700/40 flex items-center justify-between">
               <span className="text-sm font-medium text-slate-900 dark:text-white">{lang === 'fr' ? 'Conversations' : 'Conversations'}</span>
               <div className="flex gap-1">
-                <button onClick={newConversation} className="px-2 py-1 rounded text-xs text-cyan-600 dark:text-cyan-400 hover:bg-cyan-500/20" title="New chat">+</button>
+                <button onClick={newConversation} className="px-2 py-1 rounded text-xs text-red-600 dark:text-red-400 hover:bg-red-500/20" title="New chat">+</button>
                 <button onClick={() => setShowSidebar(false)} className="px-2 py-1 rounded text-xs text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">✕</button>
               </div>
             </div>
@@ -330,7 +330,7 @@ export default function Chat() {
                   key={c.id}
                   onClick={() => { selectConversation(c.id); setShowSidebar(false); }}
                   className={`px-3 py-2.5 rounded-lg cursor-pointer flex items-center justify-between group ${
-                    activeConvId === c.id ? 'bg-cyan-100 dark:bg-eva-accent/15 text-cyan-700 dark:text-eva-accent' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700/40'
+                    activeConvId === c.id ? 'bg-red-50 dark:bg-eva-accent/15 text-red-700 dark:text-eva-accent' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700/40'
                   }`}
                 >
                   <div className="min-w-0 flex-1 truncate text-sm">{c.title || 'New'}</div>
@@ -355,10 +355,10 @@ export default function Chat() {
         )}
 
         {shadowMode && evaEnabled && (
-          <div className="px-4 py-2 bg-cyan-500/15 border-b border-cyan-500/30 flex items-center justify-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
-            <span className="text-cyan-700 dark:text-cyan-300 text-xs font-medium">Shadow Mode</span>
-            <Link to="/settings" className="text-cyan-600 dark:text-cyan-400/80 hover:text-cyan-700 dark:hover:text-cyan-300 text-[11px]">Settings</Link>
+          <div className="px-4 py-2 bg-red-500/15 border-b border-red-500/30 flex items-center justify-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+            <span className="text-red-700 dark:text-red-300 text-xs font-medium">Shadow Mode</span>
+            <Link to="/settings" className="text-red-600 dark:text-red-400/80 hover:text-red-700 dark:hover:text-red-300 text-[11px]">Settings</Link>
           </div>
         )}
 
@@ -369,8 +369,8 @@ export default function Chat() {
           </button>
           <span className="text-sm font-medium text-slate-900 dark:text-white flex items-center gap-2">
             <EvaLogo size="xs" variant="icon" className="shrink-0" />
-            EVA
-            {shadowMode && <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/25 text-cyan-600 dark:text-cyan-400 font-medium">Shadow</span>}
+            <EvaLogo variant="text" className="text-sm font-medium" />
+            {shadowMode && <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/25 text-red-600 dark:text-red-400 font-medium">Shadow</span>}
           </span>
           <div className="flex items-center gap-1">
             {(loading || voiceOutput.isSpeaking) && (
@@ -378,11 +378,11 @@ export default function Chat() {
                 ■ {lang === 'fr' ? 'Stop' : 'Stop'}
               </button>
             )}
-            <Link to="/chat/realtime" className="flex items-center gap-1.5 px-3 py-2 min-h-[44px] rounded-lg bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 hover:bg-cyan-500/30 text-sm font-medium touch-manipulation" title={lang === 'fr' ? 'Appeler EVA (voix temps réel)' : 'Voice call (Realtime)'}>
+            <Link to="/chat/realtime" className="flex items-center gap-1.5 px-3 py-2 min-h-[44px] rounded-lg bg-red-500/20 text-red-600 dark:text-red-400 hover:bg-red-500/30 text-sm font-medium touch-manipulation" title={lang === 'fr' ? 'Appeler EVA (voix temps réel)' : 'Voice call (Realtime)'}>
               🎤 <span className="hidden sm:inline">{lang === 'fr' ? 'Appel vocal' : 'Voice call'}</span>
             </Link>
             {voiceOutput.supported && (
-              <button onClick={() => setAutoPlayVoice(!autoPlayVoice)} className={`p-2 rounded-lg ${autoPlayVoice ? 'text-cyan-600 dark:text-cyan-400 bg-cyan-500/10' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-400'}`} title={autoPlayVoice ? (lang === 'fr' ? 'Réponse vocale activée' : 'Voice reply on') : (lang === 'fr' ? 'Réponse vocale désactivée' : 'Voice reply off')}>🔊</button>
+              <button onClick={() => setAutoPlayVoice(!autoPlayVoice)} className={`p-2 rounded-lg ${autoPlayVoice ? 'text-red-600 dark:text-red-400 bg-red-500/10' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-400'}`} title={autoPlayVoice ? (lang === 'fr' ? 'Réponse vocale activée' : 'Voice reply on') : (lang === 'fr' ? 'Réponse vocale désactivée' : 'Voice reply off')}>🔊</button>
             )}
           </div>
         </div>
@@ -411,7 +411,7 @@ export default function Chat() {
                 )}
                 <div className={`max-w-[85%] ${msg.role === 'user' ? 'order-first' : ''}`}>
                   <div className={`rounded-2xl px-4 py-2.5 ${
-                    msg.role === 'user' ? 'bg-cyan-600 dark:bg-slate-700/80 text-white rounded-tr-md' : 'bg-slate-100 dark:bg-slate-800/60 text-slate-800 dark:text-slate-200 rounded-tl-md'
+                    msg.role === 'user' ? 'bg-red-600 dark:bg-slate-700/80 text-white rounded-tr-md' : 'bg-slate-100 dark:bg-slate-800/60 text-slate-800 dark:text-slate-200 rounded-tl-md'
                   }`}>
                     <div className="eva-message whitespace-pre-wrap text-[15px] leading-relaxed">{msg.content}</div>
                   </div>
@@ -458,7 +458,7 @@ export default function Chat() {
             {attachedFiles.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-2">
                 {attachedFiles.map((f, i) => (
-                  <span key={i} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 text-sm">
+                  <span key={i} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-red-500/20 text-red-700 dark:text-red-300 text-sm">
                     {f.name}
                     <button type="button" onClick={() => removeAttachment(i)} className="hover:text-red-500" aria-label="Remove">×</button>
                   </span>
@@ -471,7 +471,7 @@ export default function Chat() {
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={loading || attachedFiles.length >= 5}
-                className="shrink-0 w-12 h-12 rounded-xl flex items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700/60 hover:text-cyan-600 dark:hover:text-cyan-400 disabled:opacity-40 transition-colors"
+                className="shrink-0 w-12 h-12 rounded-xl flex items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700/60 hover:text-red-600 dark:hover:text-red-400 disabled:opacity-40 transition-colors"
                 title={lang === 'fr' ? 'Joindre un document ou une image' : 'Attach document or image'}
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
@@ -489,7 +489,7 @@ export default function Chat() {
                       ? 'bg-red-500/50 text-white scale-105 shadow-lg shadow-red-500/30'
                       : voiceInput.isTranscribing
                         ? 'bg-slate-200 dark:bg-slate-700/60 text-slate-500'
-                        : 'bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 hover:bg-cyan-500/30 active:scale-95'
+                        : 'bg-red-500/20 text-red-600 dark:text-red-400 hover:bg-red-500/30 active:scale-95'
                   }`}
                   title={voiceInput.isListening ? (lang === 'fr' ? 'Relâcher pour envoyer' : 'Release to send') : (lang === 'fr' ? 'Maintenir pour parler' : 'Hold to speak')}
                 >
@@ -511,7 +511,7 @@ export default function Chat() {
                   }
                   rows={1}
                   readOnly={voiceInput.isListening || voiceInput.isTranscribing}
-                  className={`w-full min-h-[44px] max-h-32 py-3 px-4 pr-12 rounded-xl bg-slate-100 dark:bg-slate-800 border text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 resize-none transition-colors ${
+                  className={`w-full min-h-[44px] max-h-32 py-3 px-4 pr-12 rounded-xl bg-slate-100 dark:bg-slate-800 border text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-red-500/50 resize-none transition-colors ${
                     voiceInput.isListening ? 'border-red-500/50' : voiceInput.isTranscribing ? 'border-amber-500/30' : 'border-slate-300 dark:border-slate-600/50'
                   }`}
                   disabled={loading || !evaEnabled}
@@ -519,7 +519,7 @@ export default function Chat() {
                 <button
                   onClick={send}
                   disabled={loading || (!input.trim() && attachedFiles.length === 0) || !evaEnabled || voiceInput.isListening || voiceInput.isTranscribing}
-                  className="absolute right-2 bottom-2 p-1.5 rounded-lg text-slate-500 dark:text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-400 hover:bg-cyan-500/10 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-slate-500 dark:disabled:hover:text-slate-400 transition-colors"
+                  className="absolute right-2 bottom-2 p-1.5 rounded-lg text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/10 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-slate-500 dark:disabled:hover:text-slate-400 transition-colors"
                   title={lang === 'fr' ? 'Envoyer' : 'Send'}
                 >
                   <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" /></svg>
@@ -528,7 +528,7 @@ export default function Chat() {
             </div>
             {(voiceInput.isListening || voiceInput.isTranscribing) && (
               <p className="mt-2 text-center text-slate-500 text-xs flex items-center justify-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+                <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse" />
                 {voiceInput.isTranscribing ? (lang === 'fr' ? 'Transcription en cours…' : 'Transcribing…') : (lang === 'fr' ? 'Enregistrement… relâchez pour envoyer' : 'Recording… release to send')}
               </p>
             )}

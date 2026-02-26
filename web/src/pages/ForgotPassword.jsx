@@ -42,7 +42,7 @@ export default function ForgotPassword() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <EvaLogo size="md" variant="icon" className="mx-auto mb-2" />
-          <p className="text-[10px] text-slate-500 dark:text-slate-400 -mt-1 mb-2">EVA by HaliSoft</p>
+          <p className="text-sm font-medium -mt-1 mb-2 flex items-center justify-center gap-1"><EvaLogo variant="text" /> <span className="text-[10px] text-slate-500 font-normal">by HaliSoft</span></p>
           <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">Forgot password</h1>
           <p className="text-slate-600 dark:text-eva-muted text-sm mt-1">We&apos;ll send you a reset link</p>
         </div>
@@ -67,7 +67,7 @@ export default function ForgotPassword() {
               {resetUrl && (
                 <p className="text-sm mt-4 pt-4 border-t border-slate-200 dark:border-slate-700/40">
                   <span className="text-slate-600 dark:text-slate-500">Use this link to reset: </span>
-                  <a href={resetUrl} className="text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 underline break-all">
+                  <a href={resetUrl} className="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 underline break-all">
                     Reset password
                   </a>
                 </p>
@@ -83,13 +83,13 @@ export default function ForgotPassword() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                  className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white focus:ring-2 focus:ring-red-500 focus:border-transparent"
                 />
               </div>
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-medium rounded-lg hover:from-cyan-400 hover:to-blue-500 disabled:opacity-50 transition-all"
+                className="w-full py-3 bg-gradient-to-r from-red-600 to-red-700 text-white font-medium rounded-lg hover:from-red-500 hover:to-red-600 disabled:opacity-50 transition-all"
               >
                 {loading ? 'Sending...' : 'Send link'}
               </button>
@@ -97,7 +97,7 @@ export default function ForgotPassword() {
           )}
         </div>
         <p className="text-center text-slate-600 dark:text-eva-muted text-sm mt-6">
-          <Link to="/login" className="text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300">← Back to sign in</Link>
+          <Link to="/login" className="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300">← Back to sign in</Link>
         </p>
       </div>
     </div>

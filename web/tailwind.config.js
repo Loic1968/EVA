@@ -8,7 +8,7 @@ export default {
         eva: {
           dark: '#0f172a',
           panel: '#1e293b',
-          accent: '#06b6d4',
+          accent: '#DC2626',
           muted: '#64748b',
         },
       },

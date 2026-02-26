@@ -34,7 +34,7 @@ export default function ResetPassword() {
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-eva-dark p-4">
         <div className="text-center">
           <p className="text-red-600 dark:text-red-400">Invalid or expired link.</p>
-          <Link to="/forgot-password" className="text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 mt-4 inline-block">Request a new link</Link>
+          <Link to="/forgot-password" className="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 mt-4 inline-block">Request a new link</Link>
         </div>
       </div>
     );
@@ -45,7 +45,7 @@ export default function ResetPassword() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <EvaLogo size="md" variant="icon" className="mx-auto mb-2" />
-          <p className="text-[10px] text-slate-500 dark:text-slate-400 -mt-1 mb-2">EVA by HaliSoft</p>
+          <p className="text-sm font-medium -mt-1 mb-2 flex items-center justify-center gap-1"><EvaLogo variant="text" /> <span className="text-[10px] text-slate-500 font-normal">by HaliSoft</span></p>
           <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">New password</h1>
         </div>
         <div className="bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 p-6 shadow-sm">
@@ -58,7 +58,7 @@ export default function ResetPassword() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white focus:ring-2 focus:ring-red-500 focus:border-transparent"
               />
             </div>
             <div>
@@ -69,7 +69,7 @@ export default function ResetPassword() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  className="w-full px-4 py-2.5 pr-10 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                  className="w-full px-4 py-2.5 pr-10 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white focus:ring-2 focus:ring-red-500 focus:border-transparent"
                 />
                 <button
                   type="button"
@@ -88,14 +88,14 @@ export default function ResetPassword() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-medium rounded-lg hover:from-cyan-400 hover:to-blue-500 disabled:opacity-50 transition-all"
+              className="w-full py-3 bg-gradient-to-r from-red-600 to-red-700 text-white font-medium rounded-lg hover:from-red-500 hover:to-red-600 disabled:opacity-50 transition-all"
             >
               {loading ? 'Saving...' : 'Reset'}
             </button>
           </form>
         </div>
         <p className="text-center text-slate-600 dark:text-eva-muted text-sm mt-6">
-          <Link to="/login" className="text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300">← Back to sign in</Link>
+          <Link to="/login" className="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300">← Back to sign in</Link>
         </p>
       </div>
     </div>

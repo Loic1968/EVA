@@ -43,7 +43,7 @@ export default function Login() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <EvaLogo size="md" variant="icon" className="mx-auto mb-2" />
-          <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">EVA</h1>
+          <h1 className="text-2xl font-semibold flex items-center justify-center gap-0"><EvaLogo variant="text" className="text-2xl" /></h1>
           <p className="text-[10px] text-slate-500 dark:text-slate-400 -mt-1">by HaliSoft</p>
           <p className="text-slate-600 dark:text-eva-muted text-sm">Digital Twin — Sign in</p>
         </div>
@@ -58,7 +58,7 @@ export default function Login() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white focus:ring-2 focus:ring-red-500 focus:border-transparent"
                 placeholder="toi@example.com"
               />
             </div>
@@ -70,7 +70,7 @@ export default function Login() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  className="w-full px-4 py-2.5 pr-10 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                  className="w-full px-4 py-2.5 pr-10 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white focus:ring-2 focus:ring-red-500 focus:border-transparent"
                 />
                 <button
                   type="button"
@@ -91,24 +91,24 @@ export default function Login() {
                 type="checkbox"
                 checked={stayConnected}
                 onChange={(e) => setStayConnected(e.target.checked)}
-                className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-cyan-500 focus:ring-cyan-500"
+                className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-red-500 focus:ring-red-500"
               />
               <span className="text-sm text-slate-600 dark:text-slate-400">Stay connected</span>
             </label>
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-medium rounded-lg hover:from-cyan-400 hover:to-blue-500 disabled:opacity-50 transition-all"
+              className="w-full py-3 bg-gradient-to-r from-red-600 to-red-700 text-white font-medium rounded-lg hover:from-red-500 hover:to-red-600 disabled:opacity-50 transition-all"
             >
               {loading ? 'Signing in...' : 'Sign in'}
             </button>
           </form>
           <div className="mt-4 text-center">
-            <Link to="/forgot-password" className="text-sm text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300">Forgot password?</Link>
+            <Link to="/forgot-password" className="text-sm text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300">Forgot password?</Link>
           </div>
         </div>
         <p className="text-center text-slate-600 dark:text-eva-muted text-sm mt-6">
-          No account? <Link to="/signup" className="text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300">Sign up</Link>
+          No account? <Link to="/signup" className="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300">Sign up</Link>
         </p>
       </div>
     </div>

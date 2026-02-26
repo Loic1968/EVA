@@ -153,7 +153,7 @@ export default function About() {
             { phase: 'P5', label: c.phases.p5 },
           ].map(({ phase, label }) => (
             <div key={phase} className="flex gap-3 items-center text-sm">
-              <span className="font-mono text-xs px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 w-8 shrink-0">
+              <span className="font-mono text-xs px-2 py-0.5 rounded bg-red-500/20 text-red-600 dark:text-red-400 w-8 shrink-0">
                 {phase}
               </span>
               <span className="text-slate-600 dark:text-slate-400">{label}</span>

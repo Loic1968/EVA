@@ -64,7 +64,7 @@ export default function Dashboard() {
         </div>
         <Link
           to="/voice"
-          className="inline-flex items-center justify-center gap-2 px-5 py-3 min-h-[44px] bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-medium rounded-lg hover:from-cyan-400 hover:to-blue-500 transition-all shadow-lg shadow-cyan-500/20 touch-manipulation"
+          className="inline-flex items-center justify-center gap-2 px-5 py-3 min-h-[44px] bg-gradient-to-r from-red-600 to-red-700 text-white font-medium rounded-lg hover:from-red-500 hover:to-red-600 transition-all shadow-lg shadow-red-500/20 touch-manipulation"
         >
           <span>🎤</span> Parler à EVA
         </Link>
@@ -73,12 +73,12 @@ export default function Dashboard() {
       {/* Status banner */}
       <div className={`rounded-xl p-4 border ${
         killSwitchOn ? 'bg-amber-500/10 border-amber-500/30' :
-        shadowModeOn ? 'bg-cyan-500/10 border-cyan-500/30' : 'bg-emerald-500/10 border-emerald-500/30'
+        shadowModeOn ? 'bg-red-500/10 border-red-500/30' : 'bg-emerald-500/10 border-emerald-500/30'
       }`}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className={`w-3 h-3 rounded-full ${killSwitchOn ? 'bg-amber-400' : shadowModeOn ? 'bg-cyan-400' : 'bg-emerald-400'} animate-pulse`} />
-            <span className={`font-medium ${killSwitchOn ? 'text-amber-700 dark:text-amber-300' : shadowModeOn ? 'text-cyan-700 dark:text-cyan-300' : 'text-emerald-700 dark:text-emerald-300'}`}>
+            <div className={`w-3 h-3 rounded-full ${killSwitchOn ? 'bg-amber-400' : shadowModeOn ? 'bg-red-400' : 'bg-emerald-400'} animate-pulse`} />
+            <span className={`font-medium ${killSwitchOn ? 'text-amber-700 dark:text-amber-300' : shadowModeOn ? 'text-red-700 dark:text-red-300' : 'text-emerald-700 dark:text-emerald-300'}`}>
               {killSwitchOn ? 'Autonomous Mode: Paused' : shadowModeOn ? 'EVA Active — Shadow Mode' : 'EVA Active'}
             </span>
           </div>
@@ -90,7 +90,7 @@ export default function Dashboard() {
 
       {/* Stats grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard label="Conversations" value={stats?.conversations ?? 0} link="/chat" color="text-cyan-600 dark:text-cyan-400" />
+        <StatCard label="Conversations" value={stats?.conversations ?? 0} link="/chat" color="text-red-600 dark:text-red-400" />
         <StatCard label="Messages" value={stats?.messages ?? 0} sub="Total exchanged" color="text-blue-600 dark:text-blue-400" />
         <StatCard
           label="Drafts"
@@ -108,14 +108,14 @@ export default function Dashboard() {
         <div className="lg:col-span-2 bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700/40 flex items-center justify-between">
             <h2 className="text-sm font-medium text-slate-900 dark:text-white">Recent Activity</h2>
-            <Link to="/audit" className="text-xs text-cyan-600 dark:text-eva-accent hover:underline">View all →</Link>
+            <Link to="/audit" className="text-xs text-red-600 dark:text-eva-accent hover:underline">View all →</Link>
           </div>
           <div className="divide-y divide-slate-200 dark:divide-slate-700/30">
             {logs.slice(0, 8).map((log) => (
               <div key={log.id} className="px-5 py-3 flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3 min-w-0">
                   <div className={`w-2 h-2 rounded-full shrink-0 ${
-                    log.action_type === 'query' ? 'bg-cyan-500' :
+                    log.action_type === 'query' ? 'bg-red-500' :
                     log.action_type === 'file_uploaded' ? 'bg-purple-500' :
                     log.action_type === 'draft_created' ? 'bg-amber-500' :
                     'bg-slate-500'
@@ -149,7 +149,7 @@ export default function Dashboard() {
                   <div className="flex items-center gap-2">
                     <span className={`text-xs font-mono px-1.5 py-0.5 rounded ${
                       p.status === 'live' ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' :
-                      p.status === 'building' ? 'bg-cyan-500/20 text-cyan-600 dark:text-cyan-400' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-500'
+                      p.status === 'building' ? 'bg-red-500/20 text-red-600 dark:text-red-400' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-500'
                     }`}>P{p.phase}</span>
                     <span className="text-sm text-slate-700 dark:text-slate-300">{p.label}</span>
                   </div>
@@ -159,7 +159,7 @@ export default function Dashboard() {
                   <div
                     className={`h-full rounded-full transition-all ${
                       p.status === 'live' ? 'bg-emerald-500' :
-                      p.status === 'building' ? 'bg-gradient-to-r from-cyan-500 to-blue-500' : 'bg-slate-200 dark:bg-slate-700'
+                      p.status === 'building' ? 'bg-gradient-to-r from-red-600 to-red-700' : 'bg-slate-200 dark:bg-slate-700'
                     }`}
                     style={{ width: `${p.pct}%` }}
                   />

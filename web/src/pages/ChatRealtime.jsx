@@ -237,7 +237,7 @@ export default function ChatRealtime() {
               <select
                 value={selectedDeviceId}
                 onChange={(e) => setSelectedDeviceId(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-white dark:bg-slate-800/80 border border-slate-300 dark:border-slate-600/60 text-slate-900 dark:text-slate-200 text-sm focus:outline-none focus:ring-1 focus:ring-cyan-400"
+                className="w-full px-3 py-2 rounded-lg bg-white dark:bg-slate-800/80 border border-slate-300 dark:border-slate-600/60 text-slate-900 dark:text-slate-200 text-sm focus:outline-none focus:ring-1 focus:ring-red-400"
               >
                 <option value="">Default</option>
                 {audioDevices.map((d) => (
@@ -258,7 +258,7 @@ export default function ChatRealtime() {
         </div>
       ) : status === 'connecting' ? (
         <div className="flex flex-col items-center gap-4">
-          <div className="w-16 h-16 rounded-full border-2 border-cyan-500 dark:border-cyan-400 border-t-transparent animate-spin" />
+          <div className="w-16 h-16 rounded-full border-2 border-red-500 dark:border-red-400 border-t-transparent animate-spin" />
           <p className="text-slate-600 dark:text-slate-400">Connecting…</p>
         </div>
       ) : status === 'disconnected' ? (
@@ -270,7 +270,7 @@ export default function ChatRealtime() {
           <p className="text-slate-600 dark:text-slate-500 text-sm text-center max-w-xs">Tap to reconnect</p>
           <button
             onClick={() => { setStatus('connecting'); stopSession({ keepConnectingState: true }); setTimeout(startSession, 300); }}
-            className="min-h-[48px] px-6 py-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-white font-medium touch-manipulation"
+            className="min-h-[48px] px-6 py-3 rounded-xl bg-red-500 hover:bg-red-400 text-white font-medium touch-manipulation"
           >
             Reconnect
           </button>
@@ -290,7 +290,7 @@ export default function ChatRealtime() {
             ) : (
               transcript.map((item, i) => (
                 <div key={i} className={`flex ${item.role === 'user' ? 'justify-end' : ''}`}>
-                  <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 ${item.role === 'user' ? 'bg-cyan-500/25 text-cyan-900 dark:text-cyan-100' : 'bg-slate-200 dark:bg-slate-700/60 text-slate-800 dark:text-slate-200'}`}>
+                  <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 ${item.role === 'user' ? 'bg-red-500/25 text-red-900 dark:text-red-100' : 'bg-slate-200 dark:bg-slate-700/60 text-slate-800 dark:text-slate-200'}`}>
                     <div className="text-sm whitespace-pre-wrap">{item.text}</div>
                   </div>
                 </div>

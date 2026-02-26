@@ -389,7 +389,7 @@ export default function Settings() {
             onClick={() => setActiveTab(t.id)}
             className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
               activeTab === t.id
-                ? 'bg-white dark:bg-eva-panel border border-slate-200 dark:border-slate-700/40 border-b-0 -mb-px text-cyan-600 dark:text-cyan-400'
+                ? 'bg-white dark:bg-eva-panel border border-slate-200 dark:border-slate-700/40 border-b-0 -mb-px text-red-600 dark:text-red-400'
                 : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/50'
             }`}
           >
@@ -413,7 +413,7 @@ export default function Settings() {
             value={settings.chat_language?.lang ?? 'auto'}
             onChange={(e) => setChatLanguage(e.target.value)}
             disabled={saving}
-            className="bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-2 text-slate-900 dark:text-white focus:ring-2 focus:ring-cyan-500 focus:border-transparent disabled:opacity-50"
+            className="bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-2 text-slate-900 dark:text-white focus:ring-2 focus:ring-red-500 focus:border-transparent disabled:opacity-50"
           >
             <option value="auto">Auto (match your language)</option>
             <option value="en">English</option>
@@ -437,7 +437,7 @@ export default function Settings() {
             onChange={(e) => setLocationState(e.target.value)}
             placeholder="e.g. Dubai, Paris"
             disabled={locationLoading}
-            className="bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-2 text-slate-900 dark:text-white focus:ring-2 focus:ring-cyan-500 focus:border-transparent disabled:opacity-50 min-w-[180px]"
+            className="bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-2 text-slate-900 dark:text-white focus:ring-2 focus:ring-red-500 focus:border-transparent disabled:opacity-50 min-w-[180px]"
           />
           <button
             type="button"
@@ -451,7 +451,7 @@ export default function Settings() {
             type="button"
             onClick={useGpsLocation}
             disabled={locationLoading}
-            className="px-4 py-2 rounded-lg bg-cyan-600 text-white hover:bg-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Use GPS
           </button>
@@ -465,7 +465,7 @@ export default function Settings() {
       <div className="bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 p-6 max-w-2xl">
         <h2 className="text-lg font-medium text-slate-900 dark:text-white mb-2 flex items-center gap-2">
           Style (P4)
-          <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-600 dark:text-cyan-400">Fine-tuned model</span>
+          <span className="text-xs px-2 py-0.5 rounded-full bg-red-500/20 text-red-600 dark:text-red-400">Fine-tuned model</span>
         </h2>
         <p className="text-slate-500 dark:text-eva-muted text-sm mb-4">
           Describe how you write: tone, phrases, formality. EVA will match this style when responding.
@@ -476,14 +476,14 @@ export default function Settings() {
           placeholder="e.g. I write short, direct emails. I use « tu » in French. I avoid jargon. I often start with « Bonjour » and end with « Cordialement »."
           rows={4}
           disabled={saving}
-          className="w-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-3 text-slate-900 dark:text-white focus:ring-2 focus:ring-cyan-500 focus:border-transparent disabled:opacity-50 resize-y"
+          className="w-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-3 text-slate-900 dark:text-white focus:ring-2 focus:ring-red-500 focus:border-transparent disabled:opacity-50 resize-y"
         />
         <div className="flex items-center gap-2 mt-2">
           <button
             type="button"
             onClick={() => setStyleProfile(settings.voice_profile?.text ?? '')}
             disabled={saving}
-            className="px-4 py-2 rounded-lg bg-cyan-600 text-white hover:bg-cyan-500 disabled:opacity-50"
+            className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-500 disabled:opacity-50"
           >
             Save
           </button>
@@ -508,7 +508,7 @@ export default function Settings() {
             value={settings.sync_frequency_minutes?.minutes ?? 15}
             onChange={(e) => setSyncFrequency(Number(e.target.value))}
             disabled={saving}
-            className="bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-2 text-slate-900 dark:text-white focus:ring-2 focus:ring-cyan-500 focus:border-transparent disabled:opacity-50"
+            className="bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-2 text-slate-900 dark:text-white focus:ring-2 focus:ring-red-500 focus:border-transparent disabled:opacity-50"
           >
             <option value={5}>5 minutes</option>
             <option value={10}>10 minutes</option>
@@ -533,7 +533,7 @@ export default function Settings() {
             value={settings.email_sync_days?.days ?? 90}
             onChange={(e) => setEmailSyncDays(Number(e.target.value))}
             disabled={saving}
-            className="bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-2 text-slate-900 dark:text-white focus:ring-2 focus:ring-cyan-500 focus:border-transparent disabled:opacity-50"
+            className="bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-2 text-slate-900 dark:text-white focus:ring-2 focus:ring-red-500 focus:border-transparent disabled:opacity-50"
           >
             <option value={30}>30 days</option>
             <option value={60}>60 days</option>
@@ -566,7 +566,7 @@ export default function Settings() {
             <button
               onClick={enablePushNotifications}
               disabled={pushLoading}
-              className="px-4 py-2 rounded-lg font-medium bg-cyan-600 text-white hover:bg-cyan-500 disabled:opacity-50"
+              className="px-4 py-2 rounded-lg font-medium bg-red-600 text-white hover:bg-red-500 disabled:opacity-50"
             >
               {pushLoading ? 'Enabling...' : 'Enable notifications on this device'}
             </button>
@@ -587,7 +587,7 @@ export default function Settings() {
             disabled={saving}
             className={`px-4 py-2 rounded-lg font-medium ${
               settings.notification_preferences?.enabled !== false
-                ? 'bg-cyan-600 text-white hover:bg-cyan-500'
+                ? 'bg-red-600 text-white hover:bg-red-500'
                 : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
             } disabled:opacity-50`}
           >
@@ -605,7 +605,7 @@ export default function Settings() {
                   onClick={() => toggleLead(m)}
                   disabled={saving}
                   className={`text-sm px-3 py-1.5 rounded-lg ${
-                    active ? 'bg-cyan-500/20 text-cyan-600 dark:text-cyan-400' : 'bg-slate-200 dark:bg-slate-700 text-slate-500'
+                    active ? 'bg-red-500/20 text-red-600 dark:text-red-400' : 'bg-slate-200 dark:bg-slate-700 text-slate-500'
                   }`}
                 >
                   {label}
@@ -632,8 +632,8 @@ export default function Settings() {
               disabled={saving}
               className={`px-4 py-2 rounded-lg font-medium cursor-pointer transition-colors border-2 disabled:opacity-50 disabled:cursor-not-allowed ${
                 settings.email_importance_preferences?.enabled === true
-                  ? 'bg-cyan-600 border-cyan-600 text-white hover:bg-cyan-500'
-                  : 'bg-transparent border-slate-500 text-slate-300 hover:border-cyan-500 hover:text-cyan-400'
+                  ? 'bg-red-600 border-red-600 text-white hover:bg-red-500'
+                  : 'bg-transparent border-slate-500 text-slate-300 hover:border-red-500 hover:text-red-400'
               }`}
             >
               {settings.email_importance_preferences?.enabled === true ? 'Alerts ON' : 'Alerts OFF'}
@@ -650,7 +650,7 @@ export default function Settings() {
                     checked={(settings.email_importance_preferences?.priorityLevel ?? 'gmail_only') === 'gmail_only'}
                     onChange={() => setEmailImportancePrefs(null, 'gmail_only')}
                     disabled={saving}
-                    className="text-cyan-600"
+                    className="text-red-600"
                   />
                   <span className="text-sm text-slate-700 dark:text-slate-300">Gmail Important label only</span>
                 </label>
@@ -661,7 +661,7 @@ export default function Settings() {
                     checked={settings.email_importance_preferences?.priorityLevel === 'gmail_and_ai'}
                     onChange={() => setEmailImportancePrefs(null, 'gmail_and_ai')}
                     disabled={saving}
-                    className="text-cyan-600"
+                    className="text-red-600"
                   />
                   <span className="text-sm text-slate-700 dark:text-slate-300">Gmail + AI analysis</span>
                 </label>
@@ -762,13 +762,13 @@ export default function Settings() {
 
       {/* Shadow Mode */}
       <div className={`rounded-xl border p-6 max-w-2xl transition-colors ${
-        shadowModeOn ? 'bg-cyan-500/5 border-cyan-500/30' : 'bg-white dark:bg-eva-panel border-slate-200 dark:border-slate-700/40'
+        shadowModeOn ? 'bg-red-500/5 border-red-500/30' : 'bg-white dark:bg-eva-panel border-slate-200 dark:border-slate-700/40'
       }`}>
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-lg font-medium text-slate-900 dark:text-white flex items-center gap-2">
               Shadow Mode
-              <span className={`text-xs px-2 py-0.5 rounded-full ${shadowModeOn ? 'bg-cyan-500/20 text-cyan-600 dark:text-cyan-400' : 'bg-slate-300 dark:bg-slate-600/40 text-slate-600 dark:text-slate-500'}`}>
+              <span className={`text-xs px-2 py-0.5 rounded-full ${shadowModeOn ? 'bg-red-500/20 text-red-600 dark:text-red-400' : 'bg-slate-300 dark:bg-slate-600/40 text-slate-600 dark:text-slate-500'}`}>
                 {shadowModeOn ? 'ON' : 'OFF'}
               </span>
             </h2>
@@ -785,7 +785,7 @@ export default function Settings() {
             className={`px-5 py-2.5 rounded-lg font-medium transition-all ${
               shadowModeOn
                 ? 'bg-slate-600 text-white hover:bg-slate-500'
-                : 'bg-cyan-600 text-white hover:bg-cyan-500'
+                : 'bg-red-600 text-white hover:bg-red-500'
             } disabled:opacity-50`}
             title={killSwitchOn ? 'Resume EVA first' : ''}
           >

@@ -162,10 +162,10 @@ export default function Calendar() {
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <div className="flex rounded-lg overflow-hidden border border-slate-200 dark:border-slate-600 shrink-0">
-              <button onClick={() => setViewMode('month')} className={`min-h-[44px] px-3 sm:px-4 py-2 text-sm font-medium touch-manipulation ${viewMode === 'month' ? 'bg-cyan-500 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'}`}>Month</button>
-              <button onClick={() => setViewMode('agenda')} className={`min-h-[44px] px-3 sm:px-4 py-2 text-sm font-medium touch-manipulation ${viewMode === 'agenda' ? 'bg-cyan-500 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'}`}>Agenda</button>
+              <button onClick={() => setViewMode('month')} className={`min-h-[44px] px-3 sm:px-4 py-2 text-sm font-medium touch-manipulation ${viewMode === 'month' ? 'bg-red-500 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'}`}>Month</button>
+              <button onClick={() => setViewMode('agenda')} className={`min-h-[44px] px-3 sm:px-4 py-2 text-sm font-medium touch-manipulation ${viewMode === 'agenda' ? 'bg-red-500 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'}`}>Agenda</button>
             </div>
-            <button onClick={syncCalendar} disabled={syncing.calendar || !hasGmail} className="min-h-[44px] px-3 sm:px-4 py-2 rounded-lg bg-cyan-500/20 text-cyan-600 dark:text-eva-accent hover:bg-cyan-500/30 disabled:opacity-50 text-sm font-medium touch-manipulation">{syncing.calendar ? '…' : 'Sync'}</button>
+            <button onClick={syncCalendar} disabled={syncing.calendar || !hasGmail} className="min-h-[44px] px-3 sm:px-4 py-2 rounded-lg bg-red-500/20 text-red-600 dark:text-eva-accent hover:bg-red-500/30 disabled:opacity-50 text-sm font-medium touch-manipulation">{syncing.calendar ? '…' : 'Sync'}</button>
             <a href="/sources" className="min-h-[44px] px-3 sm:px-4 py-2 flex items-center rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-300 dark:hover:bg-slate-600 text-sm font-medium touch-manipulation">Sources</a>
             {/* Mobile: Calendars filter button */}
             <button onClick={() => setShowCalendarDrawer(true)} className="lg:hidden min-h-[44px] px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-sm font-medium touch-manipulation">
@@ -188,21 +188,21 @@ export default function Calendar() {
               <button onClick={() => setShowCalendarDrawer(false)} className="p-2 rounded text-slate-500 hover:text-slate-900 dark:hover:text-white">✕</button>
             </div>
             <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
-              <button onClick={() => { setFilterAccount(null); setShowCalendarDrawer(false); }} className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 ${!filterAccount ? 'bg-cyan-500/20 text-cyan-600 dark:text-eva-accent' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/50'}`}>
-                <span className="w-2 h-2 rounded-full bg-cyan-400" /> All
+              <button onClick={() => { setFilterAccount(null); setShowCalendarDrawer(false); }} className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 ${!filterAccount ? 'bg-red-500/20 text-red-600 dark:text-eva-accent' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/50'}`}>
+                <span className="w-2 h-2 rounded-full bg-red-400" /> All
               </button>
               {gmailAccounts.map((a) => {
                 const count = allEvents.filter((e) => e.gmail_account_id === a.id).length;
                 const isActive = filterAccount === a.id;
                 return (
-                  <button key={a.id} onClick={() => { setFilterAccount(a.id); setShowCalendarDrawer(false); }} className={`w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-2 truncate ${isActive ? 'bg-cyan-500/20 text-cyan-600 dark:text-eva-accent' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/50'}`} title={a.gmail_address}>
+                  <button key={a.id} onClick={() => { setFilterAccount(a.id); setShowCalendarDrawer(false); }} className={`w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-2 truncate ${isActive ? 'bg-red-500/20 text-red-600 dark:text-eva-accent' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/50'}`} title={a.gmail_address}>
                     <span className="w-2 h-2 rounded-full bg-blue-400 shrink-0" />
                     <span className="truncate flex-1">{a.gmail_address}</span>
                     {count > 0 && <span className="text-xs text-slate-500">{count}</span>}
                   </button>
                 );
               })}
-              {!hasGmail && <p className="px-3 py-4 text-sm text-slate-500"><a href="/sources" className="text-cyan-600 hover:underline">Connect Gmail</a></p>}
+              {!hasGmail && <p className="px-3 py-4 text-sm text-slate-500"><a href="/sources" className="text-red-600 hover:underline">Connect Gmail</a></p>}
             </div>
           </div>
         </>
@@ -217,9 +217,9 @@ export default function Calendar() {
           <div className="flex-1 overflow-y-auto p-2">
             <button
               onClick={() => setFilterAccount(null)}
-              className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 ${!filterAccount ? 'bg-cyan-500/20 text-cyan-600 dark:text-eva-accent' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/50'}`}
+              className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 ${!filterAccount ? 'bg-red-500/20 text-red-600 dark:text-eva-accent' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/50'}`}
             >
-              <span className="w-2 h-2 rounded-full bg-cyan-400" />
+              <span className="w-2 h-2 rounded-full bg-red-400" />
               All
             </button>
             {gmailAccounts.map((a) => {
@@ -229,7 +229,7 @@ export default function Calendar() {
                 <button
                   key={a.id}
                   onClick={() => setFilterAccount(a.id)}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2 truncate ${isActive ? 'bg-cyan-500/20 text-cyan-600 dark:text-eva-accent' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/50'}`}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2 truncate ${isActive ? 'bg-red-500/20 text-red-600 dark:text-eva-accent' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/50'}`}
                   title={a.gmail_address}
                 >
                   <span className="w-2 h-2 rounded-full bg-blue-400 shrink-0" />
@@ -240,7 +240,7 @@ export default function Calendar() {
             })}
             {!hasGmail && (
               <p className="px-3 py-4 text-sm text-slate-500">
-                <a href="/sources" className="text-cyan-600 hover:underline">Connect Gmail</a>
+                <a href="/sources" className="text-red-600 hover:underline">Connect Gmail</a>
               </p>
             )}
           </div>
@@ -288,7 +288,7 @@ export default function Calendar() {
                       className={`bg-white dark:bg-eva-panel flex flex-col min-h-[70px] sm:min-h-[80px] ${!isCurrentMonth ? 'opacity-50' : ''}`}
                     >
                       <div
-                        className={`shrink-0 py-1 px-2 text-xs font-medium ${isToday ? 'bg-cyan-500 text-white rounded-full w-6 h-6 flex items-center justify-center' : 'text-slate-600 dark:text-slate-400'}`}
+                        className={`shrink-0 py-1 px-2 text-xs font-medium ${isToday ? 'bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center' : 'text-slate-600 dark:text-slate-400'}`}
                       >
                         {day.getDate()}
                       </div>
@@ -296,7 +296,7 @@ export default function Calendar() {
                         {dayEvents.slice(0, 3).map((ev) => (
                           <div
                             key={ev.id}
-                            className="text-xs px-2 py-0.5 rounded truncate bg-cyan-500/15 text-cyan-700 dark:text-cyan-400 border-l-2 border-cyan-500"
+                            className="text-xs px-2 py-0.5 rounded truncate bg-red-500/15 text-red-700 dark:text-red-400 border-l-2 border-red-500"
                             title={`${ev.title || ''} ${ev.location ? '• ' + ev.location : ''}`}
                           >
                             {formatTime(ev) && <span className="text-slate-500 mr-1">{formatTime(ev)}</span>}

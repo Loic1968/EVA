@@ -52,7 +52,7 @@ export default function AuditLog() {
                   <td className="px-5 py-3 text-slate-600 dark:text-slate-400 whitespace-nowrap">{new Date(log.created_at).toLocaleString()}</td>
                   <td className="px-5 py-3">
                     <span className={`text-xs px-2 py-0.5 rounded-full ${
-                      log.action_type === 'query' ? 'bg-cyan-500/20 text-cyan-600 dark:text-cyan-400' :
+                      log.action_type === 'query' ? 'bg-red-500/20 text-red-600 dark:text-red-400' :
                       log.action_type === 'file_uploaded' ? 'bg-purple-500/20 text-purple-600 dark:text-purple-400' :
                       log.action_type === 'draft_created' ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400' :
                       log.action_type === 'setting_changed' ? 'bg-slate-200 dark:bg-slate-600 text-slate-600 dark:text-slate-300' :

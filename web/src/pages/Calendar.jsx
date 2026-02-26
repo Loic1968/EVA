@@ -313,8 +313,8 @@ export default function Calendar() {
               </div>
             </div>
           ) : (
-            /* Agenda list */
-            <div className="flex-1 overflow-y-auto p-6">
+            /* Agenda list — Outlook iOS style */
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6">
               {events.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-20 text-center">
                   <div className="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-3xl mb-4">📅</div>
@@ -346,23 +346,27 @@ export default function Calendar() {
                     .map(([, g]) => {
                       g.events.sort((a, b) => new Date(a.start_at) - new Date(b.start_at));
                       const isToday = g.date.getTime() === today.getTime();
+                      const tomorrow = new Date(today);
+                      tomorrow.setDate(tomorrow.getDate() + 1);
+                      const isTomorrow = g.date.getTime() === tomorrow.getTime();
+                      const dayLabel = isToday ? 'Today' : isTomorrow ? 'Tomorrow' : g.date.toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' });
                       return (
                         <section key={g.date.getTime()}>
-                          <h3 className="text-sm font-semibold text-slate-500 dark:text-eva-muted uppercase tracking-wider mb-2">
-                            {isToday ? 'Today' : g.date.toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' })}
+                          <h3 className="text-sm font-semibold text-slate-600 dark:text-slate-300 mb-2 sticky top-0 py-2 bg-slate-50 dark:bg-slate-900/80 backdrop-blur-sm -mx-2 px-4 border-b border-slate-200 dark:border-slate-700/30">
+                            {dayLabel}
                           </h3>
-                          <div className="space-y-2">
+                          <div className="space-y-1">
                             {g.events.map((ev) => (
                               <div
                                 key={ev.id}
-                                className="flex gap-4 p-4 min-h-[56px] rounded-xl bg-white dark:bg-eva-panel border border-slate-200 dark:border-slate-700/40"
+                                className="flex gap-3 p-3 min-h-[52px] rounded-lg bg-white dark:bg-eva-panel border border-slate-200 dark:border-slate-700/40 touch-manipulation active:bg-slate-50 dark:active:bg-slate-800/50"
                               >
-                                <div className="shrink-0 w-16 text-sm text-slate-500">
+                                <div className="shrink-0 w-14 text-xs text-slate-500 dark:text-slate-400">
                                   {ev.is_all_day ? 'All day' : `${new Date(ev.start_at).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })} – ${new Date(ev.end_at).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}`}
                                 </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="font-medium text-slate-900 dark:text-white">{ev.title || '(No title)'}</div>
-                                  {ev.location && <div className="text-sm text-slate-500 mt-0.5">📍 {ev.location}</div>}
+                                <div className="flex-1 min-w-0 py-0.5">
+                                  <div className="font-medium text-slate-900 dark:text-white text-sm">{ev.title || '(No title)'}</div>
+                                  {ev.location && <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">📍 {ev.location}</div>}
                                 </div>
                               </div>
                             ))}

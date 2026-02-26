@@ -265,8 +265,8 @@ export default function Emails() {
         {error && <div className="flex-shrink-0 px-3 py-2 text-red-600 dark:text-red-400 text-sm bg-red-50 dark:bg-red-900/20">{error}</div>}
 
         <div className="flex-1 flex min-h-0">
-          {/* Message list — Outlook table style */}
-          <div className={`flex flex-col border-r border-slate-200 dark:border-slate-700/40 ${selectedEmail ? 'w-full sm:w-80 md:w-96 flex-shrink-0' : 'flex-1 min-w-0'}`}>
+          {/* Message list — hidden on mobile when viewing email (Outlook-style full-screen) */}
+          <div className={`flex flex-col border-r border-slate-200 dark:border-slate-700/40 ${selectedEmail ? 'hidden md:flex w-80 lg:w-96 flex-shrink-0' : 'flex-1 min-w-0 flex flex-col'}`}>
             {loading ? (
               <div className="flex items-center justify-center flex-1">
                 <div className="flex gap-1"><div className="w-2 h-2 rounded-full bg-[#0078D4] animate-pulse" /><div className="w-2 h-2 rounded-full bg-[#0078D4] animate-pulse" /><div className="w-2 h-2 rounded-full bg-[#0078D4] animate-pulse" /></div>
@@ -336,7 +336,7 @@ export default function Emails() {
             )}
           </div>
 
-          {/* Reading pane — Outlook style */}
+          {/* Reading pane — full-screen on mobile when email selected (Outlook mobile style) */}
           <div className={`flex-1 flex flex-col min-w-0 bg-slate-50/50 dark:bg-slate-900/20 ${!selectedEmail ? 'hidden md:flex md:items-center md:justify-center' : ''}`}>
             {detailLoading ? (
               <div className="flex items-center justify-center flex-1">
@@ -344,8 +344,8 @@ export default function Emails() {
               </div>
             ) : selectedEmail ? (
               <>
-                <div className="flex-shrink-0 p-4 border-b border-slate-200 dark:border-slate-700/40 bg-white dark:bg-eva-panel relative">
-                  <button onClick={() => setSelectedEmail(null)} className="md:hidden absolute top-2 left-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-slate-500 hover:text-slate-900 dark:hover:text-white touch-manipulation" aria-label="Retour">←</button>
+                <div className="flex-shrink-0 p-4 pl-14 border-b border-slate-200 dark:border-slate-700/40 bg-white dark:bg-eva-panel relative">
+                  <button onClick={() => setSelectedEmail(null)} className="absolute top-3 left-3 min-h-[44px] min-w-[44px] flex items-center justify-center -ml-1 text-[#0078D4] hover:text-[#106EBE] dark:text-[#4DA3FF] dark:hover:text-[#6BB3FF] touch-manipulation text-lg font-medium" aria-label="Retour">‹</button>
                   <h1 className="text-lg font-semibold text-slate-900 dark:text-white pr-8">{selectedEmail.subject || '(sans objet)'}</h1>
                   <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600 dark:text-slate-400">
                     <span><strong className="text-slate-500 dark:text-slate-500">De:</strong> {selectedEmail.from_name ? `${selectedEmail.from_name} <${selectedEmail.from_email}>` : selectedEmail.from_email}</span>

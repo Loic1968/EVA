@@ -1,5 +1,8 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 
+const ACCENT_KEY = 'eva_accent_color';
+const VALID_ACCENTS = ['blue', 'red'];
+
 const ThemeContext = createContext();
 
 export const ThemeProvider = ({ children }) => {
@@ -7,6 +10,11 @@ export const ThemeProvider = ({ children }) => {
     const saved = localStorage.getItem('eva_theme');
     if (saved === 'light' || saved === 'dark') return saved === 'dark';
     return window.matchMedia?.('(prefers-color-scheme: dark)')?.matches ?? true;
+  });
+
+  const [accentColor, setAccentColorState] = useState(() => {
+    const saved = localStorage.getItem(ACCENT_KEY);
+    return VALID_ACCENTS.includes(saved) ? saved : 'blue';
   });
 
   useEffect(() => {
@@ -18,10 +26,18 @@ export const ThemeProvider = ({ children }) => {
     }
   }, [darkMode]);
 
+  useEffect(() => {
+    localStorage.setItem(ACCENT_KEY, accentColor);
+    document.documentElement.setAttribute('data-eva-accent', accentColor);
+  }, [accentColor]);
+
   const toggleTheme = () => setDarkMode((p) => !p);
+  const setAccentColor = (color) => {
+    if (VALID_ACCENTS.includes(color)) setAccentColorState(color);
+  };
 
   return (
-    <ThemeContext.Provider value={{ darkMode, toggleTheme }}>
+    <ThemeContext.Provider value={{ darkMode, toggleTheme, accentColor, setAccentColor }}>
       {children}
     </ThemeContext.Provider>
   );

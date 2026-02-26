@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import EvaLoading from '../components/EvaLoading';
+import { useTheme } from '../context/ThemeContext';
 import { api } from '../api';
 
 // Reverse geocode via Nominatim (OSM). Requires User-Agent per usage policy.
@@ -13,6 +15,7 @@ async function reverseGeocode(lat, lon) {
 }
 
 export default function Settings() {
+  const { accentColor, setAccentColor } = useTheme();
   const [settings, setSettings] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -37,10 +40,14 @@ export default function Settings() {
 
   useEffect(() => {
     api.getSettings()
-      .then(setSettings)
+      .then((st) => {
+        setSettings(st);
+        const ac = st?.accent_color?.color;
+        if (ac === 'blue' || ac === 'red') setAccentColor(ac);
+      })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [setAccentColor]);
 
   useEffect(() => {
     api.getLocation()
@@ -182,6 +189,22 @@ export default function Settings() {
     try {
       await api.setSetting('kill_switch', { enabled, updated_at: new Date().toISOString() });
       setSettings((s) => ({ ...s, kill_switch: { enabled } }));
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const setAccentColorSave = async (color) => {
+    setSaving(true);
+    setSaved(false);
+    try {
+      await api.setSetting('accent_color', { color, updated_at: new Date().toISOString() });
+      setSettings((s) => ({ ...s, accent_color: { color } }));
+      setAccentColor(color);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {
@@ -358,11 +381,7 @@ export default function Settings() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="flex gap-1">
-          <div className="w-2 h-2 rounded-full bg-eva-accent eva-dot" />
-          <div className="w-2 h-2 rounded-full bg-eva-accent eva-dot" />
-          <div className="w-2 h-2 rounded-full bg-eva-accent eva-dot" />
-        </div>
+        <EvaLoading />
       </div>
     );
   }
@@ -389,7 +408,7 @@ export default function Settings() {
             onClick={() => setActiveTab(t.id)}
             className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
               activeTab === t.id
-                ? 'bg-white dark:bg-eva-panel border border-slate-200 dark:border-slate-700/40 border-b-0 -mb-px text-red-600 dark:text-red-400'
+                ? 'bg-white dark:bg-eva-panel border border-slate-200 dark:border-slate-700/40 border-b-0 -mb-px text-eva-accent'
                 : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/50'
             }`}
           >
@@ -402,6 +421,43 @@ export default function Settings() {
       {/* General */}
       {activeTab === 'general' && (
       <div className="space-y-6">
+      {/* Accent Color */}
+      <div className="bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 p-6 max-w-2xl">
+        <h2 className="text-lg font-medium text-slate-900 dark:text-white mb-2">Accent color</h2>
+        <p className="text-slate-500 dark:text-eva-muted text-sm mb-4">
+          Choose the accent color for buttons, links, and highlights across EVA.
+        </p>
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={() => setAccentColorSave('blue')}
+            disabled={saving}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 font-medium transition-colors ${
+              accentColor === 'blue'
+                ? 'border-cyan-500 bg-cyan-500/15 text-cyan-600 dark:text-cyan-400'
+                : 'border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-400'
+            } disabled:opacity-50`}
+          >
+            <span className="w-4 h-4 rounded-full bg-cyan-500" />
+            Blue
+          </button>
+          <button
+            type="button"
+            onClick={() => setAccentColorSave('red')}
+            disabled={saving}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 font-medium transition-colors ${
+              accentColor === 'red'
+                ? 'border-red-500 bg-red-500/15 text-red-600 dark:text-red-400'
+                : 'border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-400'
+            } disabled:opacity-50`}
+          >
+            <span className="w-4 h-4 rounded-full bg-red-500" />
+            Red
+          </button>
+        </div>
+        {saved && <span className="text-emerald-600 dark:text-emerald-400 text-sm mt-2 block">Saved</span>}
+      </div>
+
       {/* Chat Language */}
       <div className="bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 p-6 max-w-2xl">
         <h2 className="text-lg font-medium text-slate-900 dark:text-white mb-2">Chat language</h2>
@@ -413,7 +469,7 @@ export default function Settings() {
             value={settings.chat_language?.lang ?? 'auto'}
             onChange={(e) => setChatLanguage(e.target.value)}
             disabled={saving}
-            className="bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-2 text-slate-900 dark:text-white focus:ring-2 focus:ring-red-500 focus:border-transparent disabled:opacity-50"
+            className="bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-2 text-slate-900 dark:text-white focus:ring-2 focus:ring-eva-accent focus:border-transparent disabled:opacity-50"
           >
             <option value="auto">Auto (match your language)</option>
             <option value="en">English</option>
@@ -437,7 +493,7 @@ export default function Settings() {
             onChange={(e) => setLocationState(e.target.value)}
             placeholder="e.g. Dubai, Paris"
             disabled={locationLoading}
-            className="bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-2 text-slate-900 dark:text-white focus:ring-2 focus:ring-red-500 focus:border-transparent disabled:opacity-50 min-w-[180px]"
+            className="bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-2 text-slate-900 dark:text-white focus:ring-2 focus:ring-eva-accent focus:border-transparent disabled:opacity-50 min-w-[180px]"
           />
           <button
             type="button"
@@ -451,7 +507,7 @@ export default function Settings() {
             type="button"
             onClick={useGpsLocation}
             disabled={locationLoading}
-            className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 rounded-lg bg-eva-accent text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Use GPS
           </button>
@@ -465,7 +521,7 @@ export default function Settings() {
       <div className="bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 p-6 max-w-2xl">
         <h2 className="text-lg font-medium text-slate-900 dark:text-white mb-2 flex items-center gap-2">
           Style (P4)
-          <span className="text-xs px-2 py-0.5 rounded-full bg-red-500/20 text-red-600 dark:text-red-400">Fine-tuned model</span>
+          <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--eva-accent-bg)] text-eva-accent">Fine-tuned model</span>
         </h2>
         <p className="text-slate-500 dark:text-eva-muted text-sm mb-4">
           Describe how you write: tone, phrases, formality. EVA will match this style when responding.
@@ -476,14 +532,14 @@ export default function Settings() {
           placeholder="e.g. I write short, direct emails. I use « tu » in French. I avoid jargon. I often start with « Bonjour » and end with « Cordialement »."
           rows={4}
           disabled={saving}
-          className="w-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-3 text-slate-900 dark:text-white focus:ring-2 focus:ring-red-500 focus:border-transparent disabled:opacity-50 resize-y"
+          className="w-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-3 text-slate-900 dark:text-white focus:ring-2 focus:ring-eva-accent focus:border-transparent disabled:opacity-50 resize-y"
         />
         <div className="flex items-center gap-2 mt-2">
           <button
             type="button"
             onClick={() => setStyleProfile(settings.voice_profile?.text ?? '')}
             disabled={saving}
-            className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-500 disabled:opacity-50"
+            className="px-4 py-2 rounded-lg bg-eva-accent text-white hover:opacity-90 disabled:opacity-50"
           >
             Save
           </button>
@@ -508,7 +564,7 @@ export default function Settings() {
             value={settings.sync_frequency_minutes?.minutes ?? 15}
             onChange={(e) => setSyncFrequency(Number(e.target.value))}
             disabled={saving}
-            className="bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-2 text-slate-900 dark:text-white focus:ring-2 focus:ring-red-500 focus:border-transparent disabled:opacity-50"
+            className="bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-2 text-slate-900 dark:text-white focus:ring-2 focus:ring-eva-accent focus:border-transparent disabled:opacity-50"
           >
             <option value={5}>5 minutes</option>
             <option value={10}>10 minutes</option>
@@ -533,7 +589,7 @@ export default function Settings() {
             value={settings.email_sync_days?.days ?? 90}
             onChange={(e) => setEmailSyncDays(Number(e.target.value))}
             disabled={saving}
-            className="bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-2 text-slate-900 dark:text-white focus:ring-2 focus:ring-red-500 focus:border-transparent disabled:opacity-50"
+            className="bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-2 text-slate-900 dark:text-white focus:ring-2 focus:ring-eva-accent focus:border-transparent disabled:opacity-50"
           >
             <option value={30}>30 days</option>
             <option value={60}>60 days</option>
@@ -566,7 +622,7 @@ export default function Settings() {
             <button
               onClick={enablePushNotifications}
               disabled={pushLoading}
-              className="px-4 py-2 rounded-lg font-medium bg-red-600 text-white hover:bg-red-500 disabled:opacity-50"
+              className="px-4 py-2 rounded-lg font-medium bg-eva-accent text-white hover:opacity-90 disabled:opacity-50"
             >
               {pushLoading ? 'Enabling...' : 'Enable notifications on this device'}
             </button>
@@ -587,7 +643,7 @@ export default function Settings() {
             disabled={saving}
             className={`px-4 py-2 rounded-lg font-medium ${
               settings.notification_preferences?.enabled !== false
-                ? 'bg-red-600 text-white hover:bg-red-500'
+                ? 'bg-eva-accent text-white hover:opacity-90'
                 : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
             } disabled:opacity-50`}
           >
@@ -605,7 +661,7 @@ export default function Settings() {
                   onClick={() => toggleLead(m)}
                   disabled={saving}
                   className={`text-sm px-3 py-1.5 rounded-lg ${
-                    active ? 'bg-red-500/20 text-red-600 dark:text-red-400' : 'bg-slate-200 dark:bg-slate-700 text-slate-500'
+                    active ? 'bg-[var(--eva-accent-bg)] text-eva-accent' : 'bg-slate-200 dark:bg-slate-700 text-slate-500'
                   }`}
                 >
                   {label}
@@ -768,7 +824,7 @@ export default function Settings() {
           <div>
             <h2 className="text-lg font-medium text-slate-900 dark:text-white flex items-center gap-2">
               Shadow Mode
-              <span className={`text-xs px-2 py-0.5 rounded-full ${shadowModeOn ? 'bg-red-500/20 text-red-600 dark:text-red-400' : 'bg-slate-300 dark:bg-slate-600/40 text-slate-600 dark:text-slate-500'}`}>
+              <span className={`text-xs px-2 py-0.5 rounded-full ${shadowModeOn ? 'bg-[var(--eva-accent-bg)] text-eva-accent' : 'bg-slate-300 dark:bg-slate-600/40 text-slate-600 dark:text-slate-500'}`}>
                 {shadowModeOn ? 'ON' : 'OFF'}
               </span>
             </h2>
@@ -785,7 +841,7 @@ export default function Settings() {
             className={`px-5 py-2.5 rounded-lg font-medium transition-all ${
               shadowModeOn
                 ? 'bg-slate-600 text-white hover:bg-slate-500'
-                : 'bg-red-600 text-white hover:bg-red-500'
+                : 'bg-eva-accent text-white hover:opacity-90'
             } disabled:opacity-50`}
             title={killSwitchOn ? 'Resume EVA first' : ''}
           >

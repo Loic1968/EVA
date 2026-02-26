@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import EvaLogo from '../components/EvaLogo';
+import EvaLoading from '../components/EvaLoading';
 import { api } from '../api';
 import { useVoiceInput, useVoiceOutput } from '../hooks/useVoice';
 
@@ -330,7 +331,7 @@ export default function Chat() {
                   key={c.id}
                   onClick={() => { selectConversation(c.id); setShowSidebar(false); }}
                   className={`px-3 py-2.5 rounded-lg cursor-pointer flex items-center justify-between group ${
-                    activeConvId === c.id ? 'bg-red-50 dark:bg-eva-accent/15 text-red-700 dark:text-eva-accent' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700/40'
+                    activeConvId === c.id ? 'bg-[var(--eva-accent-bg)] text-eva-accent' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700/40'
                   }`}
                 >
                   <div className="min-w-0 flex-1 truncate text-sm">{c.title || 'New'}</div>
@@ -411,7 +412,7 @@ export default function Chat() {
                 )}
                 <div className={`max-w-[85%] ${msg.role === 'user' ? 'order-first' : ''}`}>
                   <div className={`rounded-2xl px-4 py-2.5 ${
-                    msg.role === 'user' ? 'bg-red-600 dark:bg-slate-700/80 text-white rounded-tr-md' : 'bg-slate-100 dark:bg-slate-800/60 text-slate-800 dark:text-slate-200 rounded-tl-md'
+                    msg.role === 'user' ? 'bg-eva-accent dark:bg-slate-700/80 text-white rounded-tr-md' : 'bg-slate-100 dark:bg-slate-800/60 text-slate-800 dark:text-slate-200 rounded-tl-md'
                   }`}>
                     <div className="eva-message whitespace-pre-wrap text-[15px] leading-relaxed">{msg.content}</div>
                   </div>
@@ -437,12 +438,7 @@ export default function Chat() {
 
             {loading && !streamingContent && (
               <div className="flex gap-3">
-                <EvaLogo size="xs" variant="icon" className="shrink-0" />
-                <div className="flex gap-1 py-3">
-                  <div className="w-2 h-2 rounded-full bg-slate-500 eva-dot" />
-                  <div className="w-2 h-2 rounded-full bg-slate-500 eva-dot" />
-                  <div className="w-2 h-2 rounded-full bg-slate-500 eva-dot" />
-                </div>
+                <EvaLoading size="sm" />
               </div>
             )}
             <div ref={bottomRef} />
@@ -486,10 +482,10 @@ export default function Chat() {
                   disabled={loading || !evaEnabled || voiceInput.isTranscribing}
                   className={`shrink-0 w-14 h-14 rounded-2xl flex items-center justify-center text-2xl transition-all select-none touch-none ${
                     voiceInput.isListening
-                      ? 'bg-red-500/50 text-white scale-105 shadow-lg shadow-red-500/30'
+                      ? 'bg-eva-accent text-white scale-105 shadow-lg opacity-90'
                       : voiceInput.isTranscribing
                         ? 'bg-slate-200 dark:bg-slate-700/60 text-slate-500'
-                        : 'bg-red-500/20 text-red-600 dark:text-red-400 hover:bg-red-500/30 active:scale-95'
+                        : 'bg-[var(--eva-accent-bg)] text-eva-accent hover:opacity-90 active:scale-95'
                   }`}
                   title={voiceInput.isListening ? (lang === 'fr' ? 'Relâcher pour envoyer' : 'Release to send') : (lang === 'fr' ? 'Maintenir pour parler' : 'Hold to speak')}
                 >
@@ -511,7 +507,7 @@ export default function Chat() {
                   }
                   rows={1}
                   readOnly={voiceInput.isListening || voiceInput.isTranscribing}
-                  className={`w-full min-h-[44px] max-h-32 py-3 px-4 pr-12 rounded-xl bg-slate-100 dark:bg-slate-800 border text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-red-500/50 resize-none transition-colors ${
+                  className={`w-full min-h-[44px] max-h-32 py-3 px-4 pr-12 rounded-xl bg-slate-100 dark:bg-slate-800 border text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-eva-accent/50 resize-none transition-colors ${
                     voiceInput.isListening ? 'border-red-500/50' : voiceInput.isTranscribing ? 'border-amber-500/30' : 'border-slate-300 dark:border-slate-600/50'
                   }`}
                   disabled={loading || !evaEnabled}

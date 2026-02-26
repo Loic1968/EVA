@@ -2,6 +2,22 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Accent color themes — blue default, red available via Settings */
+:root {
+  --eva-accent: #06b6d4;
+  --eva-accent-dark: #0891b2;
+  --eva-accent-hover: #22d3ee;
+  --eva-accent-bg: rgba(6, 182, 212, 0.2);
+  --eva-tap-highlight: rgba(6, 182, 212, 0.2);
+}
+[data-eva-accent="red"] {
+  --eva-accent: #DC2626;
+  --eva-accent-dark: #B91C1C;
+  --eva-accent-hover: #f87171;
+  --eva-accent-bg: rgba(220, 38, 38, 0.2);
+  --eva-tap-highlight: rgba(220, 38, 38, 0.2);
+}
+
 html, body {
   overflow-x: hidden;
 }
@@ -12,7 +28,7 @@ body {
   background: #f1f5f9;
   color: #1e293b;
   -webkit-font-smoothing: antialiased;
-  -webkit-tap-highlight-color: rgba(220, 38, 38, 0.2);
+  -webkit-tap-highlight-color: var(--eva-tap-highlight);
 }
 /* Prevent iOS zoom on input focus — 16px base */
 input, select, textarea {
@@ -64,11 +80,11 @@ html:not(.dark) [class*="rounded-xl"].bg-white {
 }
 .eva-message pre code { background: transparent; padding: 0; }
 .eva-message strong { color: inherit; font-weight: 600; }
-.eva-message a { color: #DC2626; text-decoration: underline; }
+.eva-message a { color: var(--eva-accent); text-decoration: underline; }
 html.dark .eva-message code { background: rgba(0, 0, 0, 0.3); }
 html.dark .eva-message pre { background: rgba(0, 0, 0, 0.4); }
 html.dark .eva-message strong { color: #f1f5f9; }
-html.dark .eva-message a { color: #f87171; }
+html.dark .eva-message a { color: var(--eva-accent-hover); }
 
 /* Pulse animation for loading */
 @keyframes eva-pulse {

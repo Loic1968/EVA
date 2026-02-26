@@ -5,7 +5,8 @@ import EvaLogo from './EvaLogo';
 
 export default function AboutHero({ title, tagline }) {
   return (
-    <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-red-600 to-red-700 dark:from-red-600 dark:to-red-800 text-white shadow-xl shadow-red-500/25 dark:shadow-red-900/30">
+    <section className="relative overflow-hidden rounded-2xl text-white shadow-xl"
+        style={{ background: 'linear-gradient(135deg, var(--eva-accent) 0%, var(--eva-accent-dark) 100%)', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
       {/* Subtle grid pattern */}
       <div
         className="absolute inset-0 opacity-[0.08]"
@@ -16,7 +17,7 @@ export default function AboutHero({ title, tagline }) {
       />
       {/* Soft glow accent */}
       <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-white/10 blur-3xl" />
-      <div className="absolute -bottom-10 -left-10 h-40 w-40 rounded-full bg-red-400/20 blur-2xl" />
+      <div className="absolute -bottom-10 -left-10 h-40 w-40 rounded-full blur-2xl opacity-30" style={{ background: 'var(--eva-accent)' }} />
 
       <div className="relative px-6 py-12 sm:px-10 sm:py-16 text-center">
         {/* EVA logo by HaliSoft */}

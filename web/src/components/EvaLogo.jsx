@@ -12,7 +12,7 @@ export default function EvaLogo({ size = 'md', variant = 'icon', className = '',
 
   const biColorEva = (
     <span className="font-bold tracking-tight">
-      <span className={invert ? 'text-white' : 'text-[#DC2626] dark:text-red-500'}>E</span>
+      <span className={invert ? 'text-white' : 'text-[var(--eva-accent)]'}>E</span>
       <span className={invert ? 'text-white/90' : 'text-[#1F2937] dark:text-slate-300'}>VA</span>
     </span>
   );
@@ -33,8 +33,8 @@ export default function EvaLogo({ size = 'md', variant = 'icon', className = '',
         >
           <defs>
             <linearGradient id="eva-grad-icon" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#DC2626" />
-              <stop offset="100%" stopColor="#B91C1C" />
+              <stop offset="0%" stopColor="var(--eva-accent)" />
+              <stop offset="100%" stopColor="var(--eva-accent-dark)" />
             </linearGradient>
           </defs>
           {/* Rounded square — HaliSoft bi-color (red) */}

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
+import EvaLogo from '../components/EvaLogo';
 import { api } from '../api';
 import { useVoiceInput, useVoiceOutput } from '../hooks/useVoice';
 
@@ -367,6 +368,7 @@ export default function Chat() {
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
           </button>
           <span className="text-sm font-medium text-slate-900 dark:text-white flex items-center gap-2">
+            <EvaLogo size="xs" variant="icon" className="shrink-0" />
             EVA
             {shadowMode && <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/25 text-cyan-600 dark:text-cyan-400 font-medium">Shadow</span>}
           </span>
@@ -390,9 +392,7 @@ export default function Chat() {
           <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
             {messages.length === 0 && !loading && (
               <div className="flex flex-col items-center pt-16">
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-500/30 to-blue-600/30 flex items-center justify-center mb-4">
-                  <span className="text-xl text-cyan-400">◈</span>
-                </div>
+                <EvaLogo size="md" variant="icon" className="mb-4" />
                 <p className="text-slate-500 dark:text-slate-400 text-sm mb-8">{lang === 'fr' ? 'Comment puis-je t\'aider ?' : 'How can I help?'}</p>
                 <div className="flex flex-wrap gap-2 justify-center max-w-md">
                   {[lang === 'fr' ? 'Résume mes priorités' : 'Summarize my priorities', lang === 'fr' ? 'Rédige un email' : 'Draft an email', 'Draft a follow-up', lang === 'fr' ? 'Réponds à une demande de délai' : 'Payment extension reply'].slice(0, 4).map((q) => (
@@ -407,7 +407,7 @@ export default function Chat() {
             {messages.map((msg, i) => (
               <div key={i} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : ''}`}>
                 {msg.role === 'assistant' && (
-                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white text-xs font-bold shrink-0">E</div>
+                  <EvaLogo size="xs" variant="icon" className="shrink-0" />
                 )}
                 <div className={`max-w-[85%] ${msg.role === 'user' ? 'order-first' : ''}`}>
                   <div className={`rounded-2xl px-4 py-2.5 ${
@@ -428,7 +428,7 @@ export default function Chat() {
 
             {streamingContent && (
               <div className="flex gap-3">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white text-xs font-bold shrink-0">E</div>
+                <EvaLogo size="xs" variant="icon" className="shrink-0" />
                 <div className="rounded-2xl rounded-tl-md px-4 py-2.5 bg-slate-100 dark:bg-slate-800/60">
                   <div className="eva-message whitespace-pre-wrap text-[15px] leading-relaxed text-slate-800 dark:text-slate-200">{streamingContent}<span className="animate-pulse">▌</span></div>
                 </div>
@@ -437,7 +437,7 @@ export default function Chat() {
 
             {loading && !streamingContent && (
               <div className="flex gap-3">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white text-xs shrink-0">E</div>
+                <EvaLogo size="xs" variant="icon" className="shrink-0" />
                 <div className="flex gap-1 py-3">
                   <div className="w-2 h-2 rounded-full bg-slate-500 eva-dot" />
                   <div className="w-2 h-2 rounded-full bg-slate-500 eva-dot" />

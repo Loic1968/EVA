@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
+import EvaLogo from '../components/EvaLogo';
 import { useAuth } from '../context/AuthContext';
 
 export default function SignUp() {
@@ -32,8 +33,9 @@ export default function SignUp() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-eva-dark p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center text-white font-bold text-xl mx-auto mb-3">E</div>
+          <EvaLogo size="md" variant="icon" className="mx-auto mb-2" />
           <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">EVA</h1>
+          <p className="text-[10px] text-slate-500 dark:text-slate-400 -mt-1">by HaliSoft</p>
           <p className="text-slate-600 dark:text-eva-muted text-sm">{location.state?.email ? 'This email is not registered. Create an account:' : 'Create an account'}</p>
         </div>
         <div className="bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 p-6 shadow-sm">

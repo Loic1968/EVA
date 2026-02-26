@@ -1,6 +1,7 @@
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import EvaTopBar from './EvaTopBar';
+import EvaLogo from './EvaLogo';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
 
@@ -53,11 +54,11 @@ export default function Layout({ children }) {
       `}>
         <div className="p-4 border-b border-slate-200 dark:border-slate-700/40 flex items-center justify-between">
           <div className={`flex items-center gap-3 ${collapsed ? 'justify-center w-full' : ''}`}>
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center text-white font-bold text-sm shrink-0">E</div>
+            <EvaLogo size="sm" variant="icon" className="shrink-0" />
             {!collapsed && (
               <div>
                 <h1 className="text-base font-semibold text-slate-900 dark:text-white leading-tight">EVA</h1>
-                <p className="text-[10px] text-slate-500 dark:text-eva-muted leading-tight">Digital Twin</p>
+                <p className="text-[10px] text-slate-500 dark:text-eva-muted leading-tight">by HaliSoft • Digital Twin</p>
                 {evaStatus !== null && (
                   <span className={`inline-flex items-center gap-1 mt-1 text-[10px] ${evaStatus ? 'text-emerald-500' : 'text-amber-500'}`}>
                     <span className={`w-1.5 h-1.5 rounded-full ${evaStatus ? 'bg-emerald-400' : 'bg-amber-400'}`} />

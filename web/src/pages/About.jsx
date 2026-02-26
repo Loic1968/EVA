@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import AboutHero from '../components/AboutHero';
 
 const lang = navigator.language?.startsWith('fr') ? 'fr' : 'en';
 
@@ -111,11 +112,7 @@ export default function About() {
 
   return (
     <div className="space-y-10 max-w-3xl">
-      {/* Hero */}
-      <section className="text-center pt-4">
-        <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">{c.title}</h1>
-        <p className="mt-2 text-slate-600 dark:text-slate-400 text-sm sm:text-base">{c.tagline}</p>
-      </section>
+      <AboutHero title={c.title} tagline={c.tagline} />
 
       {/* What is EVA */}
       <section className="bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 p-6">

@@ -5,6 +5,7 @@
 const db = require('../db');
 const calendarSync = require('../services/calendarSync');
 const gmailSend = require('../services/gmailSend');
+const pushNotificationService = require('../services/pushNotificationService');
 const { getKillSwitch, getNotificationPreferences } = require('../services/settingsService');
 
 const INTERVAL_MS = 5 * 60 * 1000; // 5 min
@@ -111,11 +112,14 @@ async function runNotifications() {
 
             const toEmail = owner.notify_email || owner.email;
             try {
-              await gmailSend.sendEmail(owner.id, {
-                to: toEmail,
-                subject,
-                body,
+              const pushResult = await pushNotificationService.sendToOwner(owner.id, {
+                title: `Reminder: ${ev.title || 'Event'} in ${formatLead(leadMin)}`,
+                body: `${formatEventTime(ev.start_at)}${ev.location ? ` @ ${ev.location}` : ''}`,
+                data: { type: 'calendar', event_id: sourceId, url: '/calendar' },
               });
+              if (pushResult.sent === 0) {
+                await gmailSend.sendEmail(owner.id, { to: toEmail, subject, body });
+              }
               await markSent(owner.id, 'calendar', sourceId, leadMin, toEmail);
               sent.push({ event: ev.title, lead: formatLead(leadMin) });
             } catch (err) {

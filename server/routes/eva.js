@@ -697,6 +697,38 @@ router.put('/settings/:key', async (req, res, next) => {
   }
 });
 
+// Push notifications (Web Push for browser/phone)
+router.get('/push/vapid-public', (req, res) => {
+  const pushService = require('../services/pushNotificationService');
+  const key = pushService.getPublicKey();
+  if (!key) return res.status(503).json({ error: 'Push not configured. Set EVA_VAPID_PUBLIC_KEY and EVA_VAPID_PRIVATE_KEY.' });
+  res.json({ publicKey: key });
+});
+
+router.post('/push/subscribe', async (req, res, next) => {
+  try {
+    const { subscription } = req.body || {};
+    if (!subscription?.endpoint) return res.status(400).json({ error: 'subscription with endpoint required' });
+    const pushService = require('../services/pushNotificationService');
+    const userAgent = req.get('user-agent') || null;
+    const id = await pushService.saveSubscription(req.ownerId, subscription, userAgent);
+    res.json({ ok: true, id });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.get('/push/status', async (req, res, next) => {
+  try {
+    const pushService = require('../services/pushNotificationService');
+    const has = await pushService.hasSubscription(req.ownerId);
+    const configured = !!pushService.getPublicKey();
+    res.json({ subscribed: has, configured });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // Current location (so EVA knows "where am I")
 router.get('/me/location', async (req, res, next) => {
   try {

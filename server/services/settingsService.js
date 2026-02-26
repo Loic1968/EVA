@@ -59,4 +59,18 @@ async function getNotificationPreferences(ownerId) {
   return { enabled: s.enabled !== false, leadMinutes: arr.length ? arr : [15, 60, 1440] };
 }
 
-module.exports = { getSetting, getKillSwitch, getShadowMode, getAutonomousMode, getStyleProfile, getNotificationPreferences };
+/**
+ * @returns {Promise<{enabled:boolean, priorityLevel:'gmail_only'|'gmail_and_ai'}>}
+ * gmail_only = Gmail IMPORTANT label only
+ * gmail_and_ai = Gmail IMPORTANT + AI analysis for unread emails without the label
+ */
+async function getEmailImportancePreferences(ownerId) {
+  const s = await getSetting(ownerId, 'email_importance_preferences');
+  if (!s || typeof s !== 'object') {
+    return { enabled: false, priorityLevel: 'gmail_only' };
+  }
+  const level = s.priorityLevel === 'gmail_and_ai' ? 'gmail_and_ai' : 'gmail_only';
+  return { enabled: s.enabled === true, priorityLevel: level };
+}
+
+module.exports = { getSetting, getKillSwitch, getShadowMode, getAutonomousMode, getStyleProfile, getNotificationPreferences, getEmailImportancePreferences };

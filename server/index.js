@@ -35,13 +35,13 @@ if (!isProd && process.env.EVA_FRONTEND_URL && /:5173(\/|$)/.test(process.env.EV
   console.warn('[EVA] EVA_FRONTEND_URL uses port 5173 but EVA Vite runs on 3001. Change to http://localhost:3001');
 }
 
-// Helmet – security headers (CSP allows OpenAI Realtime for voice)
+// Helmet – security headers (CSP allows OpenAI Realtime for voice, Nominatim for geocoding)
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      connectSrc: ["'self'", "https://api.openai.com", "wss://api.openai.com"],
+      connectSrc: ["'self'", "https://api.openai.com", "wss://api.openai.com", "https://nominatim.openstreetmap.org", "https://api.anthropic.com"],
       mediaSrc: ["'self'", "blob:", "https://api.openai.com"],
       frameSrc: ["'self'", "blob:"],
       objectSrc: ["'self'", "blob:"],
@@ -173,6 +173,13 @@ app.listen(PORT, HOST, () => {
       notificationWorker.start();
     } catch (err) {
       console.warn('[EVA] Notification worker failed to start:', err.message);
+    }
+    // Email importance worker — notify when important email arrives (Gmail label + optional AI)
+    try {
+      const emailImportanceWorker = require('./workers/emailImportanceWorker');
+      emailImportanceWorker.start();
+    } catch (err) {
+      console.warn('[EVA] Email importance worker failed to start:', err.message);
     }
   }
 });

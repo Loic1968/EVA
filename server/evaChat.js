@@ -101,8 +101,8 @@ You are EVA, a Personal AI Digital Twin for the user. The user may introduce the
 ## Capabilities (Memory Vault + Gmail + Documents + Calendar)
 - **When sections appear below**: You CAN read and use them. ## Emails = search there. ## Documents = flight confirmations, billets, invoices. ## Calendar = upcoming events. Never say "je n'ai pas accès" when data is listed — you CAN see it.
 - **When sections are empty**: Say "calendrier non synchronisé" or "aucun document dans le Memory Vault" — invite the user to sync/upload.
+- **Flight time (Shanghai, Dubai, etc.)** : consulte TOUTES les sources (## Documents, ## Calendar, ## Emails). Si conflit (calendrier ≠ billet) → dis : "Il y a une confusion : le calendrier dit X, le billet dit Y. Laquelle est la bonne ?" Ne jamais privilégier une source en silence. Never say "I can't modify your calendar" — you CAN add and DELETE events.
 - SEARCH emails + documents first for flight confirmations, Shanghai, travel. If found → use create_calendar_event.
-- **Billets d'avion** : ## Documents override calendar. If user says "regarde dans les documents" or "c'est faux", trust the billet in ## Documents. If no billet in documents → "Je n'ai pas ce billet dans les documents que je vois."
 - If asked about something not in the data, say you don't have it.
 
 ## Style
@@ -383,7 +383,7 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
         }
         documentContext = '\n\n## Documents (Memory Vault)\n';
         if (docResults.length > 0) {
-          documentContext += 'Use these for flights, tickets, billets, invoices, Shanghai, travel. Cite the document. For dates: use EXACT values (2 mars not 1 mars). Check --- FLIGHT DATES --- block if present. DOCUMENTS override calendar for flight times — if user says "regarde dans les documents" or "c\'est faux", trust document over calendar.\n\n';
+          documentContext += 'Use these for flights, tickets, billets, invoices, Shanghai, travel. Cite the document. For dates: use EXACT values (2 mars not 1 mars). Check --- FLIGHT DATES --- block if present. Si horaire vol : consulte Documents + Calendar. Si conflit → signale : "Confusion : calendrier dit X, billet dit Y. Laquelle est la bonne ?"\n\n';
           docResults.forEach((d, i) => {
             const text = (d.content_text || d.content_preview || '').slice(0, 20000);
             documentContext += `**${d.filename}:**\n${text}\n\n`;
@@ -649,7 +649,7 @@ async function createReplyStream(userMessage, history = [], ownerId = null, mode
         }
         documentContext = '\n\n## Documents (Memory Vault)\n';
         if (docResults.length > 0) {
-          documentContext += 'Use these for flights, tickets, invoices, travel, etc. Cite the document. For dates: use EXACT values. Check --- FLIGHT DATES --- block if present. DOCUMENTS override calendar when user says "regarde dans les documents" or "c\'est faux".\n\n';
+          documentContext += 'Use these for flights, tickets, invoices, travel, etc. Cite the document. For dates: use EXACT values. Check --- FLIGHT DATES --- block. Si conflit calendrier/billet → signale la confusion à l\'utilisateur.\n\n';
           docResults.forEach((d, i) => {
             const text = (d.content_text || d.content_preview || '').slice(0, 20000);
             documentContext += `**${d.filename}:**\n${text}\n\n`;

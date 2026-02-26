@@ -138,6 +138,11 @@ export const api = {
   getSettings: () => request('/settings'),
   setSetting: (key, value) => request(`/settings/${key}`, { method: 'PUT', body: JSON.stringify(value) }),
 
+  // Push notifications (browser/phone)
+  getPushVapidPublic: () => request('/push/vapid-public'),
+  getPushStatus: () => request('/push/status'),
+  subscribePush: (subscription) => request('/push/subscribe', { method: 'POST', body: JSON.stringify({ subscription }) }),
+
   // Location (for EVA: "where am I")
   getLocation: () => request('/me/location'),
   setLocation: (city) => request('/me/location', { method: 'PUT', body: JSON.stringify({ city }) }),

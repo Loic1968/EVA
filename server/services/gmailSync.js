@@ -55,9 +55,13 @@ async function syncEmails(ownerId, gmailAccountId) {
         [newCreds.access_token, new Date(newCreds.expiry_date), gmailAccountId]
       );
     } catch (err) {
+      const isInvalidGrant = /invalid_grant|Token has been expired|revoked/i.test(String(err.message || err.code));
+      const errMsg = isInvalidGrant
+        ? 'Access expired. Disconnect and reconnect this account in Data Sources to re-authorize.'
+        : `Token refresh failed: ${err.message}`;
       await db.query(
         `UPDATE eva.gmail_accounts SET sync_status = 'error', error_message = $1 WHERE id = $2`,
-        [`Token refresh failed: ${err.message}`, gmailAccountId]
+        [errMsg, gmailAccountId]
       );
       throw err;
     }
@@ -149,9 +153,13 @@ async function syncEmails(ownerId, gmailAccountId) {
     console.log(`[Gmail Sync] Synced ${newCount} new emails for account ${gmailAccountId}`);
     return { total: allMessageIds.length, new: newCount };
   } catch (err) {
+    const isInvalidGrant = /invalid_grant|Token has been expired|revoked/i.test(String(err.message || err.code));
+    const errMsg = isInvalidGrant
+      ? 'Access expired. Disconnect and reconnect this account in Data Sources to re-authorize.'
+      : `Sync failed: ${err.message}`;
     await db.query(
       `UPDATE eva.gmail_accounts SET sync_status = 'error', error_message = $1 WHERE id = $2`,
-      [`Sync failed: ${err.message}`, gmailAccountId]
+      [errMsg, gmailAccountId]
     );
     throw err;
   }

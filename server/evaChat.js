@@ -529,8 +529,6 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
   ];
 
   const useThinking = process.env.EVA_USE_THINKING !== 'false';
-  const tempRaw = process.env.EVA_TEMP;
-  const temp = Number(tempRaw);
   const createOptions = {
     model,
     max_tokens: 2048,
@@ -538,13 +536,17 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
     messages,
     tools: ownerId ? CALENDAR_TOOLS : [],
   };
-  if (!Number.isNaN(temp) && temp >= 0 && temp <= 2) {
-    createOptions.temperature = temp;
-  } else if (process.env.EVA_OVERHAUL_ENABLED === 'true') {
-    createOptions.temperature = 0.2; // Overhaul default: low temp for coherence
-  }
   if (useThinking) {
     createOptions.thinking = { type: 'enabled', budget_tokens: 2048 };
+    createOptions.temperature = 1; // Required when thinking is enabled (Anthropic API)
+  } else {
+    const tempRaw = process.env.EVA_TEMP;
+    const temp = Number(tempRaw);
+    if (!Number.isNaN(temp) && temp >= 0 && temp <= 2) {
+      createOptions.temperature = temp;
+    } else if (process.env.EVA_OVERHAUL_ENABLED === 'true') {
+      createOptions.temperature = 0.2;
+    }
   }
 
   let response;

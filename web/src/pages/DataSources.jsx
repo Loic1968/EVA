@@ -135,6 +135,13 @@ export default function DataSources() {
         </div>
       )}
 
+      {/* invalid_grant / re-auth hint */}
+      {hasGmail && gmailAccounts.some((a) => a.sync_status === 'error' && /expired|reconnect|invalid_grant/i.test(a.error_message || '')) && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 text-sm text-red-800 dark:text-red-200">
+          <strong>Réautorisation requise :</strong> Certains comptes ont expiré. Déconnectez-les puis reconnectez-les ci-dessous pour les réactiver.
+        </div>
+      )}
+
       {/* Gmail accounts (connected) */}
       {hasGmail && (
         <div className="bg-white dark:bg-eva-panel rounded-xl border border-emerald-500/30 overflow-hidden">

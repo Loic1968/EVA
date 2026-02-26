@@ -35,7 +35,7 @@ if (!isProd && process.env.EVA_FRONTEND_URL && /:5173(\/|$)/.test(process.env.EV
   console.warn('[EVA] EVA_FRONTEND_URL uses port 5173 but EVA Vite runs on 3001. Change to http://localhost:3001');
 }
 
-// Helmet – security headers (CSP allows OpenAI Realtime for voice, Nominatim for geocoding)
+// Helmet – security headers (CSP allows OpenAI Realtime, Nominatim, email images, fonts)
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
   contentSecurityPolicy: {
@@ -46,8 +46,9 @@ app.use(helmet({
       frameSrc: ["'self'", "blob:"],
       objectSrc: ["'self'", "blob:"],
       scriptSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https:"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com", "https://fonts.googleapis.com", "https:"],
+      imgSrc: ["'self'", "data:", "https:"],
     },
   },
 }));

@@ -344,16 +344,20 @@ async function searchEmails(ownerId, queryText, limit = 5, gmailAccountId = null
 /**
  * Get recent emails for an owner (from synced DB, no Gmail API).
  * Used by Realtime voice to inject email context into session instructions.
+ * @param {number} bodyChars - chars of body_plain to include (default 1200). Use 5000+ for full content.
  */
-async function getRecentEmails(ownerId, limit = 8) {
+async function getRecentEmails(ownerId, limit = 8, bodyChars = 1200) {
   try {
+    const bc = Math.min(Math.max(Number(bodyChars) || 1200, 0), 50000);
     const r = await db.query(
-      `SELECT id, thread_id, from_email, from_name, to_emails, labels, subject, snippet, left(body_plain, 1200) as body_preview, received_at
+      `SELECT id, thread_id, from_email, from_name, to_emails, labels, subject, snippet,
+              left(body_plain, $3) as body_preview,
+              received_at
        FROM eva.emails
        WHERE owner_id = $1
        ORDER BY received_at DESC
        LIMIT $2`,
-      [ownerId, Math.min(limit, 50)]
+      [ownerId, Math.min(limit, 50), bc]
     );
     return r.rows;
   } catch (err) {

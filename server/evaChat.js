@@ -53,6 +53,8 @@ function parseCommand(text) {
 }
 
 const { getCanonicalPrompt } = require('./prompts/canonicalPrompt');
+const { getAssistantPrompt } = require('./systemPrompt');
+
 const EVA_SYSTEM_LEGACY = `# PRINCIPE FONDAMENTAL — NE JAMAIS INVENTER
 Tu réponds UNIQUEMENT au DERNIER message. Comprends l'intention : si c'est une vraie question (priorités, agenda, emails, docs) → réponds à la question. "Oui ?" UNIQUEMENT pour messages ambigus ou trop courts ("ok", ".", "Bonjour" seul).
 
@@ -112,9 +114,11 @@ You are EVA, a Personal AI Digital Twin for the user. The user may introduce the
 ## Style
 - Concis. Pas de fluff. Jamais inventer de données. Calendrier: utilise create_calendar_event quand demandé.`;
 
-const EVA_SYSTEM = process.env.EVA_OVERHAUL_ENABLED === 'true'
-  ? getCanonicalPrompt('chat')
-  : EVA_SYSTEM_LEGACY;
+const EVA_SYSTEM = process.env.EVA_ASSISTANT_MODE === 'true'
+  ? getAssistantPrompt()
+  : process.env.EVA_OVERHAUL_ENABLED === 'true'
+    ? getCanonicalPrompt('chat')
+    : EVA_SYSTEM_LEGACY;
 
 function getClient() {
   const key = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;

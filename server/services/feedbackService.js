@@ -1,25 +1,23 @@
 /**
- * EVA Feedback — read corrections so EVA learns from thumbs down/corrections.
- * Previously unused; now injected into prompts.
+ * EVA feedback — eva.feedback table (thumbs down, corrections).
+ * Used for context: "Éviter X → Utiliser Y".
  */
 const db = require('../db');
 
-async function getRecentFeedback(ownerId, limit = 15) {
+async function getRecentFeedback(ownerId, limit = 10) {
   try {
     const r = await db.query(
-      `SELECT feedback_type, original_text, corrected_text, notes, created_at
+      `SELECT feedback_type, original_text, corrected_text
        FROM eva.feedback
        WHERE owner_id = $1
-         AND feedback_type IN ('correction', 'thumbs_down')
-         AND (corrected_text IS NOT NULL OR original_text IS NOT NULL)
        ORDER BY created_at DESC
        LIMIT $2`,
-      [ownerId, limit]
+      [ownerId, Math.min(limit, 50)]
     );
     return r.rows;
   } catch (e) {
     if (/relation "eva\.feedback" does not exist/i.test(String(e.message))) return [];
-    return [];
+    throw e;
   }
 }
 

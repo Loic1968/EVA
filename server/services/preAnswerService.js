@@ -1,64 +1,56 @@
 /**
- * Pre-answer shortcut — when EVA_OVERHAUL_ENABLED=true, answer directly from facts/memory
- * without calling the LLM. Guarantees consistency for DOB, flight dates, etc.
- * Read-only. No PII in logs.
+ * Pre-answer from DB — when question matches stored fact or object, respond directly.
+ * Used when EVA_ASSISTANT_MODE=true or EVA_OVERHAUL_ENABLED=true.
+ * Avoids LLM call for known facts.
  */
 const factsService = require('./factsService');
-const memoryItems = require('./memoryItemsService');
+const objectsService = require('./objectsService');
 
-/** Question patterns → fact keys to try (in order). Keys are snake_case. */
-const QUESTION_TO_KEYS = [
-  { pattern: /où\s*je\s*suis|où\s*suis-je|where\s*am\s*i|ma\s*position|my\s*location|tu\s*sais\s*où\s*je\s*suis/i, keys: ['current_location', 'location'] },
-  { pattern: /date\s*de\s*naissance|ma\s*date\s*de\s*naissance|birth\s*date|dob|date\s*of\s*birth/i, keys: ['date_of_birth'] },
-  { pattern: /lieu\s*de\s*naissance|place\s*of\s*birth|où\s*je\s*suis\s*né|where\s*(?:i\s*was\s*)?born/i, keys: ['place_of_birth', 'lieu_de_naissance'] },
-  { pattern: /vol|flight|billet|departure|départ|décollage|prochain\s*vol/i, keys: ['flight_departure_date', 'flight_arrival_date', 'vol_date', 'next_flight'] },
-  { pattern: /passport|passeport|numéro\s*de\s*passeport|document\s*number/i, keys: ['passport_number', 'document_number'] },
+const STATUS_QUERY_PATTERNS = [
+  { pattern: /(?:o[uù]|where|statut|status|en\s+est).*(?:mon\s+)?(?:assurance|insurance)/i, key: 'insurance' },
+  { pattern: /(?:o[uù]|where).*(?:on|en)\s*(?:est|we)\s*(?:mon|ma|my)\s*(?:vol|flight|voyage|travel)/i, key: 'travel' },
+  { pattern: /(?:o[uù]|where).*(?:on|en)\s*(?:est|we)\s*(?:ma|my)\s*(?:visa)/i, key: 'visa' },
+  { pattern: /(?:date|when).*(?:naissance|birth|born)/i, key: 'date_of_birth' },
+  { pattern: /(?:ma|my)\s*(?:date\s+de\s+naissance|date\s+of\s+birth|dob)/i, key: 'date_of_birth' },
+  { pattern: /(?:lieu|place).*(?:naissance|birth)/i, key: 'place_of_birth' },
+  { pattern: /(?:vol|flight).*(?:shanghai|pvg|dubai|dxb)/i, key: 'departure_date' },
+  { pattern: /(?:quand|when).*(?:part|depart|leave)/i, key: 'departure_date' },
 ];
 
-/**
- * Try to answer directly from eva.facts or eva.memory_items.
- * @param {number} ownerId
- * @param {string} userMessage - trimmed user message
- * @returns {Promise<{reply:string, source:string, confidence:number}|null>}
- */
 async function tryPreAnswer(ownerId, userMessage) {
-  if (!ownerId || typeof userMessage !== 'string') return null;
-  const msg = userMessage.trim();
-  if (!msg || msg.length < 3) return null;
+  if (!ownerId || !userMessage || typeof userMessage !== 'string') return null;
 
-  for (const { pattern, keys } of QUESTION_TO_KEYS) {
-    if (!pattern.test(msg)) continue;
-    for (const key of keys) {
-      // 1. eva.facts (when EVA_STRUCTURED_MEMORY)
-      if (process.env.EVA_STRUCTURED_MEMORY === 'true') {
-        try {
-          const fact = await factsService.getFactByKey(ownerId, key);
-          if (fact && fact.value) {
-            const conf = fact.confidence != null ? Number(fact.confidence) : 0.9;
-            const src = fact.source_type || 'fact';
-            return {
-              reply: `${fact.value} (${src}, confiance ${(conf * 100).toFixed(0)}%)`,
-              source: src,
-              confidence: conf,
-            };
-          }
-        } catch (_) {}
+  const msg = userMessage.trim();
+  if (msg.length < 3) return null;
+
+  // 1. Check facts first (date_of_birth, etc.)
+  for (const { pattern, key } of STATUS_QUERY_PATTERNS) {
+    if (pattern.test(msg)) {
+      const fact = await factsService.getFactByKey(ownerId, key);
+      if (fact && fact.value) {
+        return {
+          reply: fact.value,
+          source: 'fact',
+          key: fact.key,
+        };
       }
-      // 2. eva.memory_items (always, as fallback)
-      try {
-        const item = await memoryItems.getByKey(ownerId, key);
-        if (item && item.value) {
-          const src = item.kind === 'correction' ? 'correction' : item.kind || 'memory';
+      // 2. Check objects for status questions (insurance, travel, visa)
+      if (['insurance', 'travel', 'visa'].includes(key)) {
+        const obj = await objectsService.getByType(ownerId, key);
+        if (obj && (obj.status || obj.metadata?.status)) {
+          const status = obj.status || obj.metadata?.status;
+          const next = obj.metadata?.next_action || '—';
           return {
-            reply: `${item.value} (${src}, confiance 90%)`,
-            source: src,
-            confidence: 0.9,
+            reply: `Status: ${status}. Next action: ${next}.`,
+            source: 'object',
+            key,
           };
         }
-      } catch (_) {}
+      }
     }
   }
+
   return null;
 }
 
-module.exports = { tryPreAnswer, QUESTION_TO_KEYS };
+module.exports = { tryPreAnswer };

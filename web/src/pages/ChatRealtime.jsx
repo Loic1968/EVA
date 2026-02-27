@@ -4,6 +4,7 @@
  */
 import { useEffect, useRef, useState, useCallback } from 'react';
 import EvaLoading from '../components/EvaLoading';
+import MicSpeakerTest from '../components/MicSpeakerTest';
 
 function getApiBase() {
   if (import.meta.env.VITE_EVA_API_URL)
@@ -37,6 +38,8 @@ export default function ChatRealtime() {
   const audioRef = useRef(null);
   const durationInterval = useRef(null);
   const wakeLockRef = useRef(null);
+  const micStreamRef = useRef(null);
+  const [liveMicLevel, setLiveMicLevel] = useState(0);
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
@@ -78,8 +81,10 @@ export default function ChatRealtime() {
       pc.close();
       peerRef.current = null;
     }
+    micStreamRef.current = null;
     if (!keepConnectingState) setStatus('idle');
     setCallDuration(0);
+    setLiveMicLevel(0);
   }, [releaseWakeLock]);
 
   const startSession = useCallback(async () => {
@@ -114,6 +119,7 @@ export default function ChatRealtime() {
       const audioOpts = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
       if (selectedDeviceId) audioOpts.deviceId = { ideal: selectedDeviceId };
       const ms = await navigator.mediaDevices.getUserMedia({ audio: audioOpts });
+      micStreamRef.current = ms;
       localStorage.setItem(EVA_AUDIO_INPUT_KEY, selectedDeviceId);
       pc.addTrack(ms.getTracks()[0]);
 
@@ -196,6 +202,31 @@ export default function ChatRealtime() {
 
   useEffect(() => () => stopSession(), [stopSession]);
 
+  // Live mic level (equalizer) during call
+  useEffect(() => {
+    if (status !== 'connected' || !micStreamRef.current) return;
+    const ctx = new AudioContext();
+    const src = ctx.createMediaStreamSource(micStreamRef.current);
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 256;
+    analyser.smoothingTimeConstant = 0.8;
+    src.connect(analyser);
+    const data = new Uint8Array(analyser.frequencyBinCount);
+    let rafId;
+    const tick = () => {
+      if (!micStreamRef.current) return;
+      analyser.getByteFrequencyData(data);
+      const avg = data.reduce((a, b) => a + b, 0) / data.length;
+      setLiveMicLevel(Math.min(100, (avg / 128) * 100));
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(rafId);
+      ctx.close();
+    };
+  }, [status]);
+
   // Re-request Wake Lock when user returns to tab (browser releases it when tab is hidden)
   useEffect(() => {
     const onVis = () => {
@@ -230,25 +261,28 @@ export default function ChatRealtime() {
           <p className="text-slate-600 dark:text-slate-400 text-sm text-center max-w-xs">
             Live voice conversation (like ChatGPT)
           </p>
-          {audioDevices.length > 0 && (
-            <div className="w-full max-w-xs">
-              <label className="block text-slate-500 dark:text-slate-400 text-xs mb-1">
-                🎧 Microphone (AirPods, etc.)
-              </label>
-              <select
-                value={selectedDeviceId}
-                onChange={(e) => setSelectedDeviceId(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-white dark:bg-slate-800/80 border border-slate-300 dark:border-slate-600/60 text-slate-900 dark:text-slate-200 text-sm focus:outline-none focus:ring-1 focus:ring-red-400"
-              >
-                <option value="">Default</option>
-                {audioDevices.map((d) => (
-                  <option key={d.deviceId} value={d.deviceId}>
-                    {d.label || `Mic ${audioDevices.indexOf(d) + 1}`}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+          <div className="w-full max-w-xs space-y-3">
+            {audioDevices.length > 0 && (
+              <div>
+                <label className="block text-slate-500 dark:text-slate-400 text-xs mb-1">
+                  🎧 Microphone (AirPods, etc.)
+                </label>
+                <select
+                  value={selectedDeviceId}
+                  onChange={(e) => setSelectedDeviceId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-white dark:bg-slate-800/80 border border-slate-300 dark:border-slate-600/60 text-slate-900 dark:text-slate-200 text-sm focus:outline-none focus:ring-1 focus:ring-red-400"
+                >
+                  <option value="">Default</option>
+                  {audioDevices.map((d) => (
+                    <option key={d.deviceId} value={d.deviceId}>
+                      {d.label || `Mic ${audioDevices.indexOf(d) + 1}`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <MicSpeakerTest selectedDeviceId={selectedDeviceId || undefined} />
+          </div>
           <button
             onClick={startSession}
             className="w-20 h-20 min-w-[72px] min-h-[72px] rounded-full bg-emerald-500 hover:bg-emerald-400 text-white flex items-center justify-center text-2xl shadow-lg shadow-emerald-500/30 transition-all hover:scale-105 active:scale-95 touch-manipulation"
@@ -284,6 +318,23 @@ export default function ChatRealtime() {
             </div>
             <p className="text-emerald-600 dark:text-emerald-400 font-medium">Connected</p>
             <p className="text-slate-600 dark:text-slate-500 text-sm font-mono">{formatDuration(callDuration)}</p>
+            {/* Live mic indicator — equalizer style */}
+            <div className="flex flex-col items-center gap-1 mt-2">
+              <p className="text-[10px] text-slate-500 dark:text-slate-400">Mic level</p>
+              <div className="flex items-end justify-center gap-0.5 h-6">
+                {Array.from({ length: 8 }, (_, i) => {
+                  const v = (liveMicLevel / 100) * (Math.sin((i / 8) * Math.PI) * 0.3 + 0.7);
+                  const h = 4 + Math.min(20, v * 20);
+                  return (
+                    <div
+                      key={i}
+                      className="w-1.5 rounded-sm bg-emerald-500/80 dark:bg-emerald-400/80 transition-all duration-75"
+                      style={{ height: `${h}px` }}
+                    />
+                  );
+                })}
+              </div>
+            </div>
           </div>
           <div className="flex-1 rounded-xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/40 p-4 max-h-64 overflow-y-auto space-y-3">
             {transcript.length === 0 ? (

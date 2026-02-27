@@ -5,12 +5,23 @@
 const FACTS_SERVICE = require('./services/factsService');
 
 const INTENTS = Object.freeze({
+  CHECK_IN: 'CHECK_IN',
   IDENTITY_QUERY: 'IDENTITY_QUERY',
   FACT_QUERY: 'FACT_QUERY',
   STATUS_QUERY: 'STATUS_QUERY',
   ACTION_QUERY: 'ACTION_QUERY',
   GENERAL_CHAT: 'GENERAL_CHAT',
 });
+
+/** Check-in: user asks if EVA hears them → "Oui" only, no LLM */
+const CHECK_IN_PATTERNS = [
+  /tu\s+m['']entends\s*\??/i,
+  /tu\s+m[''][eé]coutes\s*\??/i,
+  /are\s+you\s+there\s*\??/i,
+  /do\s+you\s+hear\s+me\s*\??/i,
+  /tu\s+me\s+entends/i,
+  /tu\s+me\s+[eé]coutes/i,
+];
 
 /** Identity patterns → fact key to return. Order matters: first match wins. */
 const IDENTITY_PATTERNS = [
@@ -54,18 +65,21 @@ function detectIntent(userMessage) {
   const msg = userMessage.trim().toLowerCase();
   if (msg.length < 2) return INTENTS.GENERAL_CHAT;
 
-  // 1. Identity first
+  // 1. Check-in first (Tu m'entends ? → Oui)
+  if (CHECK_IN_PATTERNS.some((re) => re.test(userMessage))) return INTENTS.CHECK_IN;
+
+  // 2. Identity
   for (const { pattern } of IDENTITY_PATTERNS) {
     if (pattern.test(userMessage.trim())) return INTENTS.IDENTITY_QUERY;
   }
 
-  // 2. Status
+  // 3. Status
   if (STATUS_PATTERNS.some((re) => re.test(userMessage))) return INTENTS.STATUS_QUERY;
 
-  // 3. Action
+  // 4. Action
   if (ACTION_PATTERNS.some((re) => re.test(userMessage))) return INTENTS.ACTION_QUERY;
 
-  // 4. Fact (questions about stored facts)
+  // 5. Fact (questions about stored facts)
   if (FACT_PATTERNS.some((re) => re.test(userMessage))) return INTENTS.FACT_QUERY;
 
   return INTENTS.GENERAL_CHAT;
@@ -82,6 +96,8 @@ function getIdentityFactKey(userMessage) {
 }
 
 const IDENTITY_FALLBACK = "I do not currently have this information stored.";
+
+const CHECK_IN_REPLY = "Oui, je t'entends.";
 
 /**
  * Resolve identity query from eva.facts. NO LLM. No emails, documents, or conversation context.
@@ -110,4 +126,5 @@ module.exports = {
   resolveIdentityQuery,
   INTENTS,
   IDENTITY_FALLBACK,
+  CHECK_IN_REPLY,
 };

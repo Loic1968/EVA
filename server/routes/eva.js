@@ -226,7 +226,9 @@ router.post('/chat', async (req, res, next) => {
     const intent = intentRouter.detectIntent(msgToSend);
     let result;
 
-    if (intent === intentRouter.INTENTS.IDENTITY_QUERY && req.ownerId) {
+    if (intent === intentRouter.INTENTS.CHECK_IN) {
+      result = { reply: intentRouter.CHECK_IN_REPLY, model: 'intent-check-in', tokens: { input: 0, output: 0 } };
+    } else if (intent === intentRouter.INTENTS.IDENTITY_QUERY && req.ownerId) {
       const reply = await intentRouter.resolveIdentityQuery(req.ownerId, msgToSend);
       result = { reply, model: 'intent-identity', tokens: { input: 0, output: 0 } };
     } else if (intent === intentRouter.INTENTS.FACT_QUERY && req.ownerId) {
@@ -445,7 +447,9 @@ router.post('/chat/stream', async (req, res, next) => {
     // Intent Router — before context/LLM (no emails, docs, history for identity/fact)
     const intentStream = intentRouter.detectIntent(msgToSend);
     let resultStream = null;
-    if (intentStream === intentRouter.INTENTS.IDENTITY_QUERY && req.ownerId) {
+    if (intentStream === intentRouter.INTENTS.CHECK_IN) {
+      resultStream = { reply: intentRouter.CHECK_IN_REPLY, model: 'intent-check-in', tokens: { input: 0, output: 0 } };
+    } else if (intentStream === intentRouter.INTENTS.IDENTITY_QUERY && req.ownerId) {
       const reply = await intentRouter.resolveIdentityQuery(req.ownerId, msgToSend);
       resultStream = { reply, model: 'intent-identity', tokens: { input: 0, output: 0 } };
     } else if (intentStream === intentRouter.INTENTS.FACT_QUERY && req.ownerId) {

@@ -110,9 +110,14 @@ router.post('/chat', async (req, res, next) => {
     const killOn = await getKillSwitch(req.ownerId);
     if (killOn) return res.status(503).json({ error: 'EVA paused (kill switch)', kill_switch: true });
 
-    const { message, history, conversation_id, document_ids } = req.body || {};
+    const { message, history, conversation_id, document_ids, origin } = req.body || {};
     if (!message || typeof message !== 'string') {
       return res.status(400).json({ error: 'message (string) required' });
+    }
+    const isVoice = origin === 'voice';
+    if (isVoice) {
+      req.disableMemoryWrites = true;
+      req.disableLearning = true;
     }
 
     let attachedDocuments = [];
@@ -141,8 +146,11 @@ router.post('/chat', async (req, res, next) => {
     const parsed = evaChat.parseCommand(message.trim());
     const { command, message: parsedMsg, mode } = parsed;
 
-    // Memory commands => no LLM call
+    // Memory commands => no LLM call. Voice: block (never modify memory from voice).
     if (command === 'remember' || command === 'correct' || command === 'forget' || command === 'memory') {
+      if (isVoice) {
+        return res.json({ reply: 'Use text chat to save preferences.', model: 'voice-blocked', tokens: { input: 0, output: 0 } });
+      }
       const memoryItems = require('../services/memoryItemsService');
       const useStructured = process.env.EVA_STRUCTURED_MEMORY === 'true';
       const factsService = useStructured ? require('../services/factsService') : null;
@@ -262,6 +270,7 @@ router.post('/chat', async (req, res, next) => {
       result = await evaChat.reply(msgToSend, chatHistory, req.ownerId, mode, {
         attachedDocuments,
         aiProvider,
+        disableMemoryWrites: req.disableMemoryWrites,
       });
     }
 
@@ -284,14 +293,15 @@ router.post('/chat', async (req, res, next) => {
          WHERE id = $1 AND owner_id = $2`,
         [convId, req.ownerId, message.trim().slice(0, 100)]
       );
-      // Learn from conversation (async, fire-and-forget)
-      const conversationLearning = require('../services/conversationLearningService');
-      const historyWithNewTurn = [
-        ...chatHistory,
-        { role: 'user', content: message.trim() },
-        { role: 'assistant', content: result.reply },
-      ];
-      conversationLearning.learnFromConversation(req.ownerId, historyWithNewTurn);
+      if (!req.disableLearning) {
+        const conversationLearning = require('../services/conversationLearningService');
+        const historyWithNewTurn = [
+          ...chatHistory,
+          { role: 'user', content: message.trim() },
+          { role: 'assistant', content: result.reply },
+        ];
+        conversationLearning.learnFromConversation(req.ownerId, historyWithNewTurn);
+      }
     }
 
     // Audit log
@@ -325,9 +335,14 @@ router.post('/chat/stream', async (req, res, next) => {
     const killOn = await getKillSwitch(req.ownerId);
     if (killOn) return res.status(503).json({ error: 'EVA paused (kill switch)', kill_switch: true });
 
-    const { message, history, conversation_id, document_ids } = req.body || {};
+    const { message, history, conversation_id, document_ids, origin } = req.body || {};
     if (!message || typeof message !== 'string') {
       return res.status(400).json({ error: 'message (string) required' });
+    }
+    const isVoiceStream = origin === 'voice';
+    if (isVoiceStream) {
+      req.disableMemoryWrites = true;
+      req.disableLearning = true;
     }
 
     let attachedDocumentsStream = [];
@@ -357,6 +372,14 @@ router.post('/chat/stream', async (req, res, next) => {
     const { command, message: parsedMsg, mode } = parsedStream;
 
     if (command === 'remember' || command === 'correct' || command === 'forget' || command === 'memory') {
+      if (isVoiceStream) {
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        res.flushHeaders?.();
+        res.write(`data: ${JSON.stringify({ type: 'done', reply: 'Use text chat to save preferences.', model: 'voice-blocked', tokens: { input: 0, output: 0 } })}\n\n`);
+        return res.end();
+      }
       const memoryItems = require('../services/memoryItemsService');
       const useStructured = process.env.EVA_STRUCTURED_MEMORY === 'true';
       const factsService = useStructured ? require('../services/factsService') : null;
@@ -480,6 +503,7 @@ router.post('/chat/stream', async (req, res, next) => {
         result = await evaChat.reply(msgToSend, chatHistory, req.ownerId, mode, {
           attachedDocuments: attachedDocumentsStream,
           aiProvider,
+          disableMemoryWrites: req.disableMemoryWrites,
         });
       }
       res.setHeader('Content-Type', 'text/event-stream');
@@ -502,13 +526,15 @@ router.post('/chat/stream', async (req, res, next) => {
           `UPDATE eva.conversations SET updated_at = now(), title = COALESCE(NULLIF(title, ''), $3) WHERE id = $1 AND owner_id = $2`,
           [convId, req.ownerId, message.trim().slice(0, 100)]
         );
-        const conversationLearning = require('../services/conversationLearningService');
-        const historyWithNewTurn = [
-          ...chatHistory,
-          { role: 'user', content: message.trim() },
-          { role: 'assistant', content: result.reply },
-        ];
-        conversationLearning.learnFromConversation(req.ownerId, historyWithNewTurn);
+        if (!req.disableLearning) {
+          const conversationLearning = require('../services/conversationLearningService');
+          const historyWithNewTurn = [
+            ...chatHistory,
+            { role: 'user', content: message.trim() },
+            { role: 'assistant', content: result.reply },
+          ];
+          conversationLearning.learnFromConversation(req.ownerId, historyWithNewTurn);
+        }
       }
       await db.query(
         `INSERT INTO eva.audit_logs (owner_id, action_type, channel, details) VALUES ($1, 'query', 'chat', $2)`,
@@ -768,6 +794,30 @@ router.get('/settings', async (req, res, next) => {
     const settings = {};
     r.rows.forEach((row) => { settings[row.key] = parseSettingValue(row.value); });
     res.json(settings);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.get('/settings/flags', async (req, res, next) => {
+  try {
+    const featureFlagService = require('../services/featureFlagService');
+    const flags = await featureFlagService.getAllFlags();
+    res.json(flags);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post('/settings/flags/:key', async (req, res, next) => {
+  try {
+    const { key } = req.params;
+    const { enabled } = req.body || {};
+    const featureFlagService = require('../services/featureFlagService');
+    await featureFlagService.setFlag(key, enabled === true);
+    featureFlagService.invalidateCache();
+    const flags = await featureFlagService.getAllFlags();
+    res.json({ key, enabled: flags[key] === true, flags });
   } catch (e) {
     next(e);
   }

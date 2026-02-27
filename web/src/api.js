@@ -73,18 +73,18 @@ export const api = {
       headers: { Authorization: `Bearer ${token}` },
     }).then((r) => (r.ok ? r.json() : Promise.reject(new Error('Unauthorized')))),
 
-  // Chat (non-streaming)
-  chat: (message, history, conversation_id, document_ids) =>
-    request('/chat', { method: 'POST', body: JSON.stringify({ message, history, conversation_id, document_ids }) }),
+  // Chat (non-streaming). opts: { origin: 'voice' } for voice input (disables memory writes).
+  chat: (message, history, conversation_id, document_ids, opts = {}) =>
+    request('/chat', { method: 'POST', body: JSON.stringify({ message, history, conversation_id, document_ids, origin: opts.origin }) }),
 
   // Chat stream (SSE) — returns async iterable of { type, text?, reply?, ... }
-  // Pass { signal } to abort (e.g. when user says "stop" or clicks Stop button)
+  // Pass { signal } to abort, { origin: 'voice' } for voice (disables memory writes).
   chatStream: async function* (message, history, conversation_id, document_ids, opts = {}) {
     const url = `${API_BASE.replace(/\/$/, '')}/chat/stream`;
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-      body: JSON.stringify({ message, history, conversation_id, document_ids }),
+      body: JSON.stringify({ message, history, conversation_id, document_ids, origin: opts.origin }),
       signal: opts.signal,
     });
     if (res.status === 401) { onAuthFailure(); throw new Error('Session expired'); }
@@ -139,6 +139,8 @@ export const api = {
   // Settings
   getSettings: () => request('/settings'),
   setSetting: (key, value) => request(`/settings/${key}`, { method: 'PUT', body: JSON.stringify(value) }),
+  getFeatureFlags: () => request('/settings/flags'),
+  setFeatureFlag: (key, enabled) => request(`/settings/flags/${key}`, { method: 'POST', body: JSON.stringify({ enabled }) }),
 
   // Push notifications (browser/phone)
   getPushVapidPublic: () => request('/push/vapid-public'),

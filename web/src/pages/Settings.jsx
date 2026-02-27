@@ -29,6 +29,7 @@ export default function Settings() {
   const [pushError, setPushError] = useState(null);
   const [activeTab, setActiveTab] = useState('general');
   const [controlError, setControlError] = useState(null);
+  const [featureFlags, setFeatureFlags] = useState({});
 
   const TABS = [
     { id: 'general', label: 'General', icon: '⚙️' },
@@ -59,6 +60,10 @@ export default function Settings() {
     api.getLocation()
       .then(({ location }) => setLocationState(location || ''))
       .catch(() => setLocationState(''));
+  }, []);
+
+  useEffect(() => {
+    api.getFeatureFlags().then((f) => setFeatureFlags(f)).catch(() => setFeatureFlags({}));
   }, []);
 
   useEffect(() => {
@@ -795,6 +800,45 @@ export default function Settings() {
       {/* Control */}
       {activeTab === 'control' && (
       <div className="space-y-6">
+      {/* Feature flags — runtime ON/OFF */}
+      <div className="rounded-xl border p-6 max-w-2xl bg-white dark:bg-eva-panel border-slate-200 dark:border-slate-700/40">
+        <h2 className="text-lg font-medium text-slate-900 dark:text-white mb-1">Runtime flags</h2>
+        <p className="text-slate-500 dark:text-eva-muted text-sm mb-4">Toggle features without redeploy. All OFF = simple chat, no automatic learning.</p>
+        <div className="space-y-3">
+          {[
+            { key: 'assistant_mode', label: 'Assistant Mode' },
+            { key: 'voice_safe_mode', label: 'Voice Safe Mode', hint: 'Block memory writes from voice (recommended ON)' },
+            { key: 'memory_learning', label: 'Memory Learning' },
+            { key: 'conversation_learning', label: 'Conversation Learning' },
+            { key: 'smart_context', label: 'Smart Context' },
+            { key: 'auto_object_update', label: 'Auto Object Update' },
+            { key: 'voice_memory_write', label: 'Voice Memory Write' },
+          ].map(({ key, label, hint }) => (
+            <div key={key} className="flex items-center justify-between py-2 border-b border-slate-100 dark:border-slate-700/40 last:border-0">
+              <div>
+                <span className="text-sm font-medium text-slate-900 dark:text-white">{label}</span>
+                {hint && <p className="text-xs text-slate-500 dark:text-eva-muted mt-0.5">{hint}</p>}
+              </div>
+              <button
+                type="button"
+                onClick={async () => {
+                  const next = !featureFlags[key];
+                  try {
+                    await api.setFeatureFlag(key, next);
+                    setFeatureFlags((f) => ({ ...f, [key]: next }));
+                  } catch (e) {
+                    setControlError(e?.message || 'Failed');
+                  }
+                }}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${featureFlags[key] ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' : 'bg-slate-200 dark:bg-slate-600/40 text-slate-600 dark:text-slate-500'}`}
+              >
+                {featureFlags[key] ? 'ON' : 'OFF'}
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* P5: Autonomous Mode */}
       <div className={`rounded-xl border p-6 max-w-2xl transition-colors ${
         autonomousModeOn ? 'bg-amber-500/5 border-amber-500/30' : 'bg-white dark:bg-eva-panel border-slate-200 dark:border-slate-700/40'

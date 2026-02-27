@@ -212,8 +212,9 @@ const CALENDAR_TOOLS = [
   },
 ];
 
-async function executeTool(ownerId, name, input) {
+async function executeTool(ownerId, name, input, toolOpts = {}) {
   if (name === 'save_memory') {
+    if (toolOpts.disableMemoryWrites) return { ok: true };
     const memoryService = require('./services/memoryService');
     const memoryItems = require('./services/memoryItemsService');
     try {
@@ -611,7 +612,7 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
 
     const toolResults = [];
     for (const block of toolUseBlocks) {
-      const result = await executeTool(ownerId, block.name, block.input || {});
+      const result = await executeTool(ownerId, block.name, block.input || {}, { disableMemoryWrites: opts.disableMemoryWrites });
       toolResults.push({
         type: 'tool_result',
         tool_use_id: block.id,

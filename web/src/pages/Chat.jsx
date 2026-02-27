@@ -148,9 +148,10 @@ export default function Chat() {
     speakingRef.current = false;
   }, [voiceOutput]);
 
-  const send = useCallback(async (overrideText) => {
+  const send = useCallback(async (overrideText, opts = {}) => {
     const text = (overrideText ?? input).toString().trim();
     if ((!text && attachedFiles.length === 0) || loading) return;
+    const origin = opts.origin; // 'voice' = disable memory writes
 
     if (STOP_COMMAND.test(text)) {
       stopEva();
@@ -217,7 +218,7 @@ export default function Chat() {
     try {
       let usedStream = false;
       try {
-        for await (const event of api.chatStream(msgForEva, [], convId, documentIds, { signal: ac.signal })) {
+        for await (const event of api.chatStream(msgForEva, [], convId, documentIds, { signal: ac.signal, origin })) {
           usedStream = true;
           if (event.type === 'chunk' && event.text) {
             accumulated += event.text;
@@ -245,7 +246,7 @@ export default function Chat() {
         }
       } catch (streamErr) {
         if (usedStream) throw streamErr;
-        const { reply, reset, conversation_id, ai_provider } = await api.chat(msgForEva, [], convId, documentIds);
+        const { reply, reset, conversation_id, ai_provider } = await api.chat(msgForEva, [], convId, documentIds, { origin });
         streamingTextRef.current = reply || '';
         streamDoneRef.current = true;
         if (ai_provider) setAiProvider(ai_provider);
@@ -287,7 +288,7 @@ export default function Chat() {
     if (!voiceInput.isListening) return;
     voiceInput.stopListening((transcript) => {
       const text = (transcript || '').trim();
-      if (text) send(text);
+      if (text) send(text, { origin: 'voice' });
       setInput('');
     });
   }, [voiceInput, send]);

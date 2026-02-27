@@ -53,21 +53,46 @@ export function useVoiceInput(lang = DEFAULT_LANG) {
     setInterimTranscript('');
     finalRef.current = '';
     recognitionRef.current = null;
+    let silenceTimer = null;
+    const FLUSH_SILENCE_MS = 1500;
+    const MIN_WORDS = 3;
+    const MIN_LENGTH = 12;
+
+    const flushVoice = () => {
+      if (silenceTimer) clearTimeout(silenceTimer);
+      silenceTimer = null;
+      const msg = (finalRef.current || '').trim().replace(/\s+/g, ' ');
+      if (!msg) return;
+      const words = msg.split(/\s+/).filter(Boolean).length;
+      if (words < MIN_WORDS || msg.length < MIN_LENGTH) {
+        finalRef.current = '';
+        return;
+      }
+      finalRef.current = '';
+      const rec = recognitionRef.current;
+      if (rec?._onStopped) rec._onStopped(msg);
+      if (rec) rec._onStopped = null;
+    };
+
     const rec = new SpeechRecognition();
     rec.continuous = true;
     rec.interimResults = true;
     rec.lang = langCode;
     rec.maxAlternatives = 1;
     rec.onresult = (e) => {
+      if (silenceTimer) clearTimeout(silenceTimer);
       let interim = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
-        const transcript = e.results[i][0].transcript;
-        if (e.results[i].isFinal) finalRef.current += transcript;
-        else interim += transcript;
+        const r = e.results[i];
+        const t = r[0].transcript;
+        if (r.isFinal) {
+          finalRef.current = (finalRef.current || '') + t + ' ';
+        } else {
+          interim += t;
+        }
       }
-      const full = finalRef.current + interim;
-      rec._lastTranscript = full;
-      setInterimTranscript(full);
+      setInterimTranscript(((finalRef.current || '') + interim).trim());
+      silenceTimer = setTimeout(flushVoice, FLUSH_SILENCE_MS);
     };
     rec.onerror = (e) => {
       if (e.error === 'not-allowed') setError(lang === 'fr' ? 'Micro bloqué. Autorisez le micro.' : 'Micro blocked.');
@@ -75,9 +100,16 @@ export function useVoiceInput(lang = DEFAULT_LANG) {
       else if (e.error !== 'aborted') setError(`Erreur: ${e.error}`);
     };
     rec.onend = () => {
-      const t = (rec._lastTranscript || finalRef.current || '').trim();
+      if (silenceTimer) clearTimeout(silenceTimer);
+      silenceTimer = null;
+      const t = (finalRef.current || '').trim().replace(/\s+/g, ' ');
       finalRef.current = '';
-      rec._onStopped && rec._onStopped(t);
+      if (t) {
+        const words = t.split(/\s+/).filter(Boolean).length;
+        if (words >= MIN_WORDS && t.length >= MIN_LENGTH && rec._onStopped) {
+          rec._onStopped(t);
+        }
+      }
       rec._onStopped = null;
       recognitionRef.current = null;
       setInterimTranscript('');

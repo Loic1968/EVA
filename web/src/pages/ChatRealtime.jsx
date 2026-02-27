@@ -39,7 +39,7 @@ export default function ChatRealtime() {
   const durationInterval = useRef(null);
   const wakeLockRef = useRef(null);
   const micStreamRef = useRef(null);
-  const [liveMicLevel, setLiveMicLevel] = useState(0);
+  const [liveBands, setLiveBands] = useState(() => Array(10).fill(0));
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
@@ -84,7 +84,7 @@ export default function ChatRealtime() {
     micStreamRef.current = null;
     if (!keepConnectingState) setStatus('idle');
     setCallDuration(0);
-    setLiveMicLevel(0);
+    setLiveBands(() => Array(10).fill(0));
   }, [releaseWakeLock]);
 
   const startSession = useCallback(async () => {
@@ -202,22 +202,32 @@ export default function ChatRealtime() {
 
   useEffect(() => () => stopSession(), [stopSession]);
 
-  // Live mic level (equalizer) during call
+  // Live equalizer (real frequency bands) during call
   useEffect(() => {
     if (status !== 'connected' || !micStreamRef.current) return;
     const ctx = new AudioContext();
     const src = ctx.createMediaStreamSource(micStreamRef.current);
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 256;
-    analyser.smoothingTimeConstant = 0.8;
+    analyser.smoothingTimeConstant = 0.6;
     src.connect(analyser);
     const data = new Uint8Array(analyser.frequencyBinCount);
+    const BANDS = 10;
+    const bucketSize = Math.floor(data.length / BANDS);
     let rafId;
     const tick = () => {
       if (!micStreamRef.current) return;
       analyser.getByteFrequencyData(data);
-      const avg = data.reduce((a, b) => a + b, 0) / data.length;
-      setLiveMicLevel(Math.min(100, (avg / 128) * 100));
+      const bands = [];
+      for (let b = 0; b < BANDS; b++) {
+        let sum = 0;
+        const start = b * bucketSize;
+        const end = Math.min(start + bucketSize, data.length);
+        for (let i = start; i < end; i++) sum += data[i];
+        const avg = sum / (end - start);
+        bands.push(Math.min(100, (avg / 128) * 100));
+      }
+      setLiveBands(bands);
       rafId = requestAnimationFrame(tick);
     };
     rafId = requestAnimationFrame(tick);
@@ -318,17 +328,16 @@ export default function ChatRealtime() {
             </div>
             <p className="text-emerald-600 dark:text-emerald-400 font-medium">Connected</p>
             <p className="text-slate-600 dark:text-slate-500 text-sm font-mono">{formatDuration(callDuration)}</p>
-            {/* Live mic indicator — equalizer style */}
+            {/* Live equalizer — bars move with voice (frequency bands) */}
             <div className="flex flex-col items-center gap-1 mt-2">
-              <p className="text-[10px] text-slate-500 dark:text-slate-400">Mic level</p>
-              <div className="flex items-end justify-center gap-0.5 h-6">
-                {Array.from({ length: 8 }, (_, i) => {
-                  const v = (liveMicLevel / 100) * (Math.sin((i / 8) * Math.PI) * 0.3 + 0.7);
-                  const h = 4 + Math.min(20, v * 20);
+              <p className="text-[10px] text-slate-500 dark:text-slate-400">Live</p>
+              <div className="flex items-end justify-center gap-0.5 h-8">
+                {liveBands.map((v, i) => {
+                  const h = 4 + Math.min(24, (v / 100) * 24);
                   return (
                     <div
                       key={i}
-                      className="w-1.5 rounded-sm bg-emerald-500/80 dark:bg-emerald-400/80 transition-all duration-75"
+                      className="w-1.5 rounded-sm bg-emerald-500/90 dark:bg-emerald-400/90 transition-all duration-50"
                       style={{ height: `${h}px` }}
                     />
                   );

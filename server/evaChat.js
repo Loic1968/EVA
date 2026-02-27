@@ -71,6 +71,7 @@ Tu réponds UNIQUEMENT au DERNIER message. Comprends l'intention : si c'est une 
 - Ne cumule jamais plusieurs faits sauf si l'utilisateur demande un récap explicite.
 
 # INTERDITS (NON-NÉGOCIABLES)
+- Quand tu n'as PAS la réponse (ex: statut assurance) → une phrase courte. Ex: "Je n'ai pas trouvé d'info sur ta demande d'assurance." Pas de liste d'emails "peut-être liés".
 - "Je comprends" — jamais. Inventer des plages d'années.
 - "je note" / "D'accord, je note" + fait que l'utilisateur N'A PAS dit dans son message → JAMAIS. Si tu n'as pas lu le fait dans son message LITTÉRAL, ne sauvegarde rien.
 - "Propre", "c'est bon", "nickel" = validation, pas demande de modif. Réponds "Parfait." ou "Ok." Ne propose JAMAIS de changer le logo ou autre.
@@ -128,7 +129,7 @@ function getOpenAIClient() {
 }
 
 // Keywords that suggest the user is asking about emails (widened for French)
-const EMAIL_KEYWORDS = /email|mail|envoy[eé]|re[çc]u|message|from|sent|wrote|[eé]crit|r[eé]pondu|contact[eé]|inbox|courrier|correspondance|dernier|dit|demand[eé]|r[eé]ponse|qui m'a|pierre|jean|paul|marie/i;
+const EMAIL_KEYWORDS = /email|mail|envoy[eé]|re[çc]u|message|from|sent|wrote|[eé]crit|r[eé]pondu|contact[eé]|inbox|courrier|correspondance|dernier|dit|demand[eé]|r[eé]ponse|qui m'a|pierre|jean|paul|marie|assurance|insurance|statut|demande/i;
 
 // Keywords for travel/documents (vol, billet, Shanghai, Emirates, passport, etc.)
 const DOCUMENT_KEYWORDS = /vol|billet|avion|train|Shanghai|PVG|voyage|travel|flight|emirates|etihad|ticket|document|fichier|upload|upload[eé]|passport|passeport|date\s*de\s*naissance|birth\s*date|naissance|identit[eé]|cni|horaire|heure/i;
@@ -353,7 +354,7 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
               emailContext += `- Subject: ${e.subject}\n`;
               if (e.thread_id) emailContext += `- thread_id: ${e.thread_id}\n`;
               emailContext += `- Date: ${new Date(e.received_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}\n`;
-              emailContext += `- Preview: ${(e.body_preview || e.snippet || '').slice(0, 300)}\n\n`;
+              emailContext += `- Preview: ${(e.body_preview || e.snippet || '').slice(0, 1000)}\n\n`;
             });
           }
         }
@@ -667,7 +668,7 @@ async function createReplyStream(userMessage, history = [], ownerId = null, mode
               emailContext += `- Subject: ${e.subject}\n`;
               if (e.thread_id) emailContext += `- thread_id: ${e.thread_id}\n`;
               emailContext += `- Date: ${new Date(e.received_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}\n`;
-              emailContext += `- Preview: ${(e.body_preview || e.snippet || '').slice(0, 300)}\n\n`;
+              emailContext += `- Preview: ${(e.body_preview || e.snippet || '').slice(0, 1000)}\n\n`;
             });
           }
         }

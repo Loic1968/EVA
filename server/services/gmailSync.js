@@ -323,7 +323,7 @@ async function searchEmails(ownerId, queryText, limit = 5, gmailAccountId = null
 
   const selectCols = 'id, gmail_account_id, thread_id, from_email, from_name, to_emails, subject, snippet';
   let query = `SELECT ${selectCols},
-        left(body_plain, 300) as body_preview,
+        left(body_plain, 1200) as body_preview,
         received_at, labels, is_read, is_starred, has_attachments
      FROM eva.emails
      WHERE owner_id = $1
@@ -348,7 +348,7 @@ async function searchEmails(ownerId, queryText, limit = 5, gmailAccountId = null
 async function getRecentEmails(ownerId, limit = 8) {
   try {
     const r = await db.query(
-      `SELECT id, thread_id, from_email, from_name, to_emails, labels, subject, snippet, left(body_plain, 600) as body_preview, received_at
+      `SELECT id, thread_id, from_email, from_name, to_emails, labels, subject, snippet, left(body_plain, 1200) as body_preview, received_at
        FROM eva.emails
        WHERE owner_id = $1
        ORDER BY received_at DESC

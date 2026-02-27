@@ -32,6 +32,7 @@ router.get('/status', (req, res) => {
 // CHAT: Talk to EVA (with conversation persistence)
 // ════════════════════════════════════════════════════════════════
 const evaChat = require('../evaChat');
+const intentRouter = require('../intentRouter');
 
 function evaDisabled(res) {
   res.status(503).json({
@@ -221,9 +222,29 @@ router.post('/chat', async (req, res, next) => {
       return res.status(400).json({ error: 'message required after command' });
     }
 
-    // Pre-answer shortcut when EVA_ASSISTANT_MODE or EVA_OVERHAUL_ENABLED (direct from facts/objects, no LLM)
+    // Intent Router — before context/LLM (no emails, docs, history for identity/fact)
+    const intent = intentRouter.detectIntent(msgToSend);
     let result;
-    if ((process.env.EVA_ASSISTANT_MODE === 'true' || process.env.EVA_OVERHAUL_ENABLED === 'true') && req.ownerId) {
+
+    if (intent === intentRouter.INTENTS.IDENTITY_QUERY && req.ownerId) {
+      const reply = await intentRouter.resolveIdentityQuery(req.ownerId, msgToSend);
+      result = { reply, model: 'intent-identity', tokens: { input: 0, output: 0 } };
+    } else if (intent === intentRouter.INTENTS.FACT_QUERY && req.ownerId) {
+      try {
+        const preAnswerService = require('../services/preAnswerService');
+        const preAnswer = await preAnswerService.tryPreAnswer(req.ownerId, msgToSend);
+        if (preAnswer) {
+          result = { reply: preAnswer.reply, model: 'intent-fact', tokens: { input: 0, output: 0 } };
+        }
+      } catch (e) {
+        console.warn('[EVA] preAnswer (FACT_QUERY) failed:', e.message);
+      }
+      if (!result) {
+        result = { reply: intentRouter.IDENTITY_FALLBACK, model: 'intent-fact', tokens: { input: 0, output: 0 } };
+      }
+    }
+
+    if (!result && (process.env.EVA_ASSISTANT_MODE === 'true' || process.env.EVA_OVERHAUL_ENABLED === 'true') && req.ownerId) {
       try {
         const preAnswerService = require('../services/preAnswerService');
         const preAnswer = await preAnswerService.tryPreAnswer(req.ownerId, msgToSend);
@@ -421,10 +442,27 @@ router.post('/chat/stream', async (req, res, next) => {
       return res.status(400).json({ error: 'message required after command' });
     }
 
+    // Intent Router — before context/LLM (no emails, docs, history for identity/fact)
+    const intentStream = intentRouter.detectIntent(msgToSend);
+    let resultStream = null;
+    if (intentStream === intentRouter.INTENTS.IDENTITY_QUERY && req.ownerId) {
+      const reply = await intentRouter.resolveIdentityQuery(req.ownerId, msgToSend);
+      resultStream = { reply, model: 'intent-identity', tokens: { input: 0, output: 0 } };
+    } else if (intentStream === intentRouter.INTENTS.FACT_QUERY && req.ownerId) {
+      try {
+        const preAnswerService = require('../services/preAnswerService');
+        const preAnswer = await preAnswerService.tryPreAnswer(req.ownerId, msgToSend);
+        if (preAnswer) resultStream = { reply: preAnswer.reply, model: 'intent-fact', tokens: { input: 0, output: 0 } };
+      } catch (e) {
+        console.warn('[EVA] preAnswer (FACT_QUERY) failed:', e.message);
+      }
+      if (!resultStream) resultStream = { reply: intentRouter.IDENTITY_FALLBACK, model: 'intent-fact', tokens: { input: 0, output: 0 } };
+    }
+
     // Use reply() with tools (save_memory, create_calendar_event) when ownerId — so EVA can learn. Stream has no tools.
     if (req.ownerId) {
-      let result;
-      if (process.env.EVA_ASSISTANT_MODE === 'true' || process.env.EVA_OVERHAUL_ENABLED === 'true') {
+      let result = resultStream;
+      if (!result && (process.env.EVA_ASSISTANT_MODE === 'true' || process.env.EVA_OVERHAUL_ENABLED === 'true')) {
         try {
           const preAnswerService = require('../services/preAnswerService');
           const preAnswer = await preAnswerService.tryPreAnswer(req.ownerId, msgToSend);

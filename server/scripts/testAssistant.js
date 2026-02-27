@@ -14,6 +14,7 @@ if (fs.existsSync(evaEnv)) require('dotenv').config({ path: evaEnv });
 const db = require('../db');
 const factsService = require('../services/factsService');
 const preAnswerService = require('../services/preAnswerService');
+const intentRouter = require('../intentRouter');
 
 async function getTestOwnerId() {
   const r = await db.query('SELECT id FROM eva.owners LIMIT 1');
@@ -59,6 +60,25 @@ async function testNoContradictionAfterCorrection() {
   tests.push({ name: 'no contradiction after correction', ok, detail: ok ? 'OK' : `Should be "corrected", got ${fact?.value}` });
 }
 
+async function testIdentityQueryReturnsFullName() {
+  const ownerId = await getTestOwnerId();
+  const expectedName = 'Jean Dupont';
+  await factsService.addRemember(ownerId, 'full_name', expectedName);
+  const intent = intentRouter.detectIntent("comment je m'appelle ?");
+  const okIntent = intent === intentRouter.INTENTS.IDENTITY_QUERY;
+  const reply = await intentRouter.resolveIdentityQuery(ownerId, "comment je m'appelle ?");
+  const okReply = reply === expectedName;
+  const noStripe = !reply.toLowerCase().includes('stripe');
+  const ok = okIntent && okReply && noStripe;
+  tests.push({
+    name: 'identity query "comment je m\'appelle ?" → full_name from eva.facts, no Stripe',
+    ok,
+    detail: ok
+      ? 'OK'
+      : `intent=${intent} (expected IDENTITY_QUERY), reply="${reply}" (expected "${expectedName}"), noStripe=${noStripe}`,
+  });
+}
+
 async function run() {
   console.log('[EVA Assistant Tests]');
   console.log('EVA_STRUCTURED_MEMORY:', process.env.EVA_STRUCTURED_MEMORY);
@@ -70,6 +90,7 @@ async function run() {
     await testCorrectFlightDate();
     await testStatusFromPreAnswer();
     await testNoContradictionAfterCorrection();
+    await testIdentityQueryReturnsFullName();
 
     const passed = tests.filter((t) => t.ok).length;
     const failed = tests.filter((t) => !t.ok);

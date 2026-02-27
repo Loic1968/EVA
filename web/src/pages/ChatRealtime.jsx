@@ -39,7 +39,7 @@ export default function ChatRealtime() {
   const durationInterval = useRef(null);
   const wakeLockRef = useRef(null);
   const micStreamRef = useRef(null);
-  const [liveBands, setLiveBands] = useState(() => Array(10).fill(0));
+  const [liveBands, setLiveBands] = useState(() => Array(18).fill(0));
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
@@ -84,7 +84,7 @@ export default function ChatRealtime() {
     micStreamRef.current = null;
     if (!keepConnectingState) setStatus('idle');
     setCallDuration(0);
-    setLiveBands(() => Array(10).fill(0));
+    setLiveBands(() => Array(18).fill(0));
   }, [releaseWakeLock]);
 
   const startSession = useCallback(async () => {
@@ -202,17 +202,19 @@ export default function ChatRealtime() {
 
   useEffect(() => () => stopSession(), [stopSession]);
 
-  // Live equalizer (real frequency bands) during call
+  // Live equalizer (real frequency bands) during call — like Microphone-Visualizer
   useEffect(() => {
     if (status !== 'connected' || !micStreamRef.current) return;
-    const ctx = new AudioContext();
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
     const src = ctx.createMediaStreamSource(micStreamRef.current);
     const analyser = ctx.createAnalyser();
-    analyser.fftSize = 256;
-    analyser.smoothingTimeConstant = 0.6;
+    analyser.fftSize = 512;
+    analyser.smoothingTimeConstant = 0.35;
+    analyser.minDecibels = -60;
+    analyser.maxDecibels = -10;
     src.connect(analyser);
     const data = new Uint8Array(analyser.frequencyBinCount);
-    const BANDS = 10;
+    const BANDS = 18;
     const bucketSize = Math.floor(data.length / BANDS);
     let rafId;
     const tick = () => {
@@ -220,17 +222,19 @@ export default function ChatRealtime() {
       analyser.getByteFrequencyData(data);
       const bands = [];
       for (let b = 0; b < BANDS; b++) {
-        let sum = 0;
+        let max = 0;
         const start = b * bucketSize;
         const end = Math.min(start + bucketSize, data.length);
-        for (let i = start; i < end; i++) sum += data[i];
-        const avg = sum / (end - start);
-        bands.push(Math.min(100, (avg / 128) * 100));
+        for (let i = start; i < end; i++) if (data[i] > max) max = data[i];
+        const boosted = Math.min(100, (max / 64) * 120);
+        bands.push(boosted);
       }
       setLiveBands(bands);
       rafId = requestAnimationFrame(tick);
     };
-    rafId = requestAnimationFrame(tick);
+    const start = () => { rafId = requestAnimationFrame(tick); };
+    if (typeof ctx.resume === 'function') ctx.resume().then(start).catch(start);
+    else start();
     return () => {
       cancelAnimationFrame(rafId);
       ctx.close();
@@ -328,16 +332,16 @@ export default function ChatRealtime() {
             </div>
             <p className="text-emerald-600 dark:text-emerald-400 font-medium">Connected</p>
             <p className="text-slate-600 dark:text-slate-500 text-sm font-mono">{formatDuration(callDuration)}</p>
-            {/* Live equalizer — bars move with voice (frequency bands) */}
-            <div className="flex flex-col items-center gap-1 mt-2">
-              <p className="text-[10px] text-slate-500 dark:text-slate-400">Live</p>
-              <div className="flex items-end justify-center gap-0.5 h-8">
+            {/* Live equalizer — vibrant bars like Microphone-Visualizer (voice-responsive) */}
+            <div className="flex flex-col items-center gap-1.5 mt-3">
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider">Live</p>
+              <div className="flex items-end justify-center gap-1 h-12 px-4 py-2.5 rounded-xl bg-slate-900 dark:bg-black/60 border border-slate-600/50">
                 {liveBands.map((v, i) => {
-                  const h = 4 + Math.min(24, (v / 100) * 24);
+                  const h = 4 + Math.min(36, (v / 100) * 36);
                   return (
                     <div
                       key={i}
-                      className="w-1.5 rounded-sm bg-emerald-500/90 dark:bg-emerald-400/90 transition-all duration-50"
+                      className="w-2 rounded-full min-h-[4px] transition-[height] duration-75 ease-out bg-emerald-400 dark:bg-emerald-300"
                       style={{ height: `${h}px` }}
                     />
                   );

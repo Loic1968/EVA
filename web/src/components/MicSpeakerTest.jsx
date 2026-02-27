@@ -4,12 +4,12 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-const BARS = 8;
+const BARS = 16;
 const MIN_HEIGHT = 4;
 
 export default function MicSpeakerTest({ selectedDeviceId }) {
   const [active, setActive] = useState(true);
-  const [micLevel, setMicLevel] = useState(0);
+  const [micBands, setMicBands] = useState(() => Array(BARS).fill(0));
   const [micTesting, setMicTesting] = useState(false);
   const [speakerPlayed, setSpeakerPlayed] = useState(false);
   const [error, setError] = useState(null);
@@ -32,7 +32,7 @@ export default function MicSpeakerTest({ selectedDeviceId }) {
       analyserRef.current = null;
       ctxRef.current = null;
     }
-    setMicLevel(0);
+    setMicBands(() => Array(BARS).fill(0));
     setMicTesting(false);
   }, []);
 
@@ -48,17 +48,27 @@ export default function MicSpeakerTest({ selectedDeviceId }) {
       ctxRef.current = ctx;
       const src = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
-      analyser.fftSize = 256;
-      analyser.smoothingTimeConstant = 0.8;
+      analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = 0.4;
+      analyser.minDecibels = -60;
+      analyser.maxDecibels = -10;
       src.connect(analyser);
       analyserRef.current = analyser;
       const data = new Uint8Array(analyser.frequencyBinCount);
+      const bucketSize = Math.floor(data.length / BARS);
 
       const tick = () => {
         if (!analyserRef.current) return;
         analyser.getByteFrequencyData(data);
-        const avg = data.reduce((a, b) => a + b, 0) / data.length;
-        setMicLevel(Math.min(100, (avg / 128) * 100));
+        const bands = [];
+        for (let b = 0; b < BARS; b++) {
+          let max = 0;
+          const start = b * bucketSize;
+          const end = Math.min(start + bucketSize, data.length);
+          for (let i = start; i < end; i++) if (data[i] > max) max = data[i];
+          bands.push(Math.min(100, (max / 64) * 120));
+        }
+        setMicBands(bands);
         rafRef.current = requestAnimationFrame(tick);
       };
       rafRef.current = requestAnimationFrame(tick);
@@ -97,13 +107,7 @@ export default function MicSpeakerTest({ selectedDeviceId }) {
 
   useEffect(() => () => stopMic(), [stopMic]);
 
-  const barHeights = Array(BARS)
-    .fill(0)
-    .map((_, i) => {
-      const offset = Math.sin((i / BARS) * Math.PI) * 0.3 + 0.7;
-      const v = (micLevel / 100) * offset;
-      return MIN_HEIGHT + Math.min(28, v * 28);
-    });
+  const barHeights = micBands.map((v) => MIN_HEIGHT + Math.min(28, (v / 100) * 28));
 
   return (
     <div className="w-full max-w-xs">
@@ -117,14 +121,14 @@ export default function MicSpeakerTest({ selectedDeviceId }) {
       </button>
       {active && (
         <div className="mt-3 p-4 rounded-xl bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/40 space-y-4">
-          {/* Mic equalizer */}
+          {/* Mic equalizer — live frequency bands */}
           <div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">Microphone — speak to see levels</p>
-            <div className="flex items-end justify-center gap-1 h-8">
+            <div className="flex items-end justify-center gap-0.5 h-10 px-3 py-2 rounded-lg bg-slate-900/70 dark:bg-slate-950/80 border border-slate-600/40">
               {barHeights.map((h, i) => (
                 <div
                   key={i}
-                  className="w-2 rounded-sm bg-emerald-500 dark:bg-emerald-400 transition-all duration-75"
+                  className="w-1.5 rounded-full min-h-[4px] bg-emerald-400 dark:bg-emerald-300 transition-[height] duration-75"
                   style={{ height: `${h}px` }}
                 />
               ))}

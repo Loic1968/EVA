@@ -13,56 +13,55 @@ const REALTIME_ENABLED = !!OPENAI_KEY;
 const DEFAULT_OWNER_EMAIL = process.env.EVA_OWNER_EMAIL || 'loic@halisoft.biz';
 
 const { getCanonicalPrompt } = require('../prompts/canonicalPrompt');
-const EVA_INSTRUCTIONS_LEGACY = `# EVA — Voice Assistant (HaliSoft, Dubai)
+const EVA_INSTRUCTIONS_LEGACY = `# EVA — Voice Assistant (HaliSoft)
 
-## RULE #1: When to Stay Silent
-- ONLY speak when the user has CLEARLY asked a question or made a request.
-- If you hear noise, silence, breathing, "euh", unclear mumbling — STAY COMPLETELY SILENT.
-- NEVER say "j'ai compris" or "oui" as a response to nothing. Never invent questions to answer.
+## RULE #1: ONLY respond to CLEAR questions or requests
+- Respond ONLY when the user explicitly ASKS A QUESTION or MAKES A REQUEST.
+- Noise, silence, breathing, "euh", "hmm", "ah", coughing — DO NOT RESPOND. Stay completely silent.
+- NEVER say "j'ai compris", "oui", "d'accord" as a response to nothing. Never invent questions.
+- If unsure (short/ambiguous message, possible noise) → stay silent. Do not guess.
+
+## Check-in
+- "Tu m'entends?", "Tu m'écoutes?", "Are you there?" → "Oui" or "Oui, je t'entends." Only. Nothing else.
 
 ## Your Name
-- "Comment tu t'appelles?" / "What's your name?" / "Qui es-tu?" / "Ton nom?" / "t'appelles comment?" → Answer: "EVA" or "Je m'appelle EVA". Short.
-- Voice can mishear "comment" as "merci" — if they seem to ask about your NAME or WHO you are → say "EVA". Never "merci c'est EVA".
+- "Comment tu t'appelles?" / "What's your name?" / "Qui es-tu?" → "EVA". Short only.
 
-## CRITICAL: How to Answer
-1. **Parse the question**: What is the user asking? (person, topic, date, action)
-2. **Search the data below**: Emails and documents are YOUR SOURCE. Match names, subjects, dates.
-3. **If found** → Give the specific answer. "Pierre t'a écrit le 12 février : [résumé]". Be concrete.
-4. **If not found** → Say "Je n'ai pas cette info" or "I don't have that". Never invent.
-5. **Never** vague answers. Never "I understand" or "Je comprends" as opener — go straight to the answer.
+## Complete answers (critical)
+- One clear, complete sentence. Never trail off with "Et vraiment...", "Il parlait de...", "Apparemment...". No truncated phrases. No "Bravo!" alone.
 
-## DOCUMENT PRECISION (billets, factures, invoices)
-- Use the EXACT date written in the document. Flight tickets: check departure AND arrival — Dubai 23h10 may arrive 2nd. Read the full ticket.
-- One day off is a critical error. If bill says 2 mars, say 2 mars — never 1 mars.
-- NEVER say "je note que tu mesures X" or "je note que tu fais X kg" — documents (passport, etc.) are for ANSWERING questions, not for attributing facts to the user. If they didn't SAY it, don't "note" it.
+## How to Answer
+1. Parse: What is the user asking? (person, topic, date, action)
+2. Search: Emails, documents, calendar below. Match names, subjects, dates.
+3. Found → Give the specific answer. Be concrete.
+4. Not found → "Je n'ai pas cette info". Never invent.
+5. Never vague. Never "I understand" as opener — go straight to the answer.
 
-## USER CORRECTION (highest priority)
-- "C'est faux", "non c'est le 2 mars", "corrige" → STOP. Say "D'accord, je note : [their version]." Never insist. Never say "Je comprends".
+## Documents (billets, factures)
+- Use EXACT dates from the document. 2 mars ≠ 1 mars.
+- Documents = for ANSWERING. Never "je note que tu mesures X" from a document.
+
+## Corrections
+- "C'est faux", "non c'est le 2 mars" → "D'accord, je note : [their version]." Never insist.
 
 ## Voice Style
-- SHORT spoken answers. 1–3 sentences max. No long monologues.
-- French user → French reply. English user → English reply. If the user asks "réponds en chinois", "in Spanish", etc. — reply in that language.
-- Professional, warm, direct.
+- 1–3 sentences max. French user → French. English → English.
+- Professional, direct.
 
-## Data Access
-- Emails, documents, and MEMORIES are injected below. USE THEM to answer. You remember what you learned (from Chat).
-- If the user shares a fact to remember via voice, say: "D'accord, note-le en chat pour que je le retienne." (Voice cannot save.)
-
-## Silence / Filler / Noise
-- If the user says nothing meaningful (silence, "euh", "hmm", "ah") — do NOT respond. Stay silent.
-- If you hear background noise, breathing, or unclear audio — STAY SILENT. Do not respond.
-- NEVER say "j'ai compris", "oui j'ai compris", "I understand" as a standalone response. Only respond when the user has clearly asked a question.
-- Never start answering a question that was not explicitly asked. Never chain random responses. If in doubt → stay silent.
+## Data & Memories
+- Use ## Emails, ## Documents, ## Calendar below to answer.
+- Fact to remember → "Note-le en chat pour que je le retienne."
 
 ## Stop
-- "Stop", "arrête", "assez" → reply ONLY "OK" or "D'accord" then stop.`;
+- "Stop", "arrête" → "OK" then stop.`;
 
 const EVA_INSTRUCTIONS_BASE = process.env.EVA_OVERHAUL_ENABLED === 'true'
   ? getCanonicalPrompt('voice')
   : EVA_INSTRUCTIONS_LEGACY;
 
 async function buildInstructionsWithContext(ownerId) {
-  let instructions = EVA_INSTRUCTIONS_BASE;
+  const SILENCE_RULE = 'STRICT: Réponds UNIQUEMENT aux questions/demandes claires. Bruit, "euh", silence → NE RÉPONDS PAS.\n\n';
+  let instructions = SILENCE_RULE + EVA_INSTRUCTIONS_BASE;
   let transcriptionLang = null;
   let turnEagerness = 'low';
 
@@ -166,7 +165,7 @@ async function buildInstructionsWithContext(ownerId) {
   return { instructions, transcriptionLang, turnEagerness };
 }
 
-router.get('/token', async (req, res, next) => {
+router.get('/token', async (req, res) => {
   try {
     if (!REALTIME_ENABLED) {
       return res.status(503).json({ error: 'Realtime API disabled. Set OPENAI_API_KEY.' });
@@ -175,16 +174,27 @@ router.get('/token', async (req, res, next) => {
     if (killOn) return res.status(503).json({ error: 'EVA paused (kill switch)', kill_switch: true });
     // Voice allowed in Shadow Mode — only drafts are restricted
 
-    const { instructions, transcriptionLang, turnEagerness } = await buildInstructionsWithContext(req.ownerId);
+    let instructions, transcriptionLang, turnEagerness;
+    try {
+      const ctx = await buildInstructionsWithContext(req.ownerId);
+      instructions = ctx.instructions;
+      transcriptionLang = ctx.transcriptionLang;
+      turnEagerness = ctx.turnEagerness;
+    } catch (ctxErr) {
+      console.warn('[EVA Realtime] buildInstructions failed, using fallback:', ctxErr.message);
+      instructions = EVA_INSTRUCTIONS_BASE;
+      transcriptionLang = 'fr';
+      turnEagerness = 'low';
+    }
 
-    const model = process.env.EVA_REALTIME_MODEL || 'gpt-4o-realtime-preview';
+    const model = process.env.EVA_REALTIME_MODEL || 'gpt-realtime';
 
     const sessionConfig = {
       session: {
         type: 'realtime',
         model,
         instructions,
-        max_output_tokens: 1024,
+        max_output_tokens: 256,
         audio: {
           input: {
             transcription: transcriptionLang ? {
@@ -194,11 +204,11 @@ router.get('/token', async (req, res, next) => {
             noise_reduction: { type: 'near_field' },
             turn_detection: {
               type: 'server_vad',
-              threshold: 0.6,
-              prefix_padding_ms: 200,
-              silence_duration_ms: 700,
               create_response: true,
               interrupt_response: true,
+              threshold: 0.5,
+              silence_duration_ms: 500,
+              prefix_padding_ms: 300,
             },
           },
           output: { voice: 'marin' },
@@ -228,13 +238,28 @@ router.get('/token', async (req, res, next) => {
     }
 
     const data = await response.json();
-    res.json(data);
+    // Handle OpenAI error payload in 200 response (e.g. quota, invalid key)
+    if (data?.error) {
+      const msg = data.error?.message || data.error?.code || JSON.stringify(data.error);
+      console.error('[EVA Realtime] OpenAI error in response:', msg);
+      return res.status(500).json({ error: msg || 'OpenAI rejected token request' });
+    }
+    // Frontend expects { value, model }. OpenAI returns { client_secret: { value }, ... }
+    const ephemeralKey = data?.client_secret?.value ?? data?.client_secret ?? data?.value;
+    if (!ephemeralKey || typeof ephemeralKey !== 'string') {
+      console.error('[EVA Realtime] No client_secret.value in OpenAI response:', JSON.stringify(data).slice(0, 300));
+      return res.status(500).json({ error: 'Invalid token response. Check OPENAI_API_KEY and server logs.' });
+    }
+    res.json({
+      value: ephemeralKey,
+      model: process.env.EVA_REALTIME_MODEL || 'gpt-realtime',
+    });
   } catch (e) {
     if (e.name === 'AbortError') {
       return res.status(504).json({ error: 'OpenAI timeout. Retry.' });
     }
-    console.error('[EVA Realtime]', e.message);
-    next(e);
+    console.error('[EVA Realtime] token error:', e.message);
+    return res.status(500).json({ error: e.message || 'Realtime token failed. Check OPENAI_API_KEY and logs.' });
   }
 });
 

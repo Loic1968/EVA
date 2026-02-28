@@ -3,17 +3,13 @@
  * Phone-style UI: Call → Connected → Hang up.
  */
 import { useEffect, useRef, useState, useCallback } from 'react';
-import EvaLoading from '../components/EvaLoading';
 import MicSpeakerTest from '../components/MicSpeakerTest';
 
 function getApiBase() {
   if (import.meta.env.VITE_EVA_API_URL)
     return `${import.meta.env.VITE_EVA_API_URL.replace(/\/$/, '')}/api`;
-  if (import.meta.env.DEV) {
-    if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1')
-      return `${window.location.origin}/api`;
-    return 'http://localhost:5002/api';
-  }
+  if (import.meta.env.DEV && typeof window !== 'undefined')
+    return `${window.location.origin}/api`;
   return '/api';
 }
 const API_BASE = getApiBase();
@@ -25,6 +21,7 @@ function formatDuration(sec) {
 }
 
 const EVA_AUDIO_INPUT_KEY = 'eva_audio_input_device';
+const EVA_AUDIO_OUTPUT_KEY = 'eva_audio_output_device';
 
 export default function ChatRealtime() {
   const [status, setStatus] = useState('idle'); // idle | connecting | connected | error
@@ -33,13 +30,15 @@ export default function ChatRealtime() {
   const [callDuration, setCallDuration] = useState(0);
   const [audioDevices, setAudioDevices] = useState([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState(() => localStorage.getItem(EVA_AUDIO_INPUT_KEY) || '');
+  const [outputDeviceId, setOutputDeviceId] = useState(() => localStorage.getItem(EVA_AUDIO_OUTPUT_KEY) || '');
   const peerRef = useRef(null);
   const dataChannelRef = useRef(null);
   const audioRef = useRef(null);
   const durationInterval = useRef(null);
-  const wakeLockRef = useRef(null);
   const micStreamRef = useRef(null);
-  const [liveBands, setLiveBands] = useState(() => Array(18).fill(0));
+  const [liveMicLevel, setLiveMicLevel] = useState(0);
+  const outputDeviceRef = useRef(outputDeviceId);
+  outputDeviceRef.current = outputDeviceId;
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
@@ -53,16 +52,7 @@ export default function ChatRealtime() {
     return () => { cancelled = true; };
   }, []);
 
-  const releaseWakeLock = useCallback(() => {
-    if (wakeLockRef.current) {
-      try { wakeLockRef.current.release(); } catch (_) {}
-      wakeLockRef.current = null;
-    }
-  }, []);
-
-  const stopSession = useCallback((opts = {}) => {
-    const { keepConnectingState } = opts;
-    releaseWakeLock();
+  const stopSession = useCallback(() => {
     if (durationInterval.current) {
       clearInterval(durationInterval.current);
       durationInterval.current = null;
@@ -82,25 +72,28 @@ export default function ChatRealtime() {
       peerRef.current = null;
     }
     micStreamRef.current = null;
-    if (!keepConnectingState) setStatus('idle');
+    setLiveMicLevel(0);
+    setStatus('idle');
     setCallDuration(0);
-    setLiveBands(() => Array(18).fill(0));
-  }, [releaseWakeLock]);
+  }, []);
 
   const startSession = useCallback(async () => {
     setError(null);
     setStatus('connecting');
     try {
-      const token = localStorage.getItem('eva_token');
+      const token = localStorage.getItem('eva_token') || sessionStorage.getItem('eva_token');
       const r = await fetch(`${API_BASE}/realtime/token`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
+      const data = await r.json().catch(() => ({}));
       if (!r.ok) {
-        const e = await r.json().catch(() => ({}));
-        throw new Error(e.error || r.statusText || 'Token failed');
+        const msg = data.error || r.statusText;
+        if (r.status === 401) throw new Error('Connecte-toi d\'abord (page Login). En dev: EVA_SKIP_AUTH=true dans .env.');
+        if (r.status === 503) throw new Error(msg || 'OPENAI_API_KEY manquant ou EVA en pause.');
+        throw new Error(msg || 'Token failed');
       }
-      const { value: ephemeralKey } = await r.json();
-      if (!ephemeralKey) throw new Error('No token');
+      const ephemeralKey = data.value ?? data.client_secret?.value ?? data.client_secret;
+      if (!ephemeralKey || typeof ephemeralKey !== 'string') throw new Error('Réponse token invalide.');
 
       const pc = new RTCPeerConnection();
       peerRef.current = pc;
@@ -111,8 +104,14 @@ export default function ChatRealtime() {
       audioEl.style.opacity = '0';
       document.body.appendChild(audioEl);
       audioRef.current = audioEl;
-      pc.ontrack = (e) => {
+      pc.ontrack = async (e) => {
         audioEl.srcObject = e.streams[0];
+        const outId = outputDeviceRef.current;
+        if (outId && typeof audioEl.setSinkId === 'function') {
+          try {
+            await audioEl.setSinkId(outId);
+          } catch (_) {}
+        }
         audioEl.play().catch(() => {});
       };
 
@@ -131,22 +130,13 @@ export default function ChatRealtime() {
         setStatus('connected');
         setCallDuration(0);
         durationInterval.current = setInterval(() => setCallDuration((d) => d + 1), 1000);
-        // Screen Wake Lock — keeps phone awake during call (prevents sleep breaking conversation)
-        if ('wakeLock' in navigator)
-          navigator.wakeLock.request('screen').then((wl) => { wakeLockRef.current = wl; }).catch(() => {});
       });
 
-      const STOP_PHRASES = /^(stop|tais[- ]?toi|arr[eê]te|silence)$/i;
       dc.addEventListener('message', (ev) => {
         try {
           const event = JSON.parse(ev.data);
           if (event.type === 'conversation.item.input_audio_transcription.completed' && event.transcript) {
-            const t = (event.transcript || '').trim();
-            if (STOP_PHRASES.test(t)) {
-              stopSession();
-              return;
-            }
-            setTranscript((prev) => [...prev, { role: 'user', text: event.transcript }]);
+            setTranscript((t) => [...t, { role: 'user', text: event.transcript }]);
           } else if (event.type === 'conversation.item.added' && event.item?.role === 'assistant') {
             const content = event.item?.content?.[0];
             if (content?.transcript) {
@@ -169,19 +159,10 @@ export default function ChatRealtime() {
         } catch (_) {}
       });
 
-      pc.onconnectionstatechange = () => {
-        const s = pc.connectionState;
-        if (s === 'disconnected' || s === 'failed') setStatus('disconnected');
-      };
-      pc.oniceconnectionstatechange = () => {
-        const s = pc.iceConnectionState;
-        if (s === 'disconnected' || s === 'failed') setStatus('disconnected');
-      };
-
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
 
-      const sdpRes = await fetch('https://api.openai.com/v1/realtime/calls?model=gpt-realtime', {
+      const sdpRes = await fetch('https://api.openai.com/v1/realtime/calls', {
         method: 'POST',
         body: offer.sdp,
         headers: {
@@ -190,7 +171,12 @@ export default function ChatRealtime() {
         },
       });
 
-      if (!sdpRes.ok) throw new Error(`OpenAI: ${sdpRes.status}`);
+      if (!sdpRes.ok) {
+        const errText = await sdpRes.text();
+        let errMsg = `OpenAI: ${sdpRes.status}`;
+        try { const e = JSON.parse(errText); errMsg = e.error?.message || e.error || errMsg; } catch (_) {}
+        throw new Error(errMsg);
+      }
       const sdp = await sdpRes.text();
       await pc.setRemoteDescription({ type: 'answer', sdp });
     } catch (err) {
@@ -198,105 +184,98 @@ export default function ChatRealtime() {
       setStatus('error');
       stopSession();
     }
-  }, [stopSession, releaseWakeLock, selectedDeviceId]);
+  }, [stopSession, selectedDeviceId]);
 
-  useEffect(() => () => stopSession(), [stopSession]);
-
-  // Live equalizer (real frequency bands) during call — like Microphone-Visualizer
+  // Live mic level (equalizer) during call
   useEffect(() => {
     if (status !== 'connected' || !micStreamRef.current) return;
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = new AudioContext();
     const src = ctx.createMediaStreamSource(micStreamRef.current);
     const analyser = ctx.createAnalyser();
-    analyser.fftSize = 512;
-    analyser.smoothingTimeConstant = 0.35;
-    analyser.minDecibels = -60;
-    analyser.maxDecibels = -10;
+    analyser.fftSize = 256;
+    analyser.smoothingTimeConstant = 0.8;
     src.connect(analyser);
     const data = new Uint8Array(analyser.frequencyBinCount);
-    const BANDS = 18;
-    const bucketSize = Math.floor(data.length / BANDS);
     let rafId;
     const tick = () => {
       if (!micStreamRef.current) return;
       analyser.getByteFrequencyData(data);
-      const bands = [];
-      for (let b = 0; b < BANDS; b++) {
-        let max = 0;
-        const start = b * bucketSize;
-        const end = Math.min(start + bucketSize, data.length);
-        for (let i = start; i < end; i++) if (data[i] > max) max = data[i];
-        const boosted = Math.min(100, (max / 64) * 120);
-        bands.push(boosted);
-      }
-      setLiveBands(bands);
+      const avg = data.reduce((a, b) => a + b, 0) / data.length;
+      setLiveMicLevel(Math.min(100, (avg / 128) * 100));
       rafId = requestAnimationFrame(tick);
     };
-    const start = () => { rafId = requestAnimationFrame(tick); };
-    if (typeof ctx.resume === 'function') ctx.resume().then(start).catch(start);
-    else start();
+    rafId = requestAnimationFrame(tick);
     return () => {
       cancelAnimationFrame(rafId);
       ctx.close();
     };
   }, [status]);
 
-  // Re-request Wake Lock when user returns to tab (browser releases it when tab is hidden)
-  useEffect(() => {
-    const onVis = () => {
-      if (document.visibilityState === 'visible' && status === 'connected' && 'wakeLock' in navigator)
-        navigator.wakeLock.request('screen').then((wl) => { wakeLockRef.current = wl; }).catch(() => {});
-    };
-    document.addEventListener('visibilitychange', onVis);
-    return () => document.removeEventListener('visibilitychange', onVis);
-  }, [status]);
-
-  // When user returns from sleep/background — check connection, offer reconnect
-  useEffect(() => {
-    const onVisibility = () => {
-      if (document.visibilityState === 'visible' && status === 'connected') {
-        const pc = peerRef.current;
-        if (pc && (pc.connectionState === 'disconnected' || pc.iceConnectionState === 'disconnected'))
-          setStatus('disconnected');
-      }
-    };
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => document.removeEventListener('visibilitychange', onVisibility);
-  }, [status]);
+  useEffect(() => () => stopSession(), [stopSession]);
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[calc(100dvh-8rem)] sm:min-h-[calc(100vh-8rem)] py-6">
       {status === 'idle' || status === 'error' ? (
         <div className="flex flex-col items-center gap-6">
-          <div className="w-24 h-24 rounded-full bg-slate-200 dark:bg-slate-700/60 flex items-center justify-center">
+          <div className="w-24 h-24 rounded-full bg-slate-700/60 flex items-center justify-center">
             <span className="text-4xl">📞</span>
           </div>
-          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Call EVA</h2>
-          <p className="text-slate-600 dark:text-slate-400 text-sm text-center max-w-xs">
+          <h2 className="text-xl font-semibold text-white">Call EVA</h2>
+          <p className="text-slate-400 text-sm text-center max-w-xs">
             Live voice conversation (like ChatGPT)
           </p>
-          <div className="w-full max-w-xs space-y-3">
-            {audioDevices.length > 0 && (
+          {audioDevices.length > 0 && (
+            <div className="w-full max-w-xs space-y-2">
               <div>
-                <label className="block text-slate-500 dark:text-slate-400 text-xs mb-1">
-                  🎧 Microphone (AirPods, etc.)
+                <label className="block text-slate-500 text-xs mb-1">
+                  🎤 Micro (entrée)
                 </label>
                 <select
                   value={selectedDeviceId}
-                  onChange={(e) => setSelectedDeviceId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-white dark:bg-slate-800/80 border border-slate-300 dark:border-slate-600/60 text-slate-900 dark:text-slate-200 text-sm focus:outline-none focus:ring-1 focus:ring-red-400"
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setSelectedDeviceId(v);
+                    localStorage.setItem(EVA_AUDIO_INPUT_KEY, v);
+                  }}
+                  className="w-full px-3 py-2 rounded-lg bg-slate-800/80 border border-slate-600/60 text-slate-200 text-sm focus:outline-none focus:ring-1 focus:ring-cyan-400"
                 >
-                  <option value="">Default</option>
+                  <option value="">Par défaut</option>
                   {audioDevices.map((d) => (
                     <option key={d.deviceId} value={d.deviceId}>
-                      {d.label || `Mic ${audioDevices.indexOf(d) + 1}`}
+                      {d.label || `Micro ${audioDevices.indexOf(d) + 1}`}
                     </option>
                   ))}
                 </select>
               </div>
-            )}
-            <MicSpeakerTest selectedDeviceId={selectedDeviceId || undefined} />
-          </div>
+              <div>
+                <label className="block text-slate-500 text-xs mb-1">
+                  🔊 Sortie (où EVA parle)
+                </label>
+                {typeof navigator?.mediaDevices?.selectAudioOutput === 'function' ? (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        const dev = await navigator.mediaDevices.selectAudioOutput();
+                        setOutputDeviceId(dev.deviceId);
+                        localStorage.setItem(EVA_AUDIO_OUTPUT_KEY, dev.deviceId);
+                      } catch (e) {
+                        if (e.name !== 'AbortError') console.warn('[EVA] selectAudioOutput:', e);
+                      }
+                    }}
+                    className="w-full px-3 py-2 rounded-lg bg-slate-800/80 border border-slate-600/60 text-slate-200 text-sm text-left hover:bg-slate-700/80 focus:outline-none focus:ring-1 focus:ring-cyan-400"
+                  >
+                    {outputDeviceId ? '✓ Sortie choisie' : 'Choisir (MacBook, écouteurs…)'}
+                  </button>
+                ) : (
+                  <p className="text-slate-500 text-xs">
+                    Si le son part sur ton téléphone : clic sur l’icône son macOS → choisis « MacBook » ou tes écouteurs.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+          <MicSpeakerTest selectedDeviceId={selectedDeviceId || undefined} />
           <button
             onClick={startSession}
             className="w-20 h-20 min-w-[72px] min-h-[72px] rounded-full bg-emerald-500 hover:bg-emerald-400 text-white flex items-center justify-center text-2xl shadow-lg shadow-emerald-500/30 transition-all hover:scale-105 active:scale-95 touch-manipulation"
@@ -307,22 +286,8 @@ export default function ChatRealtime() {
         </div>
       ) : status === 'connecting' ? (
         <div className="flex flex-col items-center gap-4">
-          <EvaLoading />
-          <p className="text-slate-600 dark:text-slate-400">Connecting…</p>
-        </div>
-      ) : status === 'disconnected' ? (
-        <div className="flex flex-col items-center gap-6">
-          <div className="w-16 h-16 rounded-full bg-amber-500/20 flex items-center justify-center">
-            <span className="text-2xl">⚠️</span>
-          </div>
-          <p className="text-amber-600 dark:text-amber-400 font-medium text-center">Connection lost (phone sleep?)</p>
-          <p className="text-slate-600 dark:text-slate-500 text-sm text-center max-w-xs">Tap to reconnect</p>
-          <button
-            onClick={() => { setStatus('connecting'); stopSession({ keepConnectingState: true }); setTimeout(startSession, 300); }}
-            className="min-h-[48px] px-6 py-3 rounded-xl bg-red-500 hover:bg-red-400 text-white font-medium touch-manipulation"
-          >
-            Reconnect
-          </button>
+          <div className="w-16 h-16 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin" />
+          <p className="text-slate-400">Connecting…</p>
         </div>
       ) : (
         <div className="flex flex-col w-full max-w-lg">
@@ -330,18 +295,19 @@ export default function ChatRealtime() {
             <div className="w-16 h-16 rounded-full bg-emerald-500/20 flex items-center justify-center">
               <span className="w-4 h-4 rounded-full bg-emerald-400 animate-pulse" />
             </div>
-            <p className="text-emerald-600 dark:text-emerald-400 font-medium">Connected</p>
-            <p className="text-slate-600 dark:text-slate-500 text-sm font-mono">{formatDuration(callDuration)}</p>
-            {/* Live equalizer — vibrant bars like Microphone-Visualizer (voice-responsive) */}
-            <div className="flex flex-col items-center gap-1.5 mt-3">
-              <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider">Live</p>
-              <div className="flex items-end justify-center gap-1 h-12 px-4 py-2.5 rounded-xl bg-slate-900 dark:bg-black/60 border border-slate-600/50">
-                {liveBands.map((v, i) => {
-                  const h = 4 + Math.min(36, (v / 100) * 36);
+            <p className="text-emerald-400 font-medium">Connected</p>
+            <p className="text-slate-500 text-sm font-mono">{formatDuration(callDuration)}</p>
+            {/* Live mic level — equalizer during call */}
+            <div className="flex flex-col items-center gap-1 mt-2">
+              <p className="text-[10px] text-slate-500">Niveau micro</p>
+              <div className="flex items-end justify-center gap-0.5 h-6">
+                {Array.from({ length: 8 }, (_, i) => {
+                  const v = (liveMicLevel / 100) * (Math.sin((i / 8) * Math.PI) * 0.3 + 0.7);
+                  const h = 4 + Math.min(20, v * 20);
                   return (
                     <div
                       key={i}
-                      className="w-2 rounded-full min-h-[4px] transition-[height] duration-75 ease-out bg-emerald-400 dark:bg-emerald-300"
+                      className="w-1.5 rounded-sm bg-emerald-500/80 transition-all duration-75"
                       style={{ height: `${h}px` }}
                     />
                   );
@@ -349,13 +315,13 @@ export default function ChatRealtime() {
               </div>
             </div>
           </div>
-          <div className="flex-1 rounded-xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/40 p-4 max-h-64 overflow-y-auto space-y-3">
+          <div className="flex-1 rounded-xl bg-slate-800/60 border border-slate-700/40 p-4 max-h-64 overflow-y-auto space-y-3">
             {transcript.length === 0 ? (
-              <p className="text-slate-600 dark:text-slate-500 text-sm text-center py-4">Speak…</p>
+              <p className="text-slate-500 text-sm text-center py-4">Speak…</p>
             ) : (
               transcript.map((item, i) => (
                 <div key={i} className={`flex ${item.role === 'user' ? 'justify-end' : ''}`}>
-                  <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 ${item.role === 'user' ? 'bg-red-500/25 text-red-900 dark:text-red-100' : 'bg-slate-200 dark:bg-slate-700/60 text-slate-800 dark:text-slate-200'}`}>
+                  <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 ${item.role === 'user' ? 'bg-cyan-500/20 text-cyan-100' : 'bg-slate-700/60 text-slate-200'}`}>
                     <div className="text-sm whitespace-pre-wrap">{item.text}</div>
                   </div>
                 </div>
@@ -373,7 +339,7 @@ export default function ChatRealtime() {
       )}
 
       {error && (
-        <div className="mt-4 px-4 py-2 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 text-sm text-center max-w-sm">{error}</div>
+        <div className="mt-4 px-4 py-2 rounded-lg bg-red-500/10 text-red-400 text-sm text-center max-w-sm">{error}</div>
       )}
     </div>
   );

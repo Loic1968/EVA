@@ -5,22 +5,22 @@
 const express = require('express');
 const router = express.Router();
 
-const OPENAI_KEY = (process.env.OPENAI_API_KEY || '').trim();
-const VOICE_ENABLED = !!OPENAI_KEY;
+function getOpenAIKey() {
+  const k = (process.env.OPENAI_API_KEY || '').trim();
+  return (k && !k.startsWith('sk-your-') && k !== 'sk-xxxxx') ? k : null;
+}
 
 // Status: is premium voice (Whisper+TTS) available?
 router.get('/status', (req, res) => {
-  res.json({
-    enabled: VOICE_ENABLED,
-    stt: VOICE_ENABLED,
-    tts: VOICE_ENABLED,
-  });
+  const enabled = !!getOpenAIKey();
+  res.json({ enabled, stt: enabled, tts: enabled });
 });
 
 // Speech-to-text (Whisper) — accepts JSON { audio: base64, format, lang }
 router.post('/stt', async (req, res, next) => {
   try {
-    if (!VOICE_ENABLED) {
+    const OPENAI_KEY = getOpenAIKey();
+    if (!OPENAI_KEY) {
       return res.status(503).json({ error: 'Voice API disabled. Set OPENAI_API_KEY.' });
     }
 
@@ -49,6 +49,7 @@ router.post('/stt', async (req, res, next) => {
       file,
       model: 'whisper-1',
       response_format: 'json',
+      language: lang || undefined,
     });
 
     const text = (transcription.text || '').trim();
@@ -73,7 +74,8 @@ function detectLang(text) {
 // Text-to-speech (OpenAI TTS) — auto-detects lang from text when lang=auto
 router.post('/tts', express.json(), async (req, res, next) => {
   try {
-    if (!VOICE_ENABLED) {
+    const OPENAI_KEY = getOpenAIKey();
+    if (!OPENAI_KEY) {
       return res.status(503).json({ error: 'Voice API disabled. Set OPENAI_API_KEY.' });
     }
 

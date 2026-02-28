@@ -41,6 +41,78 @@ function evaDisabled(res) {
   });
 }
 
+// ════════════════════════════════════════════════════════════════
+// EVA CHAT: Pure ChatGPT-like streaming conversation
+// ════════════════════════════════════════════════════════════════
+const EVA_CHAT_SYSTEM = `Tu es EVA, l'assistante IA exécutive de Halisoft.
+Tu réponds de façon naturelle comme ChatGPT ou Gemini.
+Tu parles en français par défaut (réponds dans la langue de l'utilisateur).
+Tu comprends bien : reformule si besoin pour clarifier, réponds au fond de la question même si la formulation est floue ou orale.
+Tu aides pour les opérations plateforme, l'analyse et le support décisionnel.
+En cas de doute sur la demande, pose une question courte pour préciser.`;
+
+const EVA_VOICE_EXTRA = `IMPORTANT: Ce message vient de la voix (reconnaissance vocale).
+La transcription peut contenir des erreurs (mots mal entendus, accents). Interprète avec bienveillance et réponds au sens probable.`;
+
+router.post('/eva/chat', async (req, res, next) => {
+  try {
+    const openaiKey = (process.env.OPENAI_API_KEY || '').trim();
+    if (!openaiKey) {
+      return res.status(503).json({
+        error: 'EVA Chat requires OPENAI_API_KEY. Set it in server environment.',
+        eva_chat_enabled: false,
+      });
+    }
+
+    const { messages, origin } = req.body || {};
+    if (!Array.isArray(messages)) {
+      return res.status(400).json({ error: 'messages (array) required' });
+    }
+
+    const OpenAI = require('openai');
+    const client = new OpenAI({ apiKey: openaiKey });
+    const systemContent = origin === 'voice' ? `${EVA_CHAT_SYSTEM}\n\n${EVA_VOICE_EXTRA}` : EVA_CHAT_SYSTEM;
+    const fullMessages = [
+      { role: 'system', content: systemContent },
+      ...messages,
+    ];
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders?.();
+
+    req.on('close', () => {
+      if (!res.writableEnded) console.log('[EVA Chat] client disconnected');
+    });
+
+    const stream = await client.chat.completions.create({
+      model: process.env.EVA_CHAT_MODEL || 'gpt-4o-mini',
+      messages: fullMessages,
+      stream: true,
+    });
+
+    for await (const chunk of stream) {
+      const delta = chunk.choices?.[0]?.delta?.content;
+      if (typeof delta === 'string' && delta.length > 0) {
+        res.write(`data: ${JSON.stringify({ delta })}\n\n`);
+      }
+    }
+
+    res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+    res.end();
+  } catch (err) {
+    console.error('[EVA Chat] error:', err.message);
+    if (!res.headersSent) {
+      res.status(500).json({ error: err.message || 'Chat failed' });
+    } else {
+      res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+      res.end();
+    }
+  }
+});
+
 // List conversations
 router.get('/conversations', async (req, res, next) => {
   try {
@@ -236,6 +308,10 @@ router.post('/chat', async (req, res, next) => {
 
     if (intent === intentRouter.INTENTS.CHECK_IN) {
       result = { reply: intentRouter.CHECK_IN_REPLY, model: 'intent-check-in', tokens: { input: 0, output: 0 } };
+    } else if (intent === intentRouter.INTENTS.VALIDATION) {
+      result = { reply: intentRouter.VALIDATION_REPLY, model: 'intent-validation', tokens: { input: 0, output: 0 } };
+    } else if (intent === intentRouter.INTENTS.AMBIGUOUS) {
+      result = { reply: intentRouter.AMBIGUOUS_REPLY, model: 'intent-ambiguous', tokens: { input: 0, output: 0 } };
     } else if (intent === intentRouter.INTENTS.IDENTITY_QUERY && req.ownerId) {
       const reply = await intentRouter.resolveIdentityQuery(req.ownerId, msgToSend);
       result = { reply, model: 'intent-identity', tokens: { input: 0, output: 0 } };
@@ -472,6 +548,10 @@ router.post('/chat/stream', async (req, res, next) => {
     let resultStream = null;
     if (intentStream === intentRouter.INTENTS.CHECK_IN) {
       resultStream = { reply: intentRouter.CHECK_IN_REPLY, model: 'intent-check-in', tokens: { input: 0, output: 0 } };
+    } else if (intentStream === intentRouter.INTENTS.VALIDATION) {
+      resultStream = { reply: intentRouter.VALIDATION_REPLY, model: 'intent-validation', tokens: { input: 0, output: 0 } };
+    } else if (intentStream === intentRouter.INTENTS.AMBIGUOUS) {
+      resultStream = { reply: intentRouter.AMBIGUOUS_REPLY, model: 'intent-ambiguous', tokens: { input: 0, output: 0 } };
     } else if (intentStream === intentRouter.INTENTS.IDENTITY_QUERY && req.ownerId) {
       const reply = await intentRouter.resolveIdentityQuery(req.ownerId, msgToSend);
       resultStream = { reply, model: 'intent-identity', tokens: { input: 0, output: 0 } };
@@ -859,14 +939,15 @@ router.post('/push/subscribe', async (req, res, next) => {
   }
 });
 
-router.get('/push/status', async (req, res, next) => {
+router.get('/push/status', async (req, res) => {
   try {
     const pushService = require('../services/pushNotificationService');
     const has = await pushService.hasSubscription(req.ownerId);
     const configured = !!pushService.getPublicKey();
     res.json({ subscribed: has, configured });
   } catch (e) {
-    next(e);
+    console.warn('[EVA] push/status:', e.message);
+    res.json({ subscribed: false, configured: false });
   }
 });
 

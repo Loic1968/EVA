@@ -60,7 +60,7 @@ const allowedOrigins = (process.env.EVA_ALLOWED_ORIGINS || 'https://eva.halisoft
   .filter(Boolean);
 const corsOptions = isProd && allowedOrigins.length > 0
   ? { origin: (origin, cb) => (!origin || allowedOrigins.includes(origin) ? cb(null, true) : cb(null, false)), credentials: true }
-  : { origin: true };
+  : { origin: true, credentials: true };
 app.use(cors(corsOptions));
 
 // Rate limiting – 100 req/15min per IP (stricter for OAuth & chat)
@@ -78,8 +78,10 @@ const apiStrictLimiter = rateLimit({
 });
 app.use('/api/chat', apiStrictLimiter);
 app.use('/api/chat/stream', apiStrictLimiter);
+app.use('/api/eva/chat', apiStrictLimiter);
 app.use('/api/oauth', apiStrictLimiter);
-app.use('/api/voice', apiStrictLimiter);
+app.use('/api/voice/stt', apiStrictLimiter);
+app.use('/api/voice/tts', apiStrictLimiter);
 app.use('/api/realtime', apiStrictLimiter);
 
 app.use(express.json({ limit: '2mb' }));

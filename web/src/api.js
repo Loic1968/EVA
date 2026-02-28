@@ -6,11 +6,11 @@ function getApiBase() {
     return `${import.meta.env.VITE_EVA_API_URL.replace(/\/$/, '')}/api`;
   }
   if (import.meta.env.DEV) {
-    // On iPhone/remote: use same host (proxied by Vite)
-    if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    // Always use same origin in dev → Vite proxy forwards /api to 5002
+    if (typeof window !== 'undefined') {
       return `${window.location.origin}/api`;
     }
-    return 'http://localhost:5002/api';
+    return 'http://localhost:3001/api';
   }
   return '/api';
 }
@@ -76,6 +76,22 @@ export const api = {
   // Chat (non-streaming). opts: { origin: 'voice' } for voice input (disables memory writes).
   chat: (message, history, conversation_id, document_ids, opts = {}) =>
     request('/chat', { method: 'POST', body: JSON.stringify({ message, history, conversation_id, document_ids, origin: opts.origin }) }),
+
+  // EVA Chat (pure ChatGPT-like) — streaming, returns Response for stream consumption.
+  // Pass opts.origin: 'voice' when input comes from voice (helps EVA handle transcription errors).
+  evaChat: async (messages, opts = {}) => {
+    const res = await fetch(`${API_BASE.replace(/\/$/, '')}/eva/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify({ messages, origin: opts.origin }),
+      signal: opts.signal,
+    });
+    if (res.status === 401) {
+      onAuthFailure();
+      throw new Error('Session expired');
+    }
+    return res;
+  },
 
   // Chat stream (SSE) — returns async iterable of { type, text?, reply?, ... }
   // Pass { signal } to abort, { origin: 'voice' } for voice (disables memory writes).
@@ -226,8 +242,19 @@ export const api = {
   getStats: () => request('/stats'),
 
   // Voice (OpenAI Whisper + TTS) — ChatGPT-level oral
-  voiceStatus: () => request('/voice/status'),
-  voiceStt: async (audioBlob) => {
+  voiceStatus: (() => {
+    let cache = null;
+    let cacheTs = 0;
+    let pending = null;
+    const TTL_MS = 60_000;
+    return () => {
+      if (cache && Date.now() - cacheTs < TTL_MS) return Promise.resolve(cache);
+      if (pending) return pending;
+      pending = request('/voice/status').then((r) => { cache = r; cacheTs = Date.now(); pending = null; return r; }).catch((e) => { pending = null; throw e; });
+      return pending;
+    };
+  })(),
+  voiceStt: async (audioBlob, opts = {}) => {
     const url = `${API_BASE.replace(/\/$/, '')}/voice/stt`;
     const base64 = await new Promise((resolve, reject) => {
       const r = new FileReader();
@@ -240,7 +267,7 @@ export const api = {
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-      body: JSON.stringify({ audio: base64, format }),
+      body: JSON.stringify({ audio: base64, format, lang: opts.lang || 'fr' }),
     });
     if (res.status === 401) { onAuthFailure(); throw new Error('Session expired'); }
     if (!res.ok) {

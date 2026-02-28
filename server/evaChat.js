@@ -29,6 +29,18 @@ function getCalendarSync() {
   return calendarSync;
 }
 
+let webSearchService = null;
+function getWebSearchService() {
+  if (!webSearchService) {
+    try {
+      webSearchService = require('./services/webSearchService');
+    } catch (e) {
+      console.warn('[EVA Chat] Web search not available:', e.message);
+    }
+  }
+  return webSearchService;
+}
+
 /** Mode commands: /brief, /draft, /execute (server-side parsed) */
 const MODE_HINTS = {
   BRIEF_ME: 'Respond concisely. Bullet points or 2–3 sentences max. No preamble.',
@@ -528,7 +540,23 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
     }
   }
 
-  systemPrompt = EVA_SYSTEM + attachedDocContext + structuredFactsContext + memoryContext + emailContext + documentContext + calendarContext;
+  // Web search (Tavily) — when user asks for latest news, current info, etc.
+  let webContext = '';
+  if (!isMinimalMessage(userMessage)) {
+    try {
+      const ws = getWebSearchService();
+      if (ws && ws.isAvailable() && ws.needsWebSearch(userMessage)) {
+        const query = ws.extractQuery(userMessage) || userMessage;
+        const data = await ws.search(query, { maxResults: 5, topic: 'general' });
+        const formatted = ws.formatForContext(data);
+        if (formatted) webContext = formatted;
+      }
+    } catch (err) {
+      console.warn('[EVA Chat] Web search failed:', err.message);
+    }
+  }
+
+  systemPrompt = EVA_SYSTEM + attachedDocContext + structuredFactsContext + memoryContext + emailContext + documentContext + calendarContext + webContext;
   }
   // P4: Style / voice profile injection
   if (ownerId) {

@@ -73,7 +73,10 @@ const VOICE_ADDENDA = `
 - Pas de phrases tronquées. Pas de "Bravo!" seul. Finis ta pensée ou ne dis rien.
 
 ## Mémorisation
-- Si l'utilisateur partage un fait à retenir: "Note-le en chat pour que je le retienne."`;
+- Si l'utilisateur partage un fait à retenir: "Note-le en chat pour que je le retienne."
+
+## Web search (quand ## Web search apparaît)
+- Utilise les résultats pour répondre. Cite les sources. Vols, actualités, prix.`;
 
 const CHAT_CAPABILITIES = `
 ## save_memory

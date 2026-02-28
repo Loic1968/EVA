@@ -36,8 +36,27 @@ export default function ChatRealtime() {
   const audioRef = useRef(null);
   const durationInterval = useRef(null);
   const micStreamRef = useRef(null);
+  const evaStreamRef = useRef(null);
   const [liveMicLevel, setLiveMicLevel] = useState(0);
+  const [liveEvaLevel, setLiveEvaLevel] = useState(0);
+  const [hasEvaStream, setHasEvaStream] = useState(false);
+  const [isEvaThinking, setIsEvaThinking] = useState(false);
   const outputDeviceRef = useRef(outputDeviceId);
+  const stopEvaRef = useRef(null);
+  const baseInstructionsRef = useRef(null);
+
+  // Client-side: cancel immediately if this might need web search — no compromise, never play wrong answer first
+  const MIGHT_NEED_WEB = /\b(?:vols?|flights?|actualit[eé]s?|quoi\s*de\s*neuf|latest\s*news?|donne[s]?\s*moi\s*(?:les\s*)?vols?|prochains?\s*vols?|cherche\s*(?:sur\s*)?(?:le\s*)?web|prix\s*(?:des?\s*)?vols?)\b|\b(?:dubai|paris|new\s*york|london|shanghai)\b.*\b(?:dubai|paris|new\s*york|london|shanghai)\b/i;
+
+  const STOP_PHRASES = [
+    'stop', 'arrête', 'tais-toi', 'tais toi', 'tais-toi.', 'tais toi.',
+    'stop talking', 'stop talking.', 'be quiet', 'silence', 'chut',
+    'arrete', 'arrête de parler', 'stop de parler',
+  ];
+  const isStopCommand = (text) => {
+    const t = (text || '').toLowerCase().trim().replace(/[.!?]+$/, '');
+    return STOP_PHRASES.some((p) => t === p || t.endsWith(' ' + p) || t.startsWith(p + ' '));
+  };
   outputDeviceRef.current = outputDeviceId;
   useEffect(() => {
     let cancelled = false;
@@ -72,7 +91,12 @@ export default function ChatRealtime() {
       peerRef.current = null;
     }
     micStreamRef.current = null;
+    evaStreamRef.current = null;
+    stopEvaRef.current = null;
+    setHasEvaStream(false);
     setLiveMicLevel(0);
+    setLiveEvaLevel(0);
+    setIsEvaThinking(false);
     setStatus('idle');
     setCallDuration(0);
   }, []);
@@ -94,6 +118,7 @@ export default function ChatRealtime() {
       }
       const ephemeralKey = data.value ?? data.client_secret?.value ?? data.client_secret;
       if (!ephemeralKey || typeof ephemeralKey !== 'string') throw new Error('Réponse token invalide.');
+      baseInstructionsRef.current = data.instructions || null;
 
       const pc = new RTCPeerConnection();
       peerRef.current = pc;
@@ -105,7 +130,10 @@ export default function ChatRealtime() {
       document.body.appendChild(audioEl);
       audioRef.current = audioEl;
       pc.ontrack = async (e) => {
-        audioEl.srcObject = e.streams[0];
+        const stream = e.streams[0];
+        audioEl.srcObject = stream;
+        evaStreamRef.current = stream;
+        setHasEvaStream(true);
         const outId = outputDeviceRef.current;
         if (outId && typeof audioEl.setSinkId === 'function') {
           try {
@@ -132,11 +160,66 @@ export default function ChatRealtime() {
         durationInterval.current = setInterval(() => setCallDuration((d) => d + 1), 1000);
       });
 
+      const stopEvaSpeaking = () => {
+        const el = audioRef.current;
+        if (el) {
+          el.pause();
+          el.currentTime = 0;
+        }
+        const d = dataChannelRef.current;
+        if (d?.readyState === 'open') {
+          try {
+            d.send(JSON.stringify({ type: 'response.cancel' }));
+            d.send(JSON.stringify({ type: 'output_audio_buffer.clear' }));
+          } catch (_) {}
+        }
+        setIsEvaThinking(false);
+      };
+      stopEvaRef.current = stopEvaSpeaking;
+
       dc.addEventListener('message', (ev) => {
         try {
           const event = JSON.parse(ev.data);
+          if (event.type === 'response.created') {
+            setIsEvaThinking(true);
+            audioRef.current?.play().catch(() => {});
+          } else if (event.type === 'response.done' || event.type === 'response.output_item.added') {
+            setIsEvaThinking(false);
+            if (event.type === 'response.output_item.added') audioRef.current?.play().catch(() => {});
+          }
           if (event.type === 'conversation.item.input_audio_transcription.completed' && event.transcript) {
-            setTranscript((t) => [...t, { role: 'user', text: event.transcript }]);
+            const txt = event.transcript;
+            setTranscript((t) => [...t, { role: 'user', text: txt }]);
+            if (isStopCommand(txt)) {
+              stopEvaSpeaking();
+            } else if (MIGHT_NEED_WEB.test(txt)) {
+              // Tavily voice — no compromise: cancel auto-response immediately, wait for web results, then answer
+              const base = baseInstructionsRef.current;
+              const dc = dataChannelRef.current;
+              if (base && dc?.readyState === 'open') {
+                stopEvaSpeaking();
+                (async () => {
+                  try {
+                    const token = localStorage.getItem('eva_token') || sessionStorage.getItem('eva_token');
+                    const r = await fetch(`${API_BASE}/realtime/web-assist`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+                      body: JSON.stringify({ transcript: txt }),
+                    });
+                    const { webContext } = await r.json().catch(() => ({}));
+                    const d = dataChannelRef.current;
+                    if (d?.readyState !== 'open') return;
+                    const instructions = webContext ? base + webContext : base;
+                    d.send(JSON.stringify({ type: 'response.create', instructions }));
+                  } catch (_) {
+                    const d = dataChannelRef.current;
+                    if (d?.readyState === 'open' && base) {
+                      d.send(JSON.stringify({ type: 'response.create', instructions: base }));
+                    }
+                  }
+                })();
+              }
+            }
           } else if (event.type === 'conversation.item.added' && event.item?.role === 'assistant') {
             const content = event.item?.content?.[0];
             if (content?.transcript) {
@@ -186,14 +269,14 @@ export default function ChatRealtime() {
     }
   }, [stopSession, selectedDeviceId]);
 
-  // Live mic level (equalizer) during call
+  // Live mic level (when you speak)
   useEffect(() => {
     if (status !== 'connected' || !micStreamRef.current) return;
-    const ctx = new AudioContext();
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
     const src = ctx.createMediaStreamSource(micStreamRef.current);
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 256;
-    analyser.smoothingTimeConstant = 0.8;
+    analyser.smoothingTimeConstant = 0.7;
     src.connect(analyser);
     const data = new Uint8Array(analyser.frequencyBinCount);
     let rafId;
@@ -210,6 +293,31 @@ export default function ChatRealtime() {
       ctx.close();
     };
   }, [status]);
+
+  // Live EVA output level (when EVA speaks)
+  useEffect(() => {
+    if (status !== 'connected' || !evaStreamRef.current) return;
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const src = ctx.createMediaStreamSource(evaStreamRef.current);
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 256;
+    analyser.smoothingTimeConstant = 0.7;
+    src.connect(analyser);
+    const data = new Uint8Array(analyser.frequencyBinCount);
+    let rafId;
+    const tick = () => {
+      if (!evaStreamRef.current) return;
+      analyser.getByteFrequencyData(data);
+      const avg = data.reduce((a, b) => a + b, 0) / data.length;
+      setLiveEvaLevel(Math.min(100, (avg / 128) * 100));
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(rafId);
+      ctx.close();
+    };
+  }, [status, hasEvaStream]);
 
   useEffect(() => () => stopSession(), [stopSession]);
 
@@ -297,27 +405,64 @@ export default function ChatRealtime() {
             </div>
             <p className="text-emerald-400 font-medium">Connected</p>
             <p className="text-slate-500 text-sm font-mono">{formatDuration(callDuration)}</p>
-            {/* Live mic level — equalizer during call */}
-            <div className="flex flex-col items-center gap-1 mt-2">
-              <p className="text-[10px] text-slate-500">Niveau micro</p>
-              <div className="flex items-end justify-center gap-0.5 h-6">
-                {Array.from({ length: 8 }, (_, i) => {
-                  const v = (liveMicLevel / 100) * (Math.sin((i / 8) * Math.PI) * 0.3 + 0.7);
-                  const h = 4 + Math.min(20, v * 20);
-                  return (
-                    <div
-                      key={i}
-                      className="w-1.5 rounded-sm bg-emerald-500/80 transition-all duration-75"
-                      style={{ height: `${h}px` }}
-                    />
-                  );
-                })}
+            {/* EVA thinking indicator */}
+            {isEvaThinking && (
+              <div className="flex items-center gap-2 mt-2 px-4 py-2 rounded-full bg-amber-500/20 border border-amber-500/40">
+                <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                <span className="text-amber-300 text-xs font-medium">EVA is thinking…</span>
+              </div>
+            )}
+            {/* Level visualizers: You (mic) + EVA (output) */}
+            <div className="flex items-center gap-8 mt-4">
+              <div className="flex flex-col items-center gap-1">
+                <p className="text-[10px] text-cyan-400 font-medium">You</p>
+                <div className="flex items-end justify-center gap-0.5 h-8">
+                  {Array.from({ length: 12 }, (_, i) => {
+                    const v = (liveMicLevel / 100) * (Math.sin((i / 12) * Math.PI) * 0.25 + 0.75);
+                    const h = 4 + Math.min(24, v * 24);
+                    return (
+                      <div
+                        key={i}
+                        className="w-1.5 rounded-sm bg-cyan-500/90 transition-all duration-75"
+                        style={{ height: `${h}px` }}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="flex flex-col items-center gap-1">
+                <p className="text-[10px] text-violet-400 font-medium">EVA</p>
+                <div className="flex items-end justify-center gap-0.5 h-8">
+                  {Array.from({ length: 12 }, (_, i) => {
+                    const v = (liveEvaLevel / 100) * (Math.sin((i / 12) * Math.PI) * 0.25 + 0.75);
+                    const h = 4 + Math.min(24, v * 24);
+                    return (
+                      <div
+                        key={i}
+                        className="w-1.5 rounded-sm bg-violet-500/90 transition-all duration-75"
+                        style={{ height: `${h}px` }}
+                      />
+                    );
+                  })}
+                </div>
               </div>
             </div>
+            {/* Stop EVA button — say "tais-toi" or "stop" to interrupt, or click */}
+            {(isEvaThinking || liveEvaLevel > 5) && (
+              <button
+                type="button"
+                onClick={() => stopEvaRef.current?.()}
+                className="mt-3 px-4 py-2 rounded-lg bg-red-500/30 hover:bg-red-500/50 text-red-300 text-sm font-medium border border-red-500/50 transition-colors"
+              >
+                Stop EVA
+              </button>
+            )}
           </div>
           <div className="flex-1 rounded-xl bg-slate-800/60 border border-slate-700/40 p-4 max-h-64 overflow-y-auto space-y-3">
             {transcript.length === 0 ? (
-              <p className="text-slate-500 text-sm text-center py-4">Speak…</p>
+              <p className="text-slate-500 text-sm text-center py-4">
+                Speak… Say <span className="text-cyan-400">tais-toi</span> or <span className="text-cyan-400">stop</span> to interrupt EVA.
+              </p>
             ) : (
               transcript.map((item, i) => (
                 <div key={i} className={`flex ${item.role === 'user' ? 'justify-end' : ''}`}>
@@ -327,6 +472,9 @@ export default function ChatRealtime() {
                 </div>
               ))
             )}
+            <p className="text-[10px] text-slate-500 text-center pt-2 border-t border-slate-700/40 mt-2">
+              Say tais-toi or stop to interrupt
+            </p>
           </div>
           <button
             onClick={stopSession}

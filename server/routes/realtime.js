@@ -53,7 +53,10 @@ const EVA_INSTRUCTIONS_LEGACY = `# EVA — Voice Assistant (HaliSoft)
 - Fact to remember → "Note-le en chat pour que je le retienne."
 
 ## Stop
-- "Stop", "arrête" → "OK" then stop.`;
+- "Stop", "arrête", "tais-toi", "stop talking", "be quiet", "silence" → stop immediately. Do not continue speaking.
+
+## Web search (when ## Web search appears below)
+- Si la section ## Web search est présente dans tes instructions, utilise ces résultats pour répondre. Cite les sources (titre + URL). Vols, actualités, prix.`;
 
 const EVA_INSTRUCTIONS_BASE = process.env.EVA_OVERHAUL_ENABLED === 'true'
   ? getCanonicalPrompt('voice')
@@ -253,6 +256,7 @@ router.get('/token', async (req, res) => {
     res.json({
       value: ephemeralKey,
       model: process.env.EVA_REALTIME_MODEL || 'gpt-realtime',
+      instructions, // client uses for session.update when injecting web search
     });
   } catch (e) {
     if (e.name === 'AbortError') {
@@ -265,6 +269,29 @@ router.get('/token', async (req, res) => {
 
 router.get('/status', (req, res) => {
   res.json({ enabled: REALTIME_ENABLED });
+});
+
+/** Web search assist for Voice — called when user asks for flights, news, etc. */
+router.post('/web-assist', async (req, res) => {
+  try {
+    const { transcript } = req.body || {};
+    const txt = typeof transcript === 'string' ? transcript.trim() : '';
+    if (!txt || txt.length > 2000) return res.json({ webContext: null });
+    let ws = null;
+    try {
+      ws = require('../services/webSearchService');
+    } catch (_) {}
+    if (!ws?.isAvailable() || !ws.needsWebSearch(txt)) {
+      return res.json({ webContext: null });
+    }
+    const query = ws.extractQuery(txt) || txt;
+    const data = await ws.search(query, { maxResults: 5, topic: 'general' });
+    const webContext = ws.formatForContext(data);
+    res.json({ webContext: webContext || null });
+  } catch (err) {
+    console.warn('[EVA Realtime] web-assist failed:', err.message);
+    res.json({ webContext: null });
+  }
 });
 
 module.exports = router;

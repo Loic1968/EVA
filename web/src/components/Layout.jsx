@@ -6,9 +6,10 @@ import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
 
 const nav = [
-  { to: '/voice', label: 'Real-Time (Voice)', icon: '🎤', highlight: true },
+  { to: '/chat', label: 'Chat (type ChatGPT)', icon: '◈', highlight: true },
+  { to: '/eva/chat', label: 'EVA Chat', icon: '💬', highlight: true },
+  { to: '/voice', label: 'EVA Assistant (voix)', icon: '🎤', highlight: true },
   { to: '/dashboard', label: 'Dashboard', icon: '◉' },
-  { to: '/chat', label: 'Chat EVA', icon: '◈' },
   { to: '/calendar', label: 'Calendar', icon: '📅' },
   { to: '/emails', label: 'Emails', icon: '✉' },
   { to: '/drafts', label: 'Drafts', icon: '◇' },

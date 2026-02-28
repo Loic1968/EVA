@@ -21,7 +21,8 @@ function detectLangFromText(text) {
   return frScore >= 2 ? 'fr' : 'en';
 }
 
-export function useVoiceInput(lang = DEFAULT_LANG) {
+export function useVoiceInput(lang = DEFAULT_LANG, opts = {}) {
+  const { deviceId } = opts;
   const langCode = LANG_MAP[lang] || LANG_MAP.en;
   const [isListening, setIsListening] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
@@ -57,12 +58,18 @@ export function useVoiceInput(lang = DEFAULT_LANG) {
     const FLUSH_SILENCE_MS = 1500;
     const MIN_WORDS = 3;
     const MIN_LENGTH = 12;
+    const MIN_CONFIDENCE = 0.35; // Ignore very low-confidence (background noise); 0.35 allows softer speech
+    const NOISE_PATTERNS = /^(euh|hum|ah|oh|mmm|hmm|hm|eh|uh|er)+\.?$/i; // Gibberish / breathing
 
     const flushVoice = () => {
       if (silenceTimer) clearTimeout(silenceTimer);
       silenceTimer = null;
       const msg = (finalRef.current || '').trim().replace(/\s+/g, ' ');
       if (!msg) return;
+      if (NOISE_PATTERNS.test(msg)) {
+        finalRef.current = '';
+        return;
+      }
       const words = msg.split(/\s+/).filter(Boolean).length;
       if (words < MIN_WORDS || msg.length < MIN_LENGTH) {
         finalRef.current = '';
@@ -84,8 +91,13 @@ export function useVoiceInput(lang = DEFAULT_LANG) {
       let interim = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const r = e.results[i];
-        const t = r[0].transcript;
+        const t = (r[0]?.transcript || '').trim();
+        const confidence = r[0]?.confidence ?? 1;
         if (r.isFinal) {
+          // Skip low-confidence (background noise) and noise-only transcripts
+          if (!t) continue;
+          if (confidence < MIN_CONFIDENCE) continue;
+          if (NOISE_PATTERNS.test(t)) continue;
           finalRef.current = (finalRef.current || '') + t + ' ';
         } else {
           interim += t;
@@ -104,7 +116,7 @@ export function useVoiceInput(lang = DEFAULT_LANG) {
       silenceTimer = null;
       const t = (finalRef.current || '').trim().replace(/\s+/g, ' ');
       finalRef.current = '';
-      if (t) {
+      if (t && !NOISE_PATTERNS.test(t)) {
         const words = t.split(/\s+/).filter(Boolean).length;
         if (words >= MIN_WORDS && t.length >= MIN_LENGTH && rec._onStopped) {
           rec._onStopped(t);
@@ -129,8 +141,10 @@ export function useVoiceInput(lang = DEFAULT_LANG) {
     setError(null);
     setInterimTranscript('');
     try {
+      const audioOpts = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+      if (deviceId) audioOpts.deviceId = { ideal: deviceId };
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        audio: audioOpts,
       });
       streamRef.current = stream;
       chunksRef.current = [];
@@ -143,7 +157,7 @@ export function useVoiceInput(lang = DEFAULT_LANG) {
     } catch (err) {
       setError(lang === 'fr' ? 'Micro inaccessible. Autorisez le micro.' : 'Micro inaccessible. Allow microphone.');
     }
-  }, [lang]);
+  }, [lang, deviceId]);
 
   const startListening = useCallback(() => {
     if (useWhisper) startListeningPremium();
@@ -173,8 +187,10 @@ export function useVoiceInput(lang = DEFAULT_LANG) {
           return;
         }
         try {
-          const { text } = await api.voiceStt(blob);
-          if (onStopped) onStopped(text || '');
+          const { text } = await api.voiceStt(blob, { lang });
+          let out = (text || '').trim();
+          if (out && (out.length < 12 || /^(euh|hum|ah|oh|mmm|hmm)+\.?$/i.test(out))) out = ''; // Background noise
+          if (onStopped) onStopped(out);
         } catch (e) {
           const msg = e.body?.error || e.message || (lang === 'fr' ? 'Erreur transcription' : 'Transcription error');
           setError(msg);

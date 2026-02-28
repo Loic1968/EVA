@@ -55,6 +55,14 @@ function parseCommand(text) {
 const { getCanonicalPrompt } = require('./prompts/canonicalPrompt');
 const { getAssistantPrompt } = require('./systemPrompt');
 
+const ANTI_HALLUCINATION = `# RÈGLES ABSOLUES (vérifier AVANT chaque réponse)
+- NE JAMAIS inventer ce que l'utilisateur a dit. "C'est un bon film" ≠ "tu n'as rien demain". "C'est moi que voilà" ≠ "vol annulé".
+- NE JAMAIS poser de questions qu'il n'a pas posées. Réponds à CE QU'IL A DIT, pas à une interprétation.
+- UNE question = UNE réponse directe. Pas de suivi inventé, pas de "et si...?", pas de propositions non demandées.
+- Si tu ne comprends pas → "Oui ?" ou "Peux-tu préciser ?". Jamais inventer pour combler.
+
+`;
+
 const EVA_SYSTEM_LEGACY = `# PRINCIPE FONDAMENTAL — NE JAMAIS INVENTER
 Tu réponds UNIQUEMENT au DERNIER message. Comprends l'intention : si c'est une vraie question (priorités, agenda, emails, docs) → réponds à la question. "Oui ?" UNIQUEMENT pour messages ambigus ou trop courts ("ok", ".", "Bonjour" seul).
 
@@ -114,11 +122,13 @@ You are EVA, a Personal AI Digital Twin for the user. The user may introduce the
 ## Style
 - Concis. Pas de fluff. Jamais inventer de données. Calendrier: utilise create_calendar_event quand demandé.`;
 
-const EVA_SYSTEM = process.env.EVA_ASSISTANT_MODE === 'true'
-  ? getAssistantPrompt()
-  : process.env.EVA_OVERHAUL_ENABLED === 'true'
-    ? getCanonicalPrompt('chat')
-    : EVA_SYSTEM_LEGACY;
+const EVA_SYSTEM = ANTI_HALLUCINATION + (
+  process.env.EVA_ASSISTANT_MODE === 'true'
+    ? getAssistantPrompt()
+    : process.env.EVA_OVERHAUL_ENABLED === 'true'
+      ? getCanonicalPrompt('chat')
+      : EVA_SYSTEM_LEGACY
+);
 
 function getClient() {
   const key = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
@@ -146,13 +156,16 @@ const ALWAYS_INJECT_RECENT = true;
 
 // Message trop court ou sans question/fait clair → ne pas injecter documents/facts (évite hallucination)
 const MINIMAL_WORDS = /^(ciel|ok|oui|non|d\'accord|\.\.\.|bonjour|salut|hello|hi|yo|ah|euh|hum|quoi|merci|hein|voilà|voila|c\'est chaud|système|que peut-être|propre|c\'est propre|c\'est bon|nickel|parfait)$/i;
-// Check-in ou validation courte → pas de contexte doc/emails (sinon le modèle confond et propose des modifs)
+// Check-in ou validation courte → pas de contexte doc/emails
 const CHECKIN_OR_VALIDATION = /^(tu m\'entends\s*\??|tu m\'écoutes\s*\??|t\'entends\s*\??|t\'écoutes\s*\??|are you there\s*\??|do you hear me\s*\??|ok c\'est bon)$/i;
+// Casual phrases — NOT questions, NOT facts. Don't inject heavy context (avoids "je note que tu n'as rien demain")
+const CASUAL_PHRASES = /^(c\'est (un )?bon film|c\'est magnifique|le bébé|c\'est moi que voilà|il y a|simplement|d\'accord)$/i;
 function isMinimalMessage(msg) {
   const t = (msg || '').trim();
   if (!t || t.length < 6) return true; // vide, "ciel", "ok"
   if (MINIMAL_WORDS.test(t)) return true; // mot seul
-  if (CHECKIN_OR_VALIDATION.test(t)) return true; // "tu m'entends ?", "propre", etc. → pas de contexte lourd
+  if (CHECKIN_OR_VALIDATION.test(t)) return true;
+  if (CASUAL_PHRASES.test(t)) return true; // casual → pas de contexte emails/calendar (évite hallucination)
   return false;
 }
 
@@ -560,6 +573,8 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
       createOptions.temperature = temp;
     } else if (process.env.EVA_OVERHAUL_ENABLED === 'true') {
       createOptions.temperature = 0.2;
+    } else {
+      createOptions.temperature = 0.3; // Lower = less hallucination (legacy default)
     }
   }
 

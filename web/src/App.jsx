@@ -9,6 +9,7 @@ import DataSources from './pages/DataSources';
 import Documents from './pages/Documents';
 import Chat from './pages/Chat';
 import ChatRealtime from './pages/ChatRealtime';
+import EvaChatPage from './modules/eva-chat/EvaChatPage';
 import Login from './pages/Login';
 import SignUp from './pages/SignUp';
 import ForgotPassword from './pages/ForgotPassword';
@@ -43,8 +44,14 @@ function AppRoutes() {
   return (
     <Layout>
       <Routes>
-        <Route path="/" element={<Navigate to="/voice" replace />} />
+        <Route path="/" element={<Navigate to="/chat" replace />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/signup" element={<SignUp />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/eva/chat" element={<EvaChatPage />} />
+        <Route path="/chat-pure" element={<EvaChatPage />} />
         <Route path="/chat/realtime" element={<ChatRealtime />} />
         <Route path="/voice" element={<ChatRealtime />} />
         <Route path="/chat" element={<Chat />} />

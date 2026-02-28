@@ -55,7 +55,10 @@ export default function Chat() {
         setEvaEnabled(r.eva_enabled !== false);
         setEvaDisabledReason(r.eva_enabled === false ? (r.error || 'ANTHROPIC_API_KEY not set') : null);
       })
-      .catch(() => setEvaEnabled(false));
+      .catch((e) => {
+        setEvaEnabled(false);
+        setEvaDisabledReason(e?.message?.includes('fetch') || e?.message?.includes('Network') ? 'Connexion impossible. Le serveur EVA tourne ? (npm run dev)' : (e?.body?.error || e?.message || 'Erreur'));
+      });
   }, []);
   useEffect(() => {
     api.getSettings()
@@ -390,8 +393,8 @@ export default function Chat() {
                 ■ {lang === 'fr' ? 'Stop' : 'Stop'}
               </button>
             )}
-            <Link to="/chat/realtime" className="flex items-center gap-1.5 px-3 py-2 min-h-[44px] rounded-lg bg-red-500/20 text-red-600 dark:text-red-400 hover:bg-red-500/30 text-sm font-medium touch-manipulation" title={lang === 'fr' ? 'Appeler EVA (voix temps réel)' : 'Voice call (Realtime)'}>
-              🎤 <span className="hidden sm:inline">{lang === 'fr' ? 'Appel vocal' : 'Voice call'}</span>
+            <Link to="/voice" className="flex items-center gap-1.5 px-3 py-2 min-h-[44px] rounded-lg bg-red-500/20 text-red-600 dark:text-red-400 hover:bg-red-500/30 text-sm font-medium touch-manipulation" title={lang === 'fr' ? 'Mode voix (Whisper)' : 'Voice mode (Whisper)'}>
+              🎤 <span className="hidden sm:inline">{lang === 'fr' ? 'Mode voix' : 'Voice'}</span>
             </Link>
             {voiceOutput.supported && (
               <button onClick={() => setAutoPlayVoice(!autoPlayVoice)} className={`p-2 rounded-lg ${autoPlayVoice ? 'text-red-600 dark:text-red-400 bg-red-500/10' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-400'}`} title={autoPlayVoice ? (lang === 'fr' ? 'Réponse vocale activée' : 'Voice reply on') : (lang === 'fr' ? 'Réponse vocale désactivée' : 'Voice reply off')}>🔊</button>

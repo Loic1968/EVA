@@ -60,6 +60,36 @@ async function testNoContradictionAfterCorrection() {
   tests.push({ name: 'no contradiction after correction', ok, detail: ok ? 'OK' : `Should be "corrected", got ${fact?.value}` });
 }
 
+async function testCheckInReturnsOui() {
+  const intent = intentRouter.detectIntent("Tu m'entends ?");
+  const ok = intent === intentRouter.INTENTS.CHECK_IN;
+  tests.push({
+    name: 'check-in "Tu m\'entends ?" → CHECK_IN, reply Oui',
+    ok,
+    detail: ok ? 'OK' : `Expected CHECK_IN, got ${intent}`,
+  });
+}
+
+async function testValidationReturnsParfait() {
+  const intent = intentRouter.detectIntent('Parfait');
+  const ok = intent === intentRouter.INTENTS.VALIDATION;
+  tests.push({
+    name: 'validation "Parfait" → VALIDATION, reply Parfait.',
+    ok,
+    detail: ok ? 'OK' : `Expected VALIDATION, got ${intent}`,
+  });
+}
+
+async function testAmbiguousReturnsOui() {
+  const intent = intentRouter.detectIntent('ok');
+  const ok = intent === intentRouter.INTENTS.AMBIGUOUS;
+  tests.push({
+    name: 'ambiguous "ok" → AMBIGUOUS, reply Oui ?',
+    ok,
+    detail: ok ? 'OK' : `Expected AMBIGUOUS, got ${intent}`,
+  });
+}
+
 async function testIdentityQueryReturnsFullName() {
   const ownerId = await getTestOwnerId();
   const expectedName = 'Jean Dupont';
@@ -90,6 +120,9 @@ async function run() {
     await testCorrectFlightDate();
     await testStatusFromPreAnswer();
     await testNoContradictionAfterCorrection();
+    await testCheckInReturnsOui();
+    await testValidationReturnsParfait();
+    await testAmbiguousReturnsOui();
     await testIdentityQueryReturnsFullName();
 
     const passed = tests.filter((t) => t.ok).length;

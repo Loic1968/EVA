@@ -3,10 +3,16 @@
  * Requires VAPID keys: EVA_VAPID_PUBLIC_KEY and EVA_VAPID_PRIVATE_KEY (generate with: npx web-push generate-vapid-keys)
  */
 const db = require('../db');
-const webPush = require('web-push');
+let webPush = null;
+try {
+  webPush = require('web-push');
+} catch (e) {
+  console.warn('[Push] web-push not installed. Run: cd eva && npm install');
+}
 
 let vapidConfigured = false;
 function ensureVapid() {
+  if (!webPush) return false;
   if (vapidConfigured) return true;
   const publicKey = process.env.EVA_VAPID_PUBLIC_KEY || process.env.VAPID_PUBLIC_KEY;
   const privateKey = process.env.EVA_VAPID_PRIVATE_KEY || process.env.VAPID_PRIVATE_KEY;

@@ -1,11 +1,13 @@
 /**
- * Intent Router — routes user questions BEFORE LLM/context.
- * Prevents irrelevant responses (Stripe, previous topics) for identity/fact queries.
+ * Intent Router — routes user input BEFORE LLM/context.
+ * Prevents malentendus and hallucinations: ambiguous/short → "Oui ?", validation → "Parfait."
  */
 const FACTS_SERVICE = require('./services/factsService');
 
 const INTENTS = Object.freeze({
   CHECK_IN: 'CHECK_IN',
+  VALIDATION: 'VALIDATION',
+  AMBIGUOUS: 'AMBIGUOUS',
   IDENTITY_QUERY: 'IDENTITY_QUERY',
   FACT_QUERY: 'FACT_QUERY',
   STATUS_QUERY: 'STATUS_QUERY',
@@ -21,6 +23,21 @@ const CHECK_IN_PATTERNS = [
   /do\s+you\s+hear\s+me\s*\??/i,
   /tu\s+me\s+entends/i,
   /tu\s+me\s+[eé]coutes/i,
+];
+
+/** Validation: user validates/satisfied → "Parfait." only, no LLM, no inventing changes */
+const VALIDATION_PATTERNS = [
+  /^(parfait|c'est bon|nickel|propre|c'est propre|ok c'est bon|validé|top|super|génial|bien)$/i,
+  /^(perfect|great|fine|good|validated|approved)$/i,
+];
+
+/** Ambiguous: too short, noise, or unclear → "Oui ?" — never send to LLM (hallucination risk) */
+const AMBIGUOUS_PATTERNS = [
+  /^\.+$/,           // "..."
+  /^[,;:!?]+$/,      // punctuation only
+  /^(ok|oui|non|ah|euh|hum|quoi|voilà|voila|bonjour|salut|hello|hi|yo|merci|hein)$/i,
+  /^(ciel|système|que peut-être|c'est chaud)$/i,
+  /^[a-zéèêëàâäùûüïîô]{1,15}$/i,  // single short word
 ];
 
 /** Identity patterns → fact key to return. Order matters: first match wins. */
@@ -61,26 +78,33 @@ const ACTION_PATTERNS = [
 ];
 
 function detectIntent(userMessage) {
-  if (!userMessage || typeof userMessage !== 'string') return INTENTS.GENERAL_CHAT;
-  const msg = userMessage.trim().toLowerCase();
-  if (msg.length < 2) return INTENTS.GENERAL_CHAT;
+  if (!userMessage || typeof userMessage !== 'string') return INTENTS.AMBIGUOUS;
+  const t = userMessage.trim();
+  const msg = t.toLowerCase();
+  if (msg.length < 2) return INTENTS.AMBIGUOUS;
 
-  // 1. Check-in first (Tu m'entends ? → Oui)
-  if (CHECK_IN_PATTERNS.some((re) => re.test(userMessage))) return INTENTS.CHECK_IN;
+  // 1. Check-in (Tu m'entends ? → Oui)
+  if (CHECK_IN_PATTERNS.some((re) => re.test(t))) return INTENTS.CHECK_IN;
 
-  // 2. Identity
+  // 2. Validation (Parfait, c'est bon → Parfait.)
+  if (VALIDATION_PATTERNS.some((re) => re.test(t))) return INTENTS.VALIDATION;
+
+  // 3. Ambiguous (ok, bonjour seul, euh, etc. → Oui ?) — never LLM
+  if (msg.length <= 20 && AMBIGUOUS_PATTERNS.some((re) => re.test(t))) return INTENTS.AMBIGUOUS;
+
+  // 4. Identity
   for (const { pattern } of IDENTITY_PATTERNS) {
-    if (pattern.test(userMessage.trim())) return INTENTS.IDENTITY_QUERY;
+    if (pattern.test(t)) return INTENTS.IDENTITY_QUERY;
   }
 
-  // 3. Status
-  if (STATUS_PATTERNS.some((re) => re.test(userMessage))) return INTENTS.STATUS_QUERY;
+  // 5. Status
+  if (STATUS_PATTERNS.some((re) => re.test(t))) return INTENTS.STATUS_QUERY;
 
-  // 4. Action
-  if (ACTION_PATTERNS.some((re) => re.test(userMessage))) return INTENTS.ACTION_QUERY;
+  // 6. Action
+  if (ACTION_PATTERNS.some((re) => re.test(t))) return INTENTS.ACTION_QUERY;
 
-  // 5. Fact (questions about stored facts)
-  if (FACT_PATTERNS.some((re) => re.test(userMessage))) return INTENTS.FACT_QUERY;
+  // 7. Fact
+  if (FACT_PATTERNS.some((re) => re.test(t))) return INTENTS.FACT_QUERY;
 
   return INTENTS.GENERAL_CHAT;
 }
@@ -98,6 +122,8 @@ function getIdentityFactKey(userMessage) {
 const IDENTITY_FALLBACK = "I do not currently have this information stored.";
 
 const CHECK_IN_REPLY = "Oui, je t'entends.";
+const VALIDATION_REPLY = "Parfait.";
+const AMBIGUOUS_REPLY = "Oui ?";
 
 /**
  * Resolve identity query from eva.facts. NO LLM. No emails, documents, or conversation context.
@@ -127,4 +153,6 @@ module.exports = {
   INTENTS,
   IDENTITY_FALLBACK,
   CHECK_IN_REPLY,
+  VALIDATION_REPLY,
+  AMBIGUOUS_REPLY,
 };

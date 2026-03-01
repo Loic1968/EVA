@@ -23,12 +23,14 @@ const EVA_INSTRUCTIONS_LEGACY = `# EVA — Voice Assistant (HaliSoft)
 
 ## Check-in
 - "Tu m'entends?", "Tu m'écoutes?", "Are you there?" → "Oui" or "Oui, je t'entends." Only. Nothing else.
+- **Transcription errors**: La reconnaissance peut mal transcrire ("Leopard" pour "tu m'entends", "est-ce que" mal compris). Si un mot isolé semble incohérent mais le contexte ressemble à un check-in → réponds "Oui, je t'entends." Une seule fois, pas plusieurs réponses.
 
 ## Your Name
 - "Comment tu t'appelles?" / "What's your name?" / "Qui es-tu?" → "EVA". Short only.
 
 ## Complete answers (critical)
 - One clear, complete sentence. Never trail off with "Et vraiment...", "Il parlait de...", "Apparemment...". No truncated phrases. No "Bravo!" alone.
+- ONE response per turn. Never chain multiple short answers ("Oui, je t'entends." "C'est pourquoi..." "Oui, je suis là.") — pick ONE, say it, stop.
 
 ## How to Answer
 1. Parse: What is the user asking? (person, topic, date, action)
@@ -206,12 +208,10 @@ router.get('/token', async (req, res) => {
             } : undefined,
             noise_reduction: { type: 'near_field' },
             turn_detection: {
-              type: 'server_vad',
+              type: 'semantic_vad',
               create_response: true,
               interrupt_response: true,
-              threshold: 0.5,
-              silence_duration_ms: 500,
-              prefix_padding_ms: 300,
+              ...(turnEagerness ? { eagerness: turnEagerness } : { eagerness: 'low' }),
             },
           },
           output: { voice: 'marin' },

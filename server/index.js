@@ -91,7 +91,12 @@ app.get('/health', async (req, res) => {
   try {
     const db = require('./db');
     await db.getOrCreateOwner(process.env.EVA_OWNER_EMAIL || 'loic@halisoft.biz', 'Loic Hennocq');
-    res.json({ status: 'ok', app: 'eva', db: 'ok', timestamp: new Date().toISOString() });
+    let ws = null;
+    try {
+      ws = require('./services/webSearchService');
+    } catch (_) {}
+    const tavily = !!(ws && ws.isAvailable());
+    res.json({ status: 'ok', app: 'eva', db: 'ok', tavily, timestamp: new Date().toISOString() });
   } catch (e) {
     console.error('[EVA] health check failed:', e.message);
     res.status(503).json({ status: 'error', app: 'eva', db: 'fail', error: e.message });

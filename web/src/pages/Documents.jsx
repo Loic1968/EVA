@@ -364,14 +364,21 @@ export default function Documents() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
-                  <span className={`text-xs px-2.5 py-1.5 rounded-full ${
-                    doc.status === 'indexed' ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' :
-                    doc.status === 'processing' ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400' :
-                    doc.status === 'error' ? 'bg-red-500/20 text-red-600 dark:text-red-400' :
-                    'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
-                  }`} title={doc.status === 'error' && doc.metadata?.error ? doc.metadata.error : (doc.processed_at ? `Indexed ${new Date(doc.processed_at).toLocaleString()}` : doc.status)}>
-                    {doc.status === 'indexed' ? 'Indexed' : doc.status === 'uploaded' ? 'Not indexed' : doc.status === 'processing' ? 'Indexing…' : 'Index failed'}
-                  </span>
+                  <div className="flex flex-col gap-0.5">
+                    <span className={`text-xs px-2.5 py-1.5 rounded-full w-fit ${
+                      doc.status === 'indexed' ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' :
+                      doc.status === 'processing' ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400' :
+                      doc.status === 'error' ? 'bg-red-500/20 text-red-600 dark:text-red-400' :
+                      'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
+                    }`} title={doc.processed_at ? `Indexed ${new Date(doc.processed_at).toLocaleString()}` : doc.status}>
+                      {doc.status === 'indexed' ? 'Indexed' : doc.status === 'uploaded' ? 'Not indexed' : doc.status === 'processing' ? 'Indexing…' : 'Index failed'}
+                    </span>
+                    {doc.status === 'error' && doc.metadata?.error && (
+                      <span className="text-[10px] text-red-500 dark:text-red-400 line-clamp-2 max-w-[220px]" title={doc.metadata.error}>
+                        {doc.metadata.error}
+                      </span>
+                    )}
+                  </div>
                   {(doc.status === 'indexed' || ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp'].includes((doc.file_type || '').toLowerCase())) && (
                     <button
                       onClick={() => setReaderDoc(doc)}

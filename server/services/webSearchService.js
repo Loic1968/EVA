@@ -69,15 +69,19 @@ function formatForContext(data) {
  * Check if user message suggests need for web search.
  * Includes: news, flights (vols Dubai NY), real-time info.
  */
-const NEWS_KEYWORDS = /derni[eè]res?\s*infos?|actualit[eé]s?|quoi\s*de\s*neuf|latest\s*news?|recent\s*info|search\s*web|cherche\s*(?:sur\s*)?(?:le\s*)?web|google|trouve\s*(?:moi\s*)?(?:des\s*)?infos?|informations?\s*r[eé]centes?|ce\s*qui\s*se\s*passe|what['']?s\s*happening|current\s*events?|aujourd['']?hui\s*dans/i;
+const NEWS_KEYWORDS = /derni[eè]res?\s*infos?|actualit[eé]s?|quoi\s*de\s*neuf|latest\s*news?|recent\s*info|search\s*web|cherche\s*(?:sur\s*)?(?:le\s*)?web|google|trouve\s*(?:moi\s*)?(?:des\s*)?infos?|informations?\s*r[eé]centes?|ce\s*qui\s*se\s*passe|il\s*se\s*passe\s*quoi|quoi\s*à\s+(?:dubai|duba[iï]|paris|new\s*york|london|shanghai|singapore)|what['']?s\s*happening|current\s*events?|aujourd['']?hui\s*dans|situation\s*actuelle|(?:c['']?est\s+)?quoi\s+la\s+situation|la\s+situation|situation\s+[aà]|what['']?s\s+(?:the\s+)?situation|(?:dubai|duba[iï]|paris|new\s*york|london).*situation|situation.*(?:dubai|duba[iï]|paris|new\s*york|london)/i;
 const FLIGHT_KEYWORDS = /(?:donne[rz]?|donnes?)\s*(?:moi\s*)?(?:les\s*)?(?:prochains?\s*)?vols?|prochains?\s*vols?|vols?\s+(?:de\s+|à\s+|entre\s+)?|flights?\s+(?:from\s+|to\s+|between\s+)?|give\s*me\s*(?:the\s*)?(?:next\s*)?flights?|prix\s*(?:des?\s*)?vols?|flight\s*prices?/i;
 const CITY_PAIR = /\b(?:dubai|duba[iï]|paris|new\s*york|london|shanghai|singapore)\b.*\b(?:dubai|duba[iï]|paris|new\s*york|london|shanghai|singapore)\b/i;
 
 function needsWebSearch(message) {
   if (!message || typeof message !== 'string') return false;
   const t = message.trim();
-  return NEWS_KEYWORDS.test(t) || FLIGHT_KEYWORDS.test(t) || (/\b(?:vols?|flights?)\b/i.test(t) && CITY_PAIR.test(t));
+  return NEWS_KEYWORDS.test(t) || FLIGHT_KEYWORDS.test(t) || (/\b(?:vols?|flights?)\b/i.test(t) && CITY_PAIR.test(t)) || (/\bsituation\b/i.test(t) && /\b(?:dubai|duba[iï]|paris|new\s*york|london|shanghai|singapore)\b/i.test(t));
+}
 
+function isNewsQuery(message) {
+  if (!message || typeof message !== 'string') return false;
+  return NEWS_KEYWORDS.test(message.trim());
 }
 
 /**
@@ -98,5 +102,6 @@ module.exports = {
   formatForContext,
   needsWebSearch,
   extractQuery,
+  isNewsQuery,
   isAvailable: () => !!(process.env.TAVILY_API_KEY || '').trim(),
 };

@@ -96,7 +96,8 @@ app.get('/health', async (req, res) => {
       ws = require('./services/webSearchService');
     } catch (_) {}
     const tavily = !!(ws && ws.isAvailable());
-    res.json({ status: 'ok', app: 'eva', db: 'ok', tavily, timestamp: new Date().toISOString() });
+    const anthropic = !!((process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY) || '').trim();
+    res.json({ status: 'ok', app: 'eva', db: 'ok', tavily, anthropic, timestamp: new Date().toISOString() });
   } catch (e) {
     console.error('[EVA] health check failed:', e.message);
     res.status(503).json({ status: 'error', app: 'eva', db: 'fail', error: e.message });
@@ -132,7 +133,8 @@ app.use('/api/voice', verifyAuth, apiKeyOrSameOrigin, voiceRoutes);
 app.use('/api', evaRoutes);
 
 // Serve frontend (web/dist) when built (e.g. on Render: single service for eva.halisoft.biz)
-const distPath = path.join(__dirname, '../web/dist');
+const distPath = path.resolve(__dirname, '../web/dist');
+const assetsPath = path.join(distPath, 'assets');
 const frontendUrl = process.env.EVA_FRONTEND_URL || process.env.EVA_WEB_URL;
 
 if (frontendUrl && !isProd) {
@@ -143,9 +145,13 @@ if (frontendUrl && !isProd) {
     return res.redirect(base + req.originalUrl);
   });
 } else if (fs.existsSync(distPath)) {
-  app.use(express.static(distPath));
+  app.use(express.static(distPath, { index: false }));
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api')) return next();
+    // Never SPA-fallback for assets — return 404 to avoid MIME type error (text/html for .css)
+    if (req.path.startsWith('/assets/') || /\.(css|js|ico|woff2?|svg)(\?|$)/i.test(req.path)) {
+      return res.status(404).type('text/plain').send('Not found');
+    }
     res.sendFile(path.join(distPath, 'index.html'));
   });
 }
@@ -158,7 +164,12 @@ app.use((err, req, res, next) => {
 const HOST = process.env.EVA_HOST || '0.0.0.0';
 app.listen(PORT, HOST, () => {
   const voice = process.env.OPENAI_API_KEY ? ' (voice: Whisper + TTS)' : '';
-  console.log(`[EVA] listening on ${HOST}:${PORT}${voice}${fs.existsSync(distPath) ? ' (frontend served from web/dist)' : ''}`);
+  const distOk = fs.existsSync(distPath);
+const assetsOk = distOk && fs.existsSync(assetsPath);
+if (!assetsOk && distOk) {
+  console.warn('[EVA] WARNING: web/dist/assets missing — static assets (CSS/JS) may 404. Ensure build runs before start (npm run build).');
+}
+console.log(`[EVA] listening on ${HOST}:${PORT}${voice}${distOk ? ` (frontend: ${distPath})` : ''}`);
 
   // Start Gmail background sync worker (Phase 2)
   const hasGmail = (process.env.EVA_GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID) &&

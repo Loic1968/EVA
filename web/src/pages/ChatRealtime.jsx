@@ -41,12 +41,14 @@ export default function ChatRealtime() {
   const [liveEvaLevel, setLiveEvaLevel] = useState(0);
   const [hasEvaStream, setHasEvaStream] = useState(false);
   const [isEvaThinking, setIsEvaThinking] = useState(false);
+  const [isAwaitingEva, setIsAwaitingEva] = useState(false); // from user speaks until EVA responds
   const outputDeviceRef = useRef(outputDeviceId);
   const stopEvaRef = useRef(null);
   const baseInstructionsRef = useRef(null);
+  const audioContextRef = useRef(null);
 
   // Client-side: cancel immediately if this might need web search — no compromise, never play wrong answer first
-  const MIGHT_NEED_WEB = /\b(?:vols?|flights?|actualit[eé]s?|quoi\s*de\s*neuf|latest\s*news?|donne[s]?\s*moi\s*(?:les\s*)?vols?|prochains?\s*vols?|cherche\s*(?:sur\s*)?(?:le\s*)?web|prix\s*(?:des?\s*)?vols?)\b|\b(?:dubai|paris|new\s*york|london|shanghai)\b.*\b(?:dubai|paris|new\s*york|london|shanghai)\b/i;
+  const MIGHT_NEED_WEB = /\b(?:vols?|flights?|actualit[eé]s?|quoi\s*de\s*neuf|latest\s*news?|donne[s]?\s*moi\s*(?:les\s*)?vols?|prochains?\s*vols?|cherche\s*(?:sur\s*)?(?:le\s*)?web|prix\s*(?:des?\s*)?vols?|situation\s*actuelle|quoi\s+la\s+situation|la\s+situation|situation\s+[aà]|il\s*se\s*passe\s*quoi|quoi\s*à\s+(?:dubai|duba[iï]|paris|new\s*york|london|shanghai))\b|situation.*(?:dubai|duba[iï]|paris|new\s*york|london)|\b(?:dubai|duba[iï]|paris|new\s*york|london|shanghai)\b/i;
 
   const STOP_PHRASES = [
     'stop', 'arrête', 'tais-toi', 'tais toi', 'tais-toi.', 'tais toi.',
@@ -92,11 +94,14 @@ export default function ChatRealtime() {
     }
     micStreamRef.current = null;
     evaStreamRef.current = null;
+    audioContextRef.current?.close?.();
+    audioContextRef.current = null;
     stopEvaRef.current = null;
     setHasEvaStream(false);
     setLiveMicLevel(0);
     setLiveEvaLevel(0);
     setIsEvaThinking(false);
+    setIsAwaitingEva(false);
     setStatus('idle');
     setCallDuration(0);
   }, []);
@@ -105,6 +110,12 @@ export default function ChatRealtime() {
     setError(null);
     setStatus('connecting');
     try {
+      // Create AudioContext during user gesture (required for Safari/iOS) — used by VU meters
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        ctx.resume().catch(() => {});
+        audioContextRef.current = ctx;
+      } catch (_) {}
       const token = localStorage.getItem('eva_token') || sessionStorage.getItem('eva_token');
       const r = await fetch(`${API_BASE}/realtime/token`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -174,25 +185,35 @@ export default function ChatRealtime() {
           } catch (_) {}
         }
         setIsEvaThinking(false);
+        setIsAwaitingEva(false);
       };
       stopEvaRef.current = stopEvaSpeaking;
 
       dc.addEventListener('message', (ev) => {
         try {
           const event = JSON.parse(ev.data);
+          if (event.type === 'input_audio_buffer.speech_stopped') {
+            setIsAwaitingEva(true);
+          }
           if (event.type === 'response.created') {
             setIsEvaThinking(true);
+            setIsAwaitingEva(true);
             audioRef.current?.play().catch(() => {});
           } else if (event.type === 'response.done' || event.type === 'response.output_item.added') {
             setIsEvaThinking(false);
+            if (event.type === 'response.done') setIsAwaitingEva(false);
             if (event.type === 'response.output_item.added') audioRef.current?.play().catch(() => {});
           }
           if (event.type === 'conversation.item.input_audio_transcription.completed' && event.transcript) {
             const txt = event.transcript;
             setTranscript((t) => [...t, { role: 'user', text: txt }]);
             if (isStopCommand(txt)) {
+              setIsAwaitingEva(false);
               stopEvaSpeaking();
-            } else if (MIGHT_NEED_WEB.test(txt)) {
+            } else {
+              setIsAwaitingEva(true);
+            }
+            if (MIGHT_NEED_WEB.test(txt)) {
               // Tavily voice — no compromise: cancel auto-response immediately, wait for web results, then answer
               const base = baseInstructionsRef.current;
               const dc = dataChannelRef.current;
@@ -269,53 +290,79 @@ export default function ChatRealtime() {
     }
   }, [stopSession, selectedDeviceId]);
 
-  // Live mic level (when you speak)
+  // Live mic level (when you speak) — time-domain RMS for responsive VU
   useEffect(() => {
     if (status !== 'connected' || !micStreamRef.current) return;
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = audioContextRef.current?.state !== 'closed' ? audioContextRef.current : new (window.AudioContext || window.webkitAudioContext)();
     const src = ctx.createMediaStreamSource(micStreamRef.current);
     const analyser = ctx.createAnalyser();
-    analyser.fftSize = 256;
-    analyser.smoothingTimeConstant = 0.7;
+    analyser.fftSize = 2048;
+    analyser.smoothingTimeConstant = 0.5;
+    analyser.minDecibels = -60;
+    analyser.maxDecibels = -10;
     src.connect(analyser);
-    const data = new Uint8Array(analyser.frequencyBinCount);
+    const data = new Uint8Array(analyser.fftSize);
     let rafId;
+    let cancelled = false;
     const tick = () => {
-      if (!micStreamRef.current) return;
-      analyser.getByteFrequencyData(data);
-      const avg = data.reduce((a, b) => a + b, 0) / data.length;
-      setLiveMicLevel(Math.min(100, (avg / 128) * 100));
+      if (cancelled || !micStreamRef.current) return;
+      if (ctx.state === 'suspended') {
+        ctx.resume().then(() => { rafId = requestAnimationFrame(tick); });
+        return;
+      }
+      analyser.getByteTimeDomainData(data);
+      let sumSq = 0;
+      for (let i = 0; i < data.length; i++) {
+        const v = (data[i] - 128) / 128;
+        sumSq += v * v;
+      }
+      const rms = Math.sqrt(sumSq / data.length);
+      setLiveMicLevel(Math.min(100, rms * 150));
       rafId = requestAnimationFrame(tick);
     };
-    rafId = requestAnimationFrame(tick);
+    tick();
     return () => {
+      cancelled = true;
       cancelAnimationFrame(rafId);
-      ctx.close();
+      if (ctx !== audioContextRef.current) ctx.close();
     };
   }, [status]);
 
-  // Live EVA output level (when EVA speaks)
+  // Live EVA output level (when EVA speaks) — time-domain RMS for responsive VU
   useEffect(() => {
     if (status !== 'connected' || !evaStreamRef.current) return;
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = audioContextRef.current?.state !== 'closed' ? audioContextRef.current : new (window.AudioContext || window.webkitAudioContext)();
     const src = ctx.createMediaStreamSource(evaStreamRef.current);
     const analyser = ctx.createAnalyser();
-    analyser.fftSize = 256;
-    analyser.smoothingTimeConstant = 0.7;
+    analyser.fftSize = 2048;
+    analyser.smoothingTimeConstant = 0.5;
+    analyser.minDecibels = -60;
+    analyser.maxDecibels = -10;
     src.connect(analyser);
-    const data = new Uint8Array(analyser.frequencyBinCount);
+    const data = new Uint8Array(analyser.fftSize);
     let rafId;
+    let cancelled = false;
     const tick = () => {
-      if (!evaStreamRef.current) return;
-      analyser.getByteFrequencyData(data);
-      const avg = data.reduce((a, b) => a + b, 0) / data.length;
-      setLiveEvaLevel(Math.min(100, (avg / 128) * 100));
+      if (cancelled || !evaStreamRef.current) return;
+      if (ctx.state === 'suspended') {
+        ctx.resume().then(() => { rafId = requestAnimationFrame(tick); });
+        return;
+      }
+      analyser.getByteTimeDomainData(data);
+      let sumSq = 0;
+      for (let i = 0; i < data.length; i++) {
+        const v = (data[i] - 128) / 128;
+        sumSq += v * v;
+      }
+      const rms = Math.sqrt(sumSq / data.length);
+      setLiveEvaLevel(Math.min(100, rms * 150));
       rafId = requestAnimationFrame(tick);
     };
-    rafId = requestAnimationFrame(tick);
+    tick();
     return () => {
+      cancelled = true;
       cancelAnimationFrame(rafId);
-      ctx.close();
+      if (ctx !== audioContextRef.current) ctx.close();
     };
   }, [status, hasEvaStream]);
 
@@ -405,11 +452,15 @@ export default function ChatRealtime() {
             </div>
             <p className="text-emerald-400 font-medium">Connected</p>
             <p className="text-slate-500 text-sm font-mono">{formatDuration(callDuration)}</p>
-            {/* EVA thinking indicator */}
-            {isEvaThinking && (
-              <div className="flex items-center gap-2 mt-2 px-4 py-2 rounded-full bg-amber-500/20 border border-amber-500/40">
-                <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-                <span className="text-amber-300 text-xs font-medium">EVA is thinking…</span>
+            {/* Indication : EVA a compris et travaille sur la réponse */}
+            {(isAwaitingEva || isEvaThinking) && (
+              <div className="flex items-center gap-3 mt-3 px-6 py-3 rounded-xl bg-amber-500/30 border-2 border-amber-500/60 shadow-xl shadow-amber-500/20">
+                <div className="flex gap-1">
+                  <span className="w-2 h-2 rounded-full bg-amber-300 animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="w-2 h-2 rounded-full bg-amber-300 animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="w-2 h-2 rounded-full bg-amber-300 animate-bounce" style={{ animationDelay: '300ms' }} />
+                </div>
+                <span className="text-amber-100 text-base font-semibold">EVA a compris, travaille sur la réponse…</span>
               </div>
             )}
             {/* Level visualizers: You (mic) + EVA (output) */}
@@ -448,7 +499,7 @@ export default function ChatRealtime() {
               </div>
             </div>
             {/* Stop EVA button — say "tais-toi" or "stop" to interrupt, or click */}
-            {(isEvaThinking || liveEvaLevel > 5) && (
+            {(isAwaitingEva || isEvaThinking || liveEvaLevel > 5) && (
               <button
                 type="button"
                 onClick={() => stopEvaRef.current?.()}

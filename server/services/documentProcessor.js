@@ -89,17 +89,14 @@ RULES:
 async function extractViaClaude(buffer, filename = '', docType, mediaType) {
   const key = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
   if (!key) {
-    console.warn('[DocumentProcessor] No ANTHROPIC_API_KEY — skipped AI OCR');
-    return null;
+    throw new Error('ANTHROPIC_API_KEY or CLAUDE_API_KEY not set. Document indexing requires Claude.');
   }
   const isPdf = mediaType === 'application/pdf';
   if (isPdf && buffer.length > MAX_PDF_FOR_CLAUDE_MB * 1024 * 1024) {
-    console.warn('[DocumentProcessor] PDF too large for Claude (>', MAX_PDF_FOR_CLAUDE_MB, 'MB)');
-    return null;
+    throw new Error(`PDF too large (>${MAX_PDF_FOR_CLAUDE_MB}MB). Max for Claude: ${MAX_PDF_FOR_CLAUDE_MB}MB.`);
   }
   if (!isPdf && buffer.length > MAX_IMAGE_FOR_CLAUDE_MB * 1024 * 1024) {
-    console.warn('[DocumentProcessor] Image too large for Claude (>', MAX_IMAGE_FOR_CLAUDE_MB, 'MB)');
-    return null;
+    throw new Error(`Image too large (>${MAX_IMAGE_FOR_CLAUDE_MB}MB). Max for Claude: ${MAX_IMAGE_FOR_CLAUDE_MB}MB.`);
   }
   const prompt = docType === 'id_document' ? ID_DOCUMENT_PROMPT
     : docType === 'billet' ? BILLET_PROMPT
@@ -114,17 +111,20 @@ async function extractViaClaude(buffer, filename = '', docType, mediaType) {
       : { type: 'image', source: { type: 'base64', media_type: mediaType || 'image/jpeg', data: base64 } };
     const response = await client.messages.create(
       {
-        model: process.env.EVA_CHAT_MODEL || 'claude-sonnet-4-20250514',
+        model: process.env.EVA_DOCUMENT_MODEL || process.env.EVA_CHAT_MODEL || 'claude-sonnet-4-20250514',
         max_tokens: 16000,
         messages: [{ role: 'user', content: [contentType, { type: 'text', text: prompt }] }],
       },
       isPdf ? { headers: { 'anthropic-beta': 'pdfs-2024-09-25' } } : {}
     );
     const textBlock = response.content?.find((b) => b.type === 'text');
-    return (textBlock?.text || '').trim() || null;
+    const text = (textBlock?.text || '').trim();
+    if (!text) throw new Error('Claude returned empty response');
+    return text;
   } catch (e) {
     console.warn('[DocumentProcessor] Claude extraction failed:', e.message);
-    return null;
+    // Propagate API/configuration errors so they’re stored in document metadata for the UI
+    throw new Error(`Claude: ${(e.message || 'Extraction failed').toString()}`);
   }
 }
 

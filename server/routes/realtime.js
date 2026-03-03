@@ -31,6 +31,9 @@ const EVA_INSTRUCTIONS_LEGACY = `# EVA — Voice Assistant (HaliSoft)
 ## Complete answers (critical)
 - One clear, complete sentence. Never trail off with "Et vraiment...", "Il parlait de...", "Apparemment...". No truncated phrases. No "Bravo!" alone.
 - ONE response per turn. Never chain multiple short answers ("Oui, je t'entends." "C'est pourquoi..." "Oui, je suis là.") — pick ONE, say it, stop.
+- NEVER invent locations (Dubaï, Paris, etc.) if the user did NOT say them. "La situation actuelle" = global current events, not "à Dubaï".
+- NEVER say nonsensical phrases ("Elle nous baille", fragments). If unsure → "Peux-tu répéter ?"
+- "C'est quoi le problème?", "ça marche pas", "marche pas" → Réponds: "Désolée, j'ai peut-être mal compris. Dis-moi ce que tu cherches — actualités, Dubaï, vols — ou essaie en chat."
 
 ## How to Answer
 1. Parse: What is the user asking? (person, topic, date, action)
@@ -68,7 +71,8 @@ async function buildInstructionsWithContext(ownerId) {
   const SILENCE_RULE = 'STRICT: Réponds UNIQUEMENT aux questions/demandes claires. Bruit, "euh", silence → NE RÉPONDS PAS.\n\n';
   let instructions = SILENCE_RULE + EVA_INSTRUCTIONS_BASE;
   let transcriptionLang = null;
-  let turnEagerness = 'low';
+  const raw = process.env.EVA_VOICE_EAGERNESS || 'medium';
+  const turnEagerness = ['low', 'medium', 'high', 'auto'].includes(raw) ? raw : 'medium';
 
   try {
     const owner = ownerId
@@ -82,12 +86,16 @@ async function buildInstructionsWithContext(ownerId) {
     if (chatLang === 'fr') {
       instructions = 'CRITICAL: Reply ONLY in French.\n\n' + instructions;
       transcriptionLang = 'fr';
-    } else if (chatLang === 'en') {
+    } else     if (chatLang === 'en') {
       instructions = 'CRITICAL: Reply ONLY in English.\n\n' + instructions;
       transcriptionLang = 'en';
     } else {
       transcriptionLang = 'fr';
     }
+
+    const now = new Date();
+    const dateTimeStr = now.toLocaleString(chatLang === 'en' ? 'en-GB' : 'fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    instructions += `\n---\n## DATE ET HEURE ACTUELLES / CURRENT DATE & TIME\nMaintenant: ${dateTimeStr}. Réponds avec cette info pour "Quelle heure est-il?", "On est quel jour?", "What time is it?", "What's the date?".\n`;
 
     // Memories — memory_items + feedback + legacy (Voice can read, cannot save — use Chat to add)
     try {
@@ -95,9 +103,9 @@ async function buildInstructionsWithContext(ownerId) {
       const feedbackService = require('../services/feedbackService');
       const memoryService = require('../services/memoryService');
       const [items, feedback, legacy] = await Promise.all([
-        memoryItems.getMemoryItems(owner.id, 25),
-        feedbackService.getRecentFeedback(owner.id, 8),
-        memoryService.getMemories(owner.id, 10),
+        memoryItems.getMemoryItems(owner.id, 12),
+        feedbackService.getRecentFeedback(owner.id, 5),
+        memoryService.getMemories(owner.id, 6),
       ]);
       if (items.length > 0 || feedback.length > 0 || legacy.length > 0) {
         instructions += '\n---\n## MEMORIES (corrections > preferences > facts — use these)\n\n';
@@ -115,7 +123,7 @@ async function buildInstructionsWithContext(ownerId) {
       gmailSync = require('../services/gmailSync');
     } catch (_) {}
     if (gmailSync?.getRecentEmails) {
-      const recent = await gmailSync.getRecentEmails(owner.id, 25);
+      const recent = await gmailSync.getRecentEmails(owner.id, 10);
       if (recent.length > 0) {
         console.log(`[EVA Realtime] Injected ${recent.length} emails`);
         instructions += '\n\n---\n## EMAILS (use to answer questions about messages, people, dates)\n\n';
@@ -123,8 +131,8 @@ async function buildInstructionsWithContext(ownerId) {
           const date = new Date(e.received_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
           const isSent = Array.isArray(e.labels) ? e.labels.includes('SENT') : (e.labels && /"SENT"|'SENT'/.test(String(e.labels)));
           const who = isSent ? `TO: ${Array.isArray(e.to_emails) ? e.to_emails.join(', ') : e.to_emails || '—'}` : `FROM: ${e.from_name || e.from_email}`;
-          const body = ((e.body_preview || e.snippet || '').replace(/\s+/g, ' ').trim()).slice(0, 600);
-          instructions += `[Email ${i + 1}] ${who} | SUBJECT: ${(e.subject || '').slice(0, 80)} | DATE: ${date}\nBODY: ${body}\n\n`;
+          const body = ((e.body_preview || e.snippet || '').replace(/\s+/g, ' ').trim()).slice(0, 280);
+          instructions += `[Email ${i + 1}] ${who} | ${(e.subject || '').slice(0, 50)} | ${date}\n${body}\n\n`;
         });
       }
     }
@@ -135,12 +143,12 @@ async function buildInstructionsWithContext(ownerId) {
       docProcessor = require('../services/documentProcessor');
     } catch (_) {}
     if (docProcessor?.getRecentDocuments) {
-      const docs = await docProcessor.getRecentDocuments(owner.id, 8);
+      const docs = await docProcessor.getRecentDocuments(owner.id, 4);
       if (docs.length > 0) {
         console.log(`[EVA Realtime] Injected ${docs.length} documents`);
-        instructions += '\n---\n## DOCUMENTS (flights, tickets, Shanghai, travel) — use EXACT dates from text (e.g. 2 mars = 2 mars, never 1 mars)\n\n';
+        instructions += '\n---\n## DOCUMENTS (flights, tickets, Shanghai, travel) — use EXACT dates from text\n\n';
         docs.forEach((d, i) => {
-          instructions += `[Doc ${i + 1}] ${d.filename}:\n${(d.content_text || '').slice(0, 6000)}\n\n`;
+          instructions += `[Doc ${i + 1}] ${d.filename}:\n${(d.content_text || '').slice(0, 2500)}\n\n`;
         });
       }
     }
@@ -151,7 +159,7 @@ async function buildInstructionsWithContext(ownerId) {
       calendarSync = require('../services/calendarSync');
     } catch (_) {}
     if (calendarSync?.getUpcomingEvents) {
-      const events = await calendarSync.getUpcomingEvents(owner.id, 12, 14);
+      const events = await calendarSync.getUpcomingEvents(owner.id, 6, 7);
       if (events.length > 0) {
         console.log(`[EVA Realtime] Injected ${events.length} calendar events`);
         instructions += '\n---\n## CALENDAR (upcoming meetings, schedule)\n\n';
@@ -199,7 +207,7 @@ router.get('/token', async (req, res) => {
         type: 'realtime',
         model,
         instructions,
-        max_output_tokens: 256,
+        max_output_tokens: 512,
         audio: {
           input: {
             transcription: transcriptionLang ? {
@@ -285,7 +293,8 @@ router.post('/web-assist', async (req, res) => {
       return res.json({ webContext: null });
     }
     const query = ws.extractQuery(txt) || txt;
-    const data = await ws.search(query, { maxResults: 5, topic: 'general' });
+    const topic = ws.isNewsQuery(txt) ? 'news' : 'general';
+    const data = await ws.search(query, { maxResults: 5, topic });
     const webContext = ws.formatForContext(data);
     res.json({ webContext: webContext || null });
   } catch (err) {

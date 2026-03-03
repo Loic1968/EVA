@@ -359,7 +359,10 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
     const { context } = await contextBuilder.buildContext({ ownerId, userMessage, history });
     const attached = (opts.attachedDocuments || []).map((d) => `**${d.filename}:**\n${(d.content_text || '').slice(0, 80000) || '(no text)'}`).join('\n\n');
     const attachedBlock = attached ? `\n\n## Attached by user (analyse first)\n${attached}\n` : '';
-    systemPrompt = EVA_SYSTEM + attachedBlock + (context || '');
+    const now = new Date();
+    const dateTimeStr = now.toLocaleString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const dateTimeBlock = `\n\n## DATE ET HEURE ACTUELLES\nMaintenant: ${dateTimeStr}. Utilise pour "Quelle heure est-il?", "What time is it?".\n`;
+    systemPrompt = EVA_SYSTEM + dateTimeBlock + attachedBlock + (context || '');
   } else {
   // Build email context: search on keywords, or inject recent when ALWAYS_INJECT (skip if minimal — évite confusion)
   let emailContext = '';
@@ -556,7 +559,10 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
     }
   }
 
-  systemPrompt = EVA_SYSTEM + attachedDocContext + structuredFactsContext + memoryContext + emailContext + documentContext + calendarContext + webContext;
+  const now = new Date();
+  const dateTimeStr = now.toLocaleString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const dateTimeBlock = `\n\n## DATE ET HEURE ACTUELLES\nMaintenant: ${dateTimeStr}. Utilise pour "Quelle heure est-il?", "On est quel jour?", "What time is it?".\n`;
+  systemPrompt = EVA_SYSTEM + dateTimeBlock + attachedDocContext + structuredFactsContext + memoryContext + emailContext + documentContext + calendarContext + webContext;
   }
   // P4: Style / voice profile injection
   if (ownerId) {

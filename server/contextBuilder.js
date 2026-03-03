@@ -1,11 +1,22 @@
+// Keywords for query-aware retrieval (match evaChat.js)
+const EMAIL_KEYWORDS = /email|mail|vol|billet|avion|Shanghai|PVG|voyage|flight|ticket|emirates|etihad|reservation|confirmation|booking/i;
+const DOCUMENT_KEYWORDS = /vol|billet|avion|train|Shanghai|PVG|voyage|travel|flight|emirates|etihad|ticket|document|passport|horaire|heure|date/i;
+
+function isMinimalMessage(msg) {
+  const t = (msg || '').trim();
+  return !t || t.length < 6;
+}
+
 /**
  * Smart context builder — used when EVA_SMART_CONTEXT=true.
- * Builds context STRICTLY in order. Never injects full email bodies.
+ * Includes: facts, objects, emails, documents, calendar, web search.
+ * Query-aware: uses search when user asks about flights/documents/emails.
  */
 async function buildContext({ ownerId, userMessage, history = [] }) {
   if (!ownerId) return { context: '' };
 
   const parts = [];
+  const skipHeavyContext = isMinimalMessage(userMessage);
 
   try {
     // 1. Corrections (highest priority)
@@ -18,7 +29,7 @@ async function buildContext({ ownerId, userMessage, history = [] }) {
       parts.push('');
     }
 
-    // 2. Structured facts (excluding corrections, already above)
+    // 2. Structured facts (excluding corrections)
     const otherFacts = facts.filter((f) => (f.source_type || '').toLowerCase() !== 'correction');
     if (otherFacts.length > 0) {
       parts.push('## Structured facts');
@@ -42,51 +53,106 @@ async function buildContext({ ownerId, userMessage, history = [] }) {
           parts.push('');
         }
       } catch (e) {
-        // objectsService may not exist or table missing
+        // objectsService may not exist
       }
     }
 
-    // 4. Relevant emails — TOP 20 with full body content
-    const gmailSync = require('./services/gmailSync');
-    if (gmailSync && gmailSync.getRecentEmails) {
+    // 4. Emails — search when flight/travel keywords, else recent
+    if (!skipHeavyContext) {
+      const gmailSync = require('./services/gmailSync');
+      if (gmailSync) {
+        try {
+          const useSearch = EMAIL_KEYWORDS.test(userMessage);
+          const emails = useSearch && gmailSync.searchEmails
+            ? await gmailSync.searchEmails(ownerId, userMessage, 5, null, 'all')
+            : await gmailSync.getRecentEmails(ownerId, 10, 5000);
+          if (emails.length > 0) {
+            parts.push('## Emails (use to answer: flights, confirmations, who said what)');
+            emails.forEach((e, i) => {
+              const from = e.from_name ? `${e.from_name} <${e.from_email}>` : (e.from_email || '—');
+              const body = (e.body_preview || e.snippet || '').trim();
+              parts.push(`**Email ${i + 1}:** ${e.subject || '(no subject)'}`);
+              parts.push(`From: ${from} | Date: ${e.received_at ? new Date(e.received_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}`);
+              if (e.thread_id) parts.push(`thread_id: ${e.thread_id}`);
+              parts.push(`Content:\n${body || '(empty)'}\n`);
+            });
+            parts.push('');
+          }
+        } catch (e) {
+          console.warn('[EVA contextBuilder] Emails failed:', e.message);
+        }
+      }
+    }
+
+    // 5. Documents — search when flight/travel keywords, else recent. Full content for tickets.
+    if (!skipHeavyContext) {
+      const docProcessor = require('./services/documentProcessor');
+      if (docProcessor) {
+        try {
+          const useSearch = DOCUMENT_KEYWORDS.test(userMessage);
+          let docs = useSearch
+            ? await docProcessor.searchDocuments(ownerId, userMessage, 8)
+            : await docProcessor.getRecentDocuments(ownerId, 5);
+          if (docs.length === 0 && useSearch) docs = await docProcessor.getRecentDocuments(ownerId, 5);
+          if (docs.length > 0) {
+            const isFlightQuery = /vol|avion|billet|flight|ticket|Shanghai|emirates|etihad|horaire|heure/i.test(userMessage);
+            const charLimit = isFlightQuery ? 15000 : 3000; // Full content for flight questions
+            parts.push('## Documents (Memory Vault) — TU AS ACCÈS : lis et réponds à partir du contenu ci-dessous.');
+            docs.forEach((d, i) => {
+              const text = (d.content_text || d.content_preview || '').slice(0, charLimit);
+              parts.push(`**${d.filename}:**\n${text || '(no text)'}\n`);
+            });
+            parts.push('');
+          }
+        } catch (e) {
+          console.warn('[EVA contextBuilder] Documents failed:', e.message);
+        }
+      }
+    }
+
+    // 6. Calendar — upcoming events (always when we have context, critical for flight times)
+    if (!skipHeavyContext) {
       try {
-        const BODY_CHARS_PER_EMAIL = 5000;
-        const emails = await gmailSync.getRecentEmails(ownerId, 20, BODY_CHARS_PER_EMAIL);
-        if (emails.length > 0) {
-          parts.push('## Emails (read full content — use to answer questions)');
-          emails.forEach((e, i) => {
-            const from = e.from_name ? `${e.from_name} <${e.from_email}>` : e.from_email;
-            const body = (e.body_preview || e.snippet || '').trim();
-            parts.push(`**Email ${i + 1}:** ${e.subject}`);
-            parts.push(`From: ${from} | Date: ${e.received_at ? new Date(e.received_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}`);
-            parts.push(`Content:\n${body || '(empty)'}\n`);
-          });
-          parts.push('');
+        const calendarSync = require('./services/calendarSync');
+        if (calendarSync && calendarSync.getUpcomingEvents) {
+          const events = await calendarSync.getUpcomingEvents(ownerId, 10, 14);
+          if (events && events.length > 0) {
+            parts.push('## Calendar (upcoming events — use for flight times, meetings)');
+            events.forEach((ev, i) => {
+              const start = ev.start_at ? new Date(ev.start_at) : null;
+              const fmt = start && ev.is_all_day
+                ? start.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })
+                : start ? start.toLocaleString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+              parts.push(`- Event ${i + 1} (id: ${ev.id}): ${ev.title || '(no title)'} | ${fmt}${ev.location ? ` @ ${ev.location}` : ''}`);
+            });
+            parts.push('');
+          }
         }
       } catch (e) {
-        // Gmail not connected
+        console.warn('[EVA contextBuilder] Calendar failed:', e.message);
       }
     }
 
-    // 5. Relevant documents — TOP 3 summarized
-    const docProcessor = require('./services/documentProcessor');
-    if (docProcessor) {
+    // 7. Web search (Tavily) — news, real-time info
+    if (!skipHeavyContext) {
       try {
-        const docs = await docProcessor.getRecentDocuments(ownerId, 3);
-        if (docs.length > 0) {
-          parts.push('## Documents (summarized)');
-          docs.forEach((d, i) => {
-            const preview = (d.content_text || d.content_preview || '').slice(0, 500);
-            parts.push(`**${d.filename}:** ${preview}...`);
-          });
-          parts.push('');
+        const ws = require('./services/webSearchService');
+        if (ws && ws.isAvailable && ws.isAvailable() && ws.needsWebSearch && ws.needsWebSearch(userMessage)) {
+          const query = ws.extractQuery ? ws.extractQuery(userMessage) : userMessage;
+          const data = await ws.search(query, { maxResults: 5, topic: 'general' });
+          const formatted = ws.formatForContext ? ws.formatForContext(data) : null;
+          if (formatted) {
+            parts.push('## Web search (latest info)');
+            parts.push(formatted);
+            parts.push('');
+          }
         }
       } catch (e) {
-        // Documents not available
+        console.warn('[EVA contextBuilder] Web search failed:', e.message);
       }
     }
 
-    // 6. Conversation history (last N messages)
+    // 8. Conversation history (last N messages)
     const ctxWindow = Math.max(5, Math.min(50, Number(process.env.EVA_CONTEXT_WINDOW) || 25));
     const hist = (history || []).slice(-ctxWindow);
     if (hist.length > 0) {

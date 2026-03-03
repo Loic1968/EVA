@@ -125,11 +125,11 @@ You are EVA, a Personal AI Digital Twin for the user. The user may introduce the
 - JAMAIS pour ".", "Bonjour", "ok", ou message vide. Réponds "Oui ?" ou "Bonjour." sans sauvegarder.
 
 ## Capabilities (Memory Vault + Gmail + Documents + Calendar)
-- **When sections appear below**: You CAN read and use them. ## Emails = search there. ## Documents = flight confirmations, billets, invoices. ## Calendar = upcoming events. Never say "je n'ai pas accès" when data is listed — you CAN see it.
-- **When sections are empty**: Say "calendrier non synchronisé" or "aucun document dans le Memory Vault" — invite the user to sync/upload.
+- **When ## Documents / ## Emails / ## Calendar have content below**: You HAVE the data. READ it and answer from it. NEVER say "Je n'ai pas la capacité d'accéder", "I don't have access to personal documents", "consulte ton email de confirmation", "check the airline app". The content is IN the prompt — use it.
+- **When sections are empty** (vol, billet, Shanghai, réservation) : "Je n'ai pas cette info dans mes données. Connecte Gmail et Google Calendar (Paramètres > Données), ou uploade ton billet dans Documents." JAMAIS "vérifie sur le site" ni "je n'ai pas accès à tes réservations".
 - **Flight time (Shanghai, Dubai, etc.)** : consulte TOUTES les sources (## Documents, ## Calendar, ## Emails). Si conflit (calendrier ≠ billet) → dis : "Il y a une confusion : le calendrier dit X, le billet dit Y. Laquelle est la bonne ?" Ne jamais privilégier une source en silence. Never say "I can't modify your calendar" — you CAN add and DELETE events.
 - SEARCH emails + documents first for flight confirmations, Shanghai, travel. If found → use create_calendar_event.
-- If asked about something not in the data, say you don't have it.
+- If asked about something not in the data (vol, billet, Shanghai, etc.) : propose de connecter Gmail/Calendar ou d'uploader le billet. Jamais de réponse générique inutile.
 
 ## Style
 - Concis. Pas de fluff. Jamais inventer de données. Calendrier: utilise create_calendar_event quand demandé.`;
@@ -430,9 +430,9 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
           const seen = new Set(docResults.map((d) => d.id));
           byName.filter((d) => !seen.has(d.id)).forEach((d) => { docResults.unshift(d); seen.add(d.id); });
         }
-        documentContext = '\n\n## Documents (Memory Vault)\n';
+        documentContext = '\n\n## Documents (Memory Vault) — TU AS ACCÈS : lis et réponds à partir du contenu ci-dessous.\n';
         if (docResults.length > 0) {
-          documentContext += 'Use these for flights, tickets, billets, invoices, Shanghai, travel. Cite the document. For dates: use EXACT values (2 mars not 1 mars). Check --- FLIGHT DATES --- block if present. Si horaire vol : consulte Documents + Calendar. Si conflit → signale : "Confusion : calendrier dit X, billet dit Y. Laquelle est la bonne ?"\n\n';
+          documentContext += 'Use these for flights, tickets, billets, invoices, Shanghai, travel. Cite the document. For dates: use EXACT values. Si horaire vol : consulte Documents + Calendar. Never say "I don\'t have access" when content is here.\n\n';
           docResults.forEach((d, i) => {
             const text = (d.content_text || d.content_preview || '').slice(0, 20000);
             documentContext += `**${d.filename}:**\n${text}\n\n`;
@@ -752,9 +752,9 @@ async function createReplyStream(userMessage, history = [], ownerId = null, mode
           const seen = new Set(docResults.map((d) => d.id));
           byName.filter((d) => !seen.has(d.id)).forEach((d) => { docResults.unshift(d); seen.add(d.id); });
         }
-        documentContext = '\n\n## Documents (Memory Vault)\n';
+        documentContext = '\n\n## Documents (Memory Vault) — TU AS ACCÈS : lis et réponds à partir du contenu ci-dessous.\n';
         if (docResults.length > 0) {
-          documentContext += 'Use these for flights, tickets, invoices, travel, etc. Cite the document. For dates: use EXACT values. Check --- FLIGHT DATES --- block. Si conflit calendrier/billet → signale la confusion à l\'utilisateur.\n\n';
+          documentContext += 'Use these for flights, tickets, invoices, travel. Cite the document. For dates: use EXACT values. Never say "I don\'t have access" when content is here.\n\n';
           docResults.forEach((d, i) => {
             const text = (d.content_text || d.content_preview || '').slice(0, 20000);
             documentContext += `**${d.filename}:**\n${text}\n\n`;

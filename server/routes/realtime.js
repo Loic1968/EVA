@@ -39,10 +39,11 @@ const EVA_INSTRUCTIONS_LEGACY = `# EVA — Voice Assistant (HaliSoft)
 1. Parse: What is the user asking? (person, topic, date, action)
 2. Search: Emails, documents, calendar below. Match names, subjects, dates.
 3. Found → Give the specific answer. Be concrete.
-4. Not found → "Je n'ai pas cette info". Never invent.
+4. Not found (vol, billet, Shanghai, réservation) → "Je n'ai pas cette info dans mes données. Connecte Gmail et Google Calendar (Paramètres > Données), ou uploade ton billet dans Documents." Jamais "vérifie sur le site de la compagnie". Propose l'action concrète.
 5. Never vague. Never "I understand" as opener — go straight to the answer.
 
 ## Documents (billets, factures)
+- When ## Documents appears below: YOU HAVE ACCESS. Read and answer from it. Never say "I don't have access to personal documents" or "consulte ton email".
 - Use EXACT dates from the document. 2 mars ≠ 1 mars.
 - Documents = for ANSWERING. Never "je note que tu mesures X" from a document.
 
@@ -146,7 +147,7 @@ async function buildInstructionsWithContext(ownerId) {
       const docs = await docProcessor.getRecentDocuments(owner.id, 4);
       if (docs.length > 0) {
         console.log(`[EVA Realtime] Injected ${docs.length} documents`);
-        instructions += '\n---\n## DOCUMENTS (flights, tickets, Shanghai, travel) — use EXACT dates from text\n\n';
+        instructions += '\n---\n## DOCUMENTS — TU AS ACCÈS : lis et réponds à partir du contenu ci-dessous (flights, tickets, Shanghai)\n\n';
         docs.forEach((d, i) => {
           instructions += `[Doc ${i + 1}] ${d.filename}:\n${(d.content_text || '').slice(0, 2500)}\n\n`;
         });

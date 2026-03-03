@@ -1066,15 +1066,19 @@ async function handleDocumentUpload(req, res, next) {
       [req.ownerId, filename, fileType, fileSize, filePath, buffer]
     );
 
-    // Index synchronously so user sees real status (no mock)
-    const docProcessor = require('../services/documentProcessor');
     const docId = r.rows[0].id;
-    try {
-      await docProcessor.processDocument(docId, req.ownerId);
-      console.log(`[EVA] Document ${docId} indexed`);
-    } catch (e) {
-      console.warn('[EVA] Document index failed:', e.message);
-    }
+
+    // Index in background — avoids timeout on Render (Claude PDF extraction can take 20–30s)
+    const docProcessor = require('../services/documentProcessor');
+    setImmediate(async () => {
+      try {
+        await docProcessor.processDocument(docId, req.ownerId);
+        console.log(`[EVA] Document ${docId} indexed`);
+      } catch (e) {
+        console.warn('[EVA] Document index failed:', docId, e.message);
+      }
+    });
+
     const updated = await db.query('SELECT id, filename, file_type, file_size, status, metadata, processed_at FROM eva.documents WHERE id = $1', [docId]);
 
     // Audit log

@@ -206,8 +206,20 @@ export default function Documents() {
     if (toProcess.length === 0) return;
     autoIndexRun.current = true;
     toProcess.forEach((d) => {
-      api.processDocument(d.id).then(() => load()).catch(() => {});
+      api.processDocument(d.id).then(() => load()).catch(() => load());
     });
+  }, [documents]);
+
+  // Poll while documents are indexing (backend runs in background after upload)
+  useEffect(() => {
+    const needsRefresh = documents.some((d) => d.status === 'uploaded' || d.status === 'processing');
+    if (!needsRefresh) return;
+    const interval = setInterval(load, 4000);
+    const stop = setTimeout(() => clearInterval(interval), 90000);
+    return () => {
+      clearInterval(interval);
+      clearTimeout(stop);
+    };
   }, [documents]);
 
   const handleUpload = async (files) => {

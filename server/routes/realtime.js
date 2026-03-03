@@ -13,6 +13,31 @@ const REALTIME_ENABLED = !!OPENAI_KEY;
 const DEFAULT_OWNER_EMAIL = process.env.EVA_OWNER_EMAIL || 'loic@halisoft.biz';
 
 const { getCanonicalPrompt } = require('../prompts/canonicalPrompt');
+const { getAliceMode } = require('../services/settingsService');
+
+// ── Alice voice persona (injected when Alice mode is active) ──
+const ALICE_VOICE_PERSONA = `
+## IDENTITY: You are ALICE — Loic's executive assistant (powered by EVA).
+- You are NOT "EVA" when Alice mode is on. You are Alice.
+- "Comment tu t'appelles?" → "Alice." / "Who are you?" → "Alice, your executive assistant."
+- Casual but professional. Like a trusted Chief of Staff who's also a friend.
+- Address Loic by name naturally: "Hey Loic", "Morning, Loic."
+- Never robotic. Never "Certainly!" or "Of course!". Be direct.
+
+## GREETINGS → MORNING BRIEFING
+When Loic says "hey", "bonjour", "salut", "good morning":
+1. Greet by name: "Morning, Loic."
+2. Summarize today's calendar (or say it's clear)
+3. Highlight notable emails
+4. Offer: "Anything specific you want me to keep an eye on?"
+Do NOT just say "Bonjour, comment je peux t'aider?" — Alice always brings value.
+
+## VOICE STYLE
+- 1–3 sentences max. Conversational, sharp.
+- Frame for Loic's business context (HaliSoft — trade finance, invoice factoring).
+- Match language: French → French. English → English.
+`;
+
 const EVA_INSTRUCTIONS_LEGACY = `# EVA — Voice Assistant (HaliSoft)
 
 ## RULE #1: ONLY respond to CLEAR questions or requests
@@ -20,6 +45,8 @@ const EVA_INSTRUCTIONS_LEGACY = `# EVA — Voice Assistant (HaliSoft)
 - Noise, silence, breathing, "euh", "hmm", "ah", coughing — DO NOT RESPOND. Stay completely silent.
 - NEVER say "j'ai compris", "oui", "d'accord" as a response to nothing. Never invent questions.
 - If unsure (short/ambiguous message, possible noise) → stay silent. Do not guess.
+- SINGLE ISOLATED WORDS that make no sense as a question ("chien", "sylvestre", "cette", "d'aider", "ils sont") → these are TRANSCRIPTION ERRORS. Stay SILENT. Do NOT respond to gibberish.
+- If you receive 1-2 incoherent words → IGNORE completely. Wait for a real sentence.
 
 ## Check-in
 - "Tu m'entends?", "Tu m'écoutes?", "Are you there?" → "Oui" or "Oui, je t'entends." Only. Nothing else.
@@ -47,8 +74,9 @@ const EVA_INSTRUCTIONS_LEGACY = `# EVA — Voice Assistant (HaliSoft)
 - Use EXACT dates from the document. 2 mars ≠ 1 mars.
 - Documents = for ANSWERING. Never "je note que tu mesures X" from a document.
 
-## Corrections
+## Corrections & uncertain facts
 - "C'est faux", "non c'est le 2 mars" → "D'accord, je note : [their version]." Never insist.
+- If the user says your answer is wrong (e.g. "c'est faux", "n'importe quoi", "comment tu sais ça?"): do NOT repeat the same date or fact. Say once that you were going by calendar/documents, and that if it's wrong they can give you the correct info. Never flip between two dates (e.g. 3 mars then 4 mars). One clear correction only.
 
 ## Voice Style
 - 1–3 sentences max. French user → French. English → English.
@@ -70,7 +98,23 @@ const EVA_INSTRUCTIONS_BASE = process.env.EVA_OVERHAUL_ENABLED === 'true'
 
 async function buildInstructionsWithContext(ownerId) {
   const SILENCE_RULE = 'STRICT: Réponds UNIQUEMENT aux questions/demandes claires. Bruit, "euh", silence → NE RÉPONDS PAS.\n\n';
-  let instructions = SILENCE_RULE + EVA_INSTRUCTIONS_BASE;
+
+  // Check Alice mode: env var OR per-user setting
+  let isAlice = process.env.EVA_ALICE_MODE === 'true';
+  if (!isAlice && ownerId) {
+    try { isAlice = await getAliceMode(ownerId); } catch (_) {}
+  }
+
+  let instructions = SILENCE_RULE + (isAlice ? ALICE_VOICE_PERSONA + '\n' : '') + EVA_INSTRUCTIONS_BASE;
+  if (isAlice) {
+    // Override the name rule: Alice, not EVA
+    instructions = instructions.replace(
+      /## Your Name\n.*?→ "EVA".*?\n/s,
+      '## Your Name\n- "Comment tu t\'appelles?" / "What\'s your name?" / "Qui es-tu?" → "Alice." Short only.\n'
+    );
+    console.log('[EVA Realtime] Alice mode active for voice');
+  }
+
   let transcriptionLang = null;
   const raw = process.env.EVA_VOICE_EAGERNESS || 'medium';
   const turnEagerness = ['low', 'medium', 'high', 'auto'].includes(raw) ? raw : 'medium';
@@ -171,6 +215,26 @@ async function buildInstructionsWithContext(ownerId) {
             : start.toLocaleString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
           instructions += `[Event ${i + 1}] ${ev.title || '(no title)'} | ${fmt}${ev.location ? ` @ ${ev.location}` : ''}${ev.gmail_address ? ` [${ev.gmail_address}]` : ''}\n`;
         });
+      }
+    }
+
+    // Web search (Tavily) — same as Alice: inject latest news at connection time so voice can answer "actualités", "quoi de neuf"
+    let ws = null;
+    try {
+      ws = require('../services/webSearchService');
+    } catch (_) {}
+    if (ws?.isAvailable?.()) {
+      try {
+        const lang = chatLang === 'en' ? 'en' : 'fr';
+        const query = lang === 'fr' ? 'actualités principales aujourd\'hui' : 'latest world news today';
+        const data = await ws.search(query, { maxResults: 4, topic: 'news' });
+        const formatted = ws.formatForContext?.(data);
+        if (formatted) {
+          instructions += '\n---\n' + formatted.trim() + '\n';
+          console.log('[EVA Realtime] Injected web search (same as Alice)');
+        }
+      } catch (e) {
+        console.warn('[EVA Realtime] Web search inject failed:', e.message);
       }
     }
   } catch (err) {

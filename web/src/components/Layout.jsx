@@ -8,7 +8,8 @@ import { api } from '../api';
 const nav = [
   { to: '/chat', label: 'Chat (type ChatGPT)', icon: '◈', highlight: true },
   { to: '/eva/chat', label: 'EVA Chat', icon: '💬', highlight: true },
-  { to: '/voice', label: 'EVA Assistant (voix)', icon: '🎤', highlight: true },
+  { to: '/voice', label: 'Alice Voice (nouveau)', icon: '🎙️', highlight: true },
+  { to: '/voice/realtime', label: 'EVA Voice (comparer)', icon: '📞', highlight: true },
   { to: '/dashboard', label: 'Dashboard', icon: '◉' },
   { to: '/calendar', label: 'Calendar', icon: '📅' },
   { to: '/emails', label: 'Emails', icon: '✉' },

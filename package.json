@@ -20,6 +20,7 @@
     "test:structured-memory": "EVA_STRUCTURED_MEMORY=true node server/scripts/testStructuredMemory.js",
     "test": "node --test server/__tests__/*.test.js",
     "test:unit": "node --test server/__tests__/*.test.js",
+    "eva:tooltest": "node scripts/tool-orchestrator-smoke.js",
     "predev": "lsof -ti:5002 2>/dev/null | xargs kill -9; lsof -ti:3001 2>/dev/null | xargs kill -9; true"
   },
   "dependencies": {

@@ -54,6 +54,11 @@ function parseCommand(text) {
   if (/^\/brief\b/i.test(t)) return { command: 'brief', message: t.replace(/^\/brief\s*/i, '').trim(), mode: 'BRIEF_ME' };
   if (/^\/draft\b/i.test(t)) return { command: 'draft', message: t.replace(/^\/draft\s*/i, '').trim(), mode: 'DRAFT_REVIEW' };
   if (/^\/execute\b/i.test(t)) return { command: 'execute', message: t.replace(/^\/execute\s*/i, '').trim(), mode: 'EXECUTE_GUARDED' };
+  if (/^eva\s+diag\s+personal-tools\s*$/i.test(t)) return { command: 'eva_diag_personal_tools', message: '' };
+  if (/^\/alice\s*(on|off)?\s*$/i.test(t)) {
+    const toggle = (t.match(/^\/alice\s*(on|off)?\s*$/i) || [])[1];
+    return { command: 'alice_toggle', toggle: toggle ? toggle.toLowerCase() : null, message: '' };
+  }
   const rememberMatch = t.match(/^\/remember\s+(\S+)=(.+)$/is);
   if (rememberMatch) return { command: 'remember', key: rememberMatch[1].trim(), value: rememberMatch[2].trim(), message: '' };
   const correctMatch = t.match(/^\/correct\s+(\S+)=(.+)$/is);
@@ -66,6 +71,8 @@ function parseCommand(text) {
 
 const { getCanonicalPrompt } = require('./prompts/canonicalPrompt');
 const { getAssistantPrompt } = require('./systemPrompt');
+const { getAlicePrompt } = require('./prompts/alicePrompt');
+const { buildAllTools, isOrchestratorTool, executeOrchestratorTool, isMcpTool, executeMcpTool, createTrace, traceToolCall, MAX_TOOL_ROUNDS } = require('./services/toolOrchestrator');
 
 const ANTI_HALLUCINATION = `# RÈGLES ABSOLUES (vérifier AVANT chaque réponse)
 - NE JAMAIS inventer ce que l'utilisateur a dit. "C'est un bon film" ≠ "tu n'as rien demain". "C'est moi que voilà" ≠ "vol annulé".
@@ -74,12 +81,16 @@ const ANTI_HALLUCINATION = `# RÈGLES ABSOLUES (vérifier AVANT chaque réponse)
 - Si tu ne comprends pas → "Oui ?" ou "Peux-tu préciser ?". Jamais inventer pour combler.
 
 ## INTERDIT (vol, billet, Shanghai, réservation)
-JAMAIS: "Je n'ai pas accès", "Je ne peux pas accéder", "pourrais-tu me donner", "Peux-tu me donner plus de détails", "Pour pouvoir t'aider correctement", "vérifie dans ton email", "consulte ton email", "vérifier sur l'application", "application de ta compagnie", "le nom de la compagnie", "le numéro de vol".
-RÉPONSE OBLIGATOIRE si pas de données: "Je n'ai pas cette info dans mes données. Connecte Gmail et Google Calendar (Paramètres > Données), ou uploade ton billet dans Documents." Pas de question de suivi.
+JAMAIS: "Je n'ai pas accès", "Je ne peux pas accéder", "pourrais-tu me donner", "Peux-tu me donner plus de détails", "Pour pouvoir t'aider correctement", "vérifie dans ton email", "consulte ton email", "vérifier sur l'application", "application de ta compagnie", "le nom de la compagnie", "le numéro de vol", "quelle compagnie", "quelle date", "connais-tu la date".
+RÉPONSE OBLIGATOIRE si pas de données (Documents/Emails/Calendar vides): "Je n'ai pas cette info dans mes données. Connecte Gmail et Google Calendar (Paramètres > Données), ou uploade ton billet dans Documents." Pas de question de suivi. JAMAIS demander plus de détails.
+
+## VOL / BILLET — NE JAMAIS INVENTER
+Rapporte UNIQUEMENT ce qui est EXPLICITEMENT écrit dans ## Emails / ## Documents / ## Calendar. Si l'email dit "arrivée 2 mars 15h05" → dis ça. Si l'heure de DÉPART n'est pas écrite → ne pas l'inventer (03h10, 09h00, etc.). Si seul le numéro de vol est indiqué → dis le numéro, pas une heure inventée.
 
 ## INTERDIT (quoi de neuf, actualités ville)
 JAMAIS de réponse générique (Expo 2020, gratte-ciels, tourisme, "Dubai est en évolution"). Si ## Web search vide → "Je n'ai pas trouvé d'infos récentes sur [ville]."
 Quand ## Documents/## Emails/## Calendar ont du contenu → lis et réponds. Tu AS accès.
+Quand ## Web search a du contenu (résultats Tavily) → tu AS accès au web via ces résultats. Utilise-les et cite les sources. JAMAIS dire "je n'ai pas accès à Internet" dans ce cas.
 
 `;
 
@@ -108,7 +119,10 @@ Tu réponds UNIQUEMENT au DERNIER message. Comprends l'intention : si c'est une 
 - Déduire du passeport/documents (taille, poids, yeux, adresse) et dire "je note" → JAMAIS. Les documents sont pour RÉPONDRE aux questions, pas pour inventer ce que l'utilisateur "aurait dit".
 - "c'est chaud", "système", "que peut-être", ".", "Bonjour" seul → pas des énoncés. Réponds "Oui ?" ou "Bonjour.", pas de save_memory.
 
-# DOCUMENTS
+# DOCUMENTS (DOCS-FIRST — ne jamais inventer)
+- Toujours chercher dans ## Documents pour les questions sur contrats, billets, procédures, term sheets.
+- Cite la source: (Source: filename, section N). Ex: "D'après ton contrat (Source: contract.pdf, section 2) : [contenu]."
+- Si pas trouvé dans les docs → "Je n'ai pas trouvé ça dans tes documents." JAMAIS inventer.
 - "résume mon cv" → "D'après ton CV : [contenu]." Pas de save_memory. Cite exactement. Pas d'inférence.
 
 ## CORRECTION
@@ -136,6 +150,7 @@ You are EVA, a Personal AI Digital Twin for the user. The user may introduce the
 - **When ## Documents / ## Emails / ## Calendar have content below**: You HAVE the data. READ it and answer from it. NEVER say "Je n'ai pas la capacité d'accéder", "I don't have access to personal documents", "consulte ton email de confirmation", "check the airline app". The content is IN the prompt — use it.
 - **When sections are empty** (vol, billet, Shanghai, réservation) : "Je n'ai pas cette info dans mes données. Connecte Gmail et Google Calendar (Paramètres > Données), ou uploade ton billet dans Documents." JAMAIS "vérifie sur le site" ni "je n'ai pas accès à tes réservations".
 - **Flight time (Shanghai, Dubai, etc.)** : consulte TOUTES les sources (## Documents, ## Calendar, ## Emails). Si conflit (calendrier ≠ billet) → dis : "Il y a une confusion : le calendrier dit X, le billet dit Y. Laquelle est la bonne ?" Ne jamais privilégier une source en silence. Never say "I can't modify your calendar" — you CAN add and DELETE events.
+- **User says the answer is wrong** ("c'est faux", "n'importe quoi", "comment tu sais ça?"): do NOT repeat the same date or fact. Say once that you were going by calendar/documents, and ask them to give the correct info. Never flip between two different dates (e.g. 3 mars then 4 mars). One clear acknowledgment only.
 - SEARCH emails + documents first for flight confirmations, Shanghai, travel. If found → use create_calendar_event.
 - If asked about something not in the data (vol, billet, Shanghai, etc.) : propose de connecter Gmail/Calendar ou d'uploader le billet. Jamais de réponse générique inutile.
 
@@ -148,13 +163,25 @@ const SHARED_CAPABILITIES = `
 - Quand vides (vol, billet, Shanghai) → "Je n'ai pas cette info dans mes données. Connecte Gmail et Google Calendar (Paramètres > Données), ou uploade ton billet dans Documents." Pas de question de suivi.
 - Quand ## Web search a du contenu ("what up in dubai") → utilise les résultats. Réponse concrète. Si vide → "Je n'ai pas trouvé d'infos récentes." Jamais de réponse générique (Expo, gratte-ciels, tourisme).`;
 
-const EVA_SYSTEM = ANTI_HALLUCINATION + (
+// Alice mode can be set via env var (static) or per-owner setting (dynamic).
+// Static EVA_SYSTEM is used when alice mode is off; when on, aliceSystem is used.
+const EVA_SYSTEM_BASE = ANTI_HALLUCINATION + (
   process.env.EVA_ASSISTANT_MODE === 'true'
     ? getAssistantPrompt() + SHARED_CAPABILITIES
     : process.env.EVA_OVERHAUL_ENABLED === 'true'
       ? getCanonicalPrompt('chat')
       : EVA_SYSTEM_LEGACY
 );
+
+const ALICE_SYSTEM = ANTI_HALLUCINATION + getAlicePrompt() + SHARED_CAPABILITIES;
+
+// Resolve system prompt: Alice if enabled (env or per-owner), else base EVA.
+function getSystemPromptBase(isAlice) {
+  return isAlice ? ALICE_SYSTEM : EVA_SYSTEM_BASE;
+}
+
+// Back-compat alias
+const EVA_SYSTEM = EVA_SYSTEM_BASE;
 
 function getClient() {
   const key = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
@@ -172,7 +199,7 @@ function getOpenAIClient() {
 const EMAIL_KEYWORDS = /email|mail|envoy[eé]|re[çc]u|message|from|sent|wrote|[eé]crit|r[eé]pondu|contact[eé]|inbox|courrier|correspondance|dernier|dit|demand[eé]|r[eé]ponse|qui m'a|pierre|jean|paul|marie|assurance|insurance|statut|demande/i;
 
 // Keywords for travel/documents (vol, billet, Shanghai, Emirates, passport, etc.)
-const DOCUMENT_KEYWORDS = /vol|billet|avion|train|Shanghai|PVG|voyage|travel|flight|emirates|etihad|ticket|document|fichier|upload|upload[eé]|passport|passeport|date\s*de\s*naissance|birth\s*date|naissance|identit[eé]|cni|horaire|heure/i;
+const DOCUMENT_KEYWORDS = /vol|billet|avion|train|Shanghai|PVG|voyage|travel|flight|emirates|etihad|ticket|document|fichier|upload|upload[eé]|passport|passeport|date\s*de\s*naissance|birth\s*date|naissance|identit[eé]|cni|horaire|heure|contrat|contract|proc[eé]dure|procedure|terme[s]?|terms|policy|politique|cv|r[eé]sum[eé]|resume|facture|invoice|devis|quote|memo|m[eé]moire|memory\s*vault/i;
 
 // Keywords for calendar (agenda, meeting, vol, rendez-vous, schedule)
 const CALENDAR_KEYWORDS = /agenda|calendrier|calendar|meeting|rendez-vous|rdv|r[eé]union|schedule|plann|event|[eé]v[eé]nement|prochain|vol|lundi|mardi|mercredi|jeudi|vendredi|demain|aujourd'hui|this week|add.*(to|au)|ajout(e|er).*(au|to)|priorit[eé]|priority|priorities|priorités/i;
@@ -252,6 +279,14 @@ const CALENDAR_TOOLS = [
 ];
 
 async function executeTool(ownerId, name, input, toolOpts = {}) {
+  // Route orchestrator tools (web_search, gmail_search, calendar_search, doc_search)
+  if (isOrchestratorTool(name)) {
+    return executeOrchestratorTool(name, input, ownerId);
+  }
+  // Route MCP tools (mcp_db_query_readonly, mcp_files_read, etc.)
+  if (isMcpTool(name)) {
+    return executeMcpTool(name, input, ownerId);
+  }
   if (name === 'save_memory') {
     if (toolOpts.disableMemoryWrites) return { ok: true };
     const memoryService = require('./services/memoryService');
@@ -368,7 +403,26 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
     : (process.env.EVA_CHAT_MODEL || 'claude-sonnet-4-20250514');
 
   let systemPrompt;
+  let authErrorBlock = '';
+  const personalTools = require('./services/personalToolsService');
+  const intent = personalTools.classifyIntent(userMessage);
+  const isFlightIntent = intent === personalTools.INTENTS.FLIGHT_QUESTION;
+
+  // Resolve Alice mode: env var (global) or per-owner setting
+  let isAliceMode = process.env.EVA_ALICE_MODE === 'true';
+  if (!isAliceMode && ownerId) {
+    try {
+      const { getAliceMode } = require('./services/settingsService');
+      isAliceMode = await getAliceMode(ownerId);
+    } catch (_) { /* settingsService may not export getAliceMode yet */ }
+  }
+  const basePrompt = getSystemPromptBase(isAliceMode);
+
   if (process.env.EVA_SMART_CONTEXT === 'true' && ownerId) {
+    if ((personalTools.isPersonalToolsEnabled() || isFlightIntent) && isFlightIntent) {
+      const flightContext = await personalTools.fetchFlightContext(ownerId, userMessage);
+      if (flightContext?.authBlock) authErrorBlock = '\n\n' + flightContext.authBlock + '\n';
+    }
     const contextBuilder = require('./contextBuilder');
     const { context } = await contextBuilder.buildContext({ ownerId, userMessage, history });
     const attached = (opts.attachedDocuments || []).map((d) => `**${d.filename}:**\n${(d.content_text || '').slice(0, 80000) || '(no text)'}`).join('\n\n');
@@ -376,37 +430,56 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
     const now = new Date();
     const dateTimeStr = now.toLocaleString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
     const dateTimeBlock = `\n\n## DATE ET HEURE ACTUELLES\nMaintenant: ${dateTimeStr}. Utilise pour "Quelle heure est-il?", "What time is it?".\n`;
-    systemPrompt = EVA_SYSTEM + dateTimeBlock + attachedBlock + (context || '');
+    systemPrompt = basePrompt + authErrorBlock + dateTimeBlock + attachedBlock + (context || '');
   } else {
-  // Build email context: search on keywords, or inject recent when ALWAYS_INJECT (skip if minimal — évite confusion)
+  // Tools-first for flight/calendar: fetch calendar + gmail + docs with expanded queries
+  const useToolsFirst = personalTools.isPersonalToolsEnabled() || isFlightIntent;
+
+  let flightContext = null;
+  if (ownerId && !isMinimalMessage(userMessage) && useToolsFirst && isFlightIntent) {
+    flightContext = await personalTools.fetchFlightContext(ownerId, userMessage);
+  }
+
+  // Auth error block — inject first so model knows not to ask airline/date
+  let authErrorBlock = '';
+  if (flightContext?.authBlock) {
+    authErrorBlock = '\n\n' + flightContext.authBlock + '\n';
+  }
+
+  // Build email context: use flight context when available, else search on keywords
   let emailContext = '';
   if (ownerId && !isMinimalMessage(userMessage)) {
     try {
       const sync = getGmailSync();
       if (sync) {
-        const shouldInject = ALWAYS_INJECT_RECENT || EMAIL_KEYWORDS.test(userMessage);
-        if (shouldInject) {
-          const emailResults = EMAIL_KEYWORDS.test(userMessage)
-            ? await sync.searchEmails(ownerId, userMessage, 5, null, 'all')
-            : await sync.getRecentEmails(ownerId, 5);
-          if (emailResults.length > 0) {
-            emailContext = '\n\n## Emails (Memory Vault — inbox, sent, drafts)\n';
-            emailContext += 'Use these emails to answer questions about messages, who said what, etc. If the answer is here, cite it. If not, say you don\'t have that info. For create_draft replies, use thread_id when available.\n\n';
-            emailResults.forEach((e, i) => {
-              const isSent = Array.isArray(e.labels) ? e.labels.includes('SENT') : (e.labels && /"SENT"|'SENT'/.test(String(e.labels)));
-              emailContext += `**Email ${i + 1}:**\n`;
-              emailContext += isSent
-                ? `- To: ${Array.isArray(e.to_emails) ? e.to_emails.join(', ') : e.to_emails || '—'}\n`
-                : `- From: ${e.from_name ? `${e.from_name} <${e.from_email}>` : e.from_email}\n`;
-              emailContext += `- Subject: ${e.subject}\n`;
-              if (e.thread_id) emailContext += `- thread_id: ${e.thread_id}\n`;
-              emailContext += `- Date: ${new Date(e.received_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}\n`;
-              emailContext += `- Preview: ${(e.body_preview || e.snippet || '').slice(0, 1000)}\n\n`;
-            });
-          }
+        const shouldInject = ALWAYS_INJECT_RECENT || EMAIL_KEYWORDS.test(userMessage) || (flightContext?.emails?.length > 0);
+        const emailResults = flightContext?.emails?.length > 0
+          ? flightContext.emails
+          : shouldInject
+            ? (EMAIL_KEYWORDS.test(userMessage)
+              ? await sync.searchEmails(ownerId, isFlightIntent ? personalTools.buildFlightEmailQuery(userMessage) : userMessage, 8, null, 'all')
+              : await sync.getRecentEmails(ownerId, 5))
+            : [];
+        if (emailResults.length > 0) {
+          emailContext = '\n\n## Emails (Memory Vault — inbox, sent, drafts)\n';
+          emailContext += 'Use these emails to answer questions about flights, confirmations, who said what. Extract date, departure time, flight number if present. If multiple flights, ask: "Is it the one on <date> at <time>?"\n\n';
+          emailResults.forEach((e, i) => {
+            const isSent = Array.isArray(e.labels) ? e.labels.includes('SENT') : (e.labels && /"SENT"|'SENT'/.test(String(e.labels)));
+            emailContext += `**Email ${i + 1}:**\n`;
+            emailContext += isSent
+              ? `- To: ${Array.isArray(e.to_emails) ? e.to_emails.join(', ') : e.to_emails || '—'}\n`
+              : `- From: ${e.from_name ? `${e.from_name} <${e.from_email}>` : e.from_email}\n`;
+            emailContext += `- Subject: ${e.subject}\n`;
+            if (e.thread_id) emailContext += `- thread_id: ${e.thread_id}\n`;
+            emailContext += `- Date: ${new Date(e.received_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}\n`;
+            emailContext += `- Preview: ${(e.body_preview || e.snippet || '').slice(0, 1000)}\n\n`;
+          });
         }
       }
     } catch (err) {
+      if (personalTools.isAuthError && personalTools.isAuthError(err)) {
+        authErrorBlock = authErrorBlock || '\n\n## Google connection: AUTH_ERROR — Tell user: "Your Google connection needs re-auth. Reconnect Google account in Data Sources." Do NOT ask airline/date.\n';
+      }
       console.warn('[EVA Chat] Email context lookup failed:', err.message);
     }
   }
@@ -422,41 +495,41 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
     });
   }
 
-  // Build document context: search on keywords or always inject recent (skip if minimal — évite hallucination)
+  // Build document context — DOCS-FIRST: always search for non-minimal messages
   let documentContext = '';
   if (ownerId && !isMinimalMessage(userMessage)) {
     try {
       const docProcessor = require('./services/documentProcessor');
       const shouldInject = ALWAYS_INJECT_RECENT || DOCUMENT_KEYWORDS.test(userMessage);
-      if (shouldInject) {
-        const useSearch = DOCUMENT_KEYWORDS.test(userMessage);
-        let docResults = useSearch
-          ? await docProcessor.searchDocuments(ownerId, userMessage, 8)
-          : await docProcessor.getRecentDocuments(ownerId, 5);
-        // Fallback: if search returns nothing, try recent (e.g. query too short)
-        if (docResults.length === 0 && useSearch) {
-          docResults = await docProcessor.getRecentDocuments(ownerId, 5);
+      let resolvedDocs = flightContext?.docs?.length > 0 ? flightContext.docs : [];
+      if (resolvedDocs.length === 0 && shouldInject) {
+        const searchQuery = userMessage + (isFlightIntent ? ' ' + (personalTools.buildFlightEmailQuery(userMessage) || '') : '');
+        resolvedDocs = await docProcessor.searchDocumentsWithCitations(ownerId, searchQuery, 8);
+        if (resolvedDocs.length === 0) {
+          const recent = await docProcessor.getRecentDocuments(ownerId, 5);
+          resolvedDocs = recent.map((d) => ({ ...d, citation: { doc_id: d.id, filename: d.filename, chunk_index: 0, chunk_id: null } }));
         }
-        // If user mentions a specific filename ("Emirates ticket", "Emirates ticket.pdf"), fetch by name
         const filenameMatch = userMessage.match(/(?:emirates|etihad|flydubai)\s*(?:ticket|billet)?\s*(?:\.pdf)?|ticket\s*emirates|billet\s*emirates|\S+\.pdf/gi);
         if (filenameMatch) {
           const byName = await docProcessor.searchDocumentsByFilename(ownerId, filenameMatch[0].trim(), 3);
-          const seen = new Set(docResults.map((d) => d.id));
-          byName.filter((d) => !seen.has(d.id)).forEach((d) => { docResults.unshift(d); seen.add(d.id); });
+          const seen = new Set(resolvedDocs.map((d) => d.id));
+          byName.filter((d) => !seen.has(d.id)).forEach((d) => { resolvedDocs.unshift(d); seen.add(d.id); });
         }
-        documentContext = '\n\n## Documents (Memory Vault) — TU AS ACCÈS : lis et réponds à partir du contenu ci-dessous.\n';
-        if (docResults.length > 0) {
-          documentContext += 'Use these for flights, tickets, billets, invoices, Shanghai, travel. Cite the document. For dates: use EXACT values. Si horaire vol : consulte Documents + Calendar. Never say "I don\'t have access" when content is here.\n\n';
-          docResults.forEach((d, i) => {
-            const text = (d.content_text || d.content_preview || '').slice(0, 20000);
-            documentContext += `**${d.filename}:**\n${text}\n\n`;
-          });
-        } else {
-          documentContext += '(No documents found. User can upload in Documents page.)\n';
-          if (process.env.EVA_DEBUG === 'true') {
-            const stats = await docProcessor.getDocumentStats(ownerId);
-            console.warn('[EVA Chat] No documents for owner', ownerId, '| stats:', JSON.stringify(stats), '| Tip: Re-index documents in Documents page if status is uploaded/error');
-          }
+      }
+      if (resolvedDocs.length > 0) {
+        documentContext = '\n\n## Documents (Memory Vault) — DOCS-FIRST: réponds UNIQUEMENT à partir du contenu ci-dessous. Cite tes sources (filename, section/chunk).\n';
+        documentContext += 'CITATION FORMAT: (Source: filename, chunk/section N). Si aucune donnée pertinente → "Je n\'ai pas trouvé ça dans tes documents."\n\n';
+        const charLimit = isFlightIntent ? 15000 : 20000;
+        resolvedDocs.forEach((d) => {
+          const text = (d.content_text || d.content_preview || '').slice(0, charLimit);
+          const cite = d.citation ? ` [Source: ${d.filename}, section ${(d.citation.chunk_index ?? 0) + 1}]` : '';
+          documentContext += `**${d.filename}**${cite}:\n${text}\n\n`;
+        });
+      } else {
+        documentContext = '(No documents found. User can upload in Documents page.)\n';
+        documentContext += 'Si la question concerne des docs (contrats, billets, procédures) : "Je n\'ai pas cette info dans tes documents. Uploade-les dans Documents pour que je les analyse."\n';
+        if (isFlightIntent && !authErrorBlock) {
+          documentContext += 'If user asks flight time and no data: "Je n\'ai pas cette info. Connecte Gmail/Calendar ou uploade ton billet." Ask ONLY date OR airline OR PNR — not all.\n';
         }
       }
     } catch (err) {
@@ -528,18 +601,22 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
     }
   }
 
-  // Calendar context: upcoming events (skip if minimal — évite confusion)
+  // Calendar context: use flight context when available (wider window), else upcoming events
   let calendarContext = '';
   if (ownerId && !isMinimalMessage(userMessage)) {
     try {
       const calSync = getCalendarSync();
       if (calSync) {
         const shouldInject = ALWAYS_INJECT_RECENT || CALENDAR_KEYWORDS.test(userMessage);
-        if (shouldInject) {
-          const events = await calSync.getUpcomingEvents(ownerId, 10, 14);
+        const events = (flightContext?.calendarEvents?.length > 0)
+          ? flightContext.calendarEvents
+          : shouldInject
+            ? await calSync.getUpcomingEvents(ownerId, isFlightIntent ? 20 : 10, isFlightIntent ? 90 : 14)
+            : [];
+        if (shouldInject || events.length > 0) {
           calendarContext = '\n\n## Calendar (upcoming events)\n';
           if (events.length > 0) {
-            calendarContext += 'Use these to answer questions about meetings, schedule, agenda. To delete an event, use delete_calendar_event with the event id.\n\n';
+            calendarContext += 'Use these for meetings, flights, schedule. Return: date, time, flight number if in title. To delete: delete_calendar_event with event id.\n\n';
             events.forEach((ev, i) => {
               const start = new Date(ev.start_at);
               const fmt = ev.is_all_day
@@ -549,10 +626,16 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
             });
           } else {
             calendarContext += '(No events — sync Google Calendar in Settings > Data Sources to see upcoming events.)\n';
+            if (isFlightIntent && !authErrorBlock) {
+              calendarContext += 'If flight question and no data: "Je n\'ai pas cette info. Connecte Gmail/Calendar ou uploade ton billet." Ask ONLY date OR airline OR PNR.\n';
+            }
           }
         }
       }
     } catch (err) {
+      if (personalTools.isAuthError && personalTools.isAuthError(err)) {
+        authErrorBlock = authErrorBlock || '\n\n## Google connection: AUTH_ERROR — Tell user: "Your Google connection needs re-auth. Reconnect Google account in Data Sources." Do NOT ask airline/date.\n';
+      }
       console.warn('[EVA Chat] Calendar context lookup failed:', err.message);
     }
   }
@@ -560,23 +643,32 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
   // Web search (Tavily) — when user asks for latest news, current info, etc.
   let webContext = '';
   if (!isMinimalMessage(userMessage)) {
+    let ws;
     try {
-      const ws = getWebSearchService();
+      ws = getWebSearchService();
       if (ws && ws.isAvailable() && ws.needsWebSearch(userMessage)) {
         const query = ws.extractQuery(userMessage) || userMessage;
-        const data = await ws.search(query, { maxResults: 5, topic: 'general' });
+        const topic = (ws.isNewsQuery && ws.isNewsQuery(userMessage)) ? 'news' : 'general';
+        if (process.env.EVA_DEBUG === 'true') console.log('[EVA Chat] Web search query:', query, 'topic:', topic);
+        const data = await ws.search(query, { maxResults: 5, topic });
         const formatted = ws.formatForContext(data);
-        if (formatted) webContext = formatted;
+        if (formatted) webContext = '\n\n' + formatted;
+      } else if (ws && ws.needsWebSearch(userMessage) && !ws.isAvailable()) {
+        webContext = '\n\n## Web search\nTAVILY_API_KEY non configurée. Dis: "La recherche web n\'est pas configurée (clé Tavily manquante). Ajoute TAVILY_API_KEY dans eva/.env."';
       }
     } catch (err) {
-      console.warn('[EVA Chat] Web search failed:', err.message);
+      console.warn('[EVA Chat] Web search failed:', err.message, err.response?.status, err.response?.data || '');
+      const w = getWebSearchService();
+      if (w && w.needsWebSearch(userMessage)) {
+        webContext = '\n\n## Web search (erreur)\nLa recherche Tavily a échoué. Réponds: "La recherche web a rencontré un problème (réessaie dans un moment)." Ne dis pas "je n\'ai pas accès au Web".';
+      }
     }
   }
 
   const now = new Date();
   const dateTimeStr = now.toLocaleString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   const dateTimeBlock = `\n\n## DATE ET HEURE ACTUELLES\nMaintenant: ${dateTimeStr}. Utilise pour "Quelle heure est-il?", "On est quel jour?", "What time is it?".\n`;
-  systemPrompt = EVA_SYSTEM + dateTimeBlock + attachedDocContext + structuredFactsContext + memoryContext + emailContext + documentContext + calendarContext + webContext;
+  systemPrompt = basePrompt + authErrorBlock + dateTimeBlock + attachedDocContext + structuredFactsContext + memoryContext + emailContext + documentContext + calendarContext + webContext;
   }
   // P4: Style / voice profile injection
   if (ownerId) {
@@ -609,7 +701,7 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
     max_tokens: 4096, // Must be > thinking.budget_tokens when thinking enabled
     system: systemPrompt,
     messages,
-    tools: ownerId ? CALENDAR_TOOLS : [],
+    tools: ownerId ? buildAllTools(CALENDAR_TOOLS) : [],
   };
   if (useThinking) {
     createOptions.thinking = { type: 'enabled', budget_tokens: 2048 };
@@ -662,8 +754,9 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
   let currentMessages = [...messages];
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
-  const maxToolRounds = 3;
+  const maxToolRounds = MAX_TOOL_ROUNDS;
   let round = 0;
+  const trace = createTrace(isAliceMode ? 'alice' : mode || 'eva_standard');
 
   while (round < maxToolRounds) {
     response = await client.messages.create({ ...createOptions, messages: currentMessages });
@@ -675,11 +768,20 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
 
     const toolResults = [];
     for (const block of toolUseBlocks) {
+      const t0 = Date.now();
       const result = await executeTool(ownerId, block.name, block.input || {}, { disableMemoryWrites: opts.disableMemoryWrites });
+      const ms = Date.now() - t0;
+      traceToolCall(trace, block.name, ms, result.ok !== false);
+      if (process.env.EVA_DEBUG === 'true') {
+        console.log(`[toolOrchestrator] ${block.name} → ${result.ok !== false ? '✓' : '✗'} (${ms}ms)`);
+      }
+      // Truncate large payloads to avoid context bloat
+      const serialized = JSON.stringify(result);
+      const content = serialized.length > 30000 ? serialized.slice(0, 30000) + '…(truncated)' : serialized;
       toolResults.push({
         type: 'tool_result',
         tool_use_id: block.id,
-        content: JSON.stringify(result),
+        content,
       });
     }
 
@@ -690,6 +792,7 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
     ];
     round++;
   }
+  trace.iterations = round;
 
   const textBlock = response.content?.find((b) => b.type === 'text');
   const replyText = textBlock ? textBlock.text : 'No response.';
@@ -698,6 +801,7 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
     reply: replyText,
     model: response.model || model,
     ai_provider: 'claude',
+    trace,
     tokens: {
       input: totalInputTokens || response.usage?.input_tokens || 0,
       output: totalOutputTokens || response.usage?.output_tokens || 0,
@@ -746,32 +850,32 @@ async function createReplyStream(userMessage, history = [], ownerId = null, mode
     }
   }
 
-  // Document context: same logic as reply() — skip if minimal (évite hallucination)
+  // Document context: DOCS-FIRST — same logic as reply()
   let documentContext = '';
   if (ownerId && !isMinimalMessage(userMessage)) {
     try {
       const docProcessor = require('./services/documentProcessor');
       const shouldInject = ALWAYS_INJECT_RECENT || DOCUMENT_KEYWORDS.test(userMessage);
       if (shouldInject) {
-        const useSearch = DOCUMENT_KEYWORDS.test(userMessage);
-        let docResults = useSearch
-          ? await docProcessor.searchDocuments(ownerId, userMessage, 8)
-          : await docProcessor.getRecentDocuments(ownerId, 5);
-        if (docResults.length === 0 && useSearch) {
-          docResults = await docProcessor.getRecentDocuments(ownerId, 5);
+        let docResults = docProcessor.searchDocumentsWithCitations
+          ? await docProcessor.searchDocumentsWithCitations(ownerId, userMessage, 8)
+          : await docProcessor.searchDocuments(ownerId, userMessage, 8);
+        if (docResults.length === 0) {
+          const recent = await docProcessor.getRecentDocuments(ownerId, 5);
+          docResults = recent.map((d) => ({ ...d, citation: { doc_id: d.id, filename: d.filename, chunk_index: 0 } }));
         }
         const filenameMatch = userMessage.match(/(?:emirates|etihad|flydubai)\s*(?:ticket|billet)?\s*(?:\.pdf)?|ticket\s*emirates|billet\s*emirates|\S+\.pdf/gi);
         if (filenameMatch) {
           const byName = await docProcessor.searchDocumentsByFilename(ownerId, filenameMatch[0].trim(), 3);
           const seen = new Set(docResults.map((d) => d.id));
-          byName.filter((d) => !seen.has(d.id)).forEach((d) => { docResults.unshift(d); seen.add(d.id); });
+          byName.filter((d) => !seen.has(d.id)).forEach((d) => { docResults.unshift({ ...d, citation: { doc_id: d.id, filename: d.filename, chunk_index: 0 } }); seen.add(d.id); });
         }
-        documentContext = '\n\n## Documents (Memory Vault) — TU AS ACCÈS : lis et réponds à partir du contenu ci-dessous.\n';
+        documentContext = '\n\n## Documents (Memory Vault) — DOCS-FIRST : réponds à partir du contenu. Cite (Source: filename, section N).\n';
         if (docResults.length > 0) {
-          documentContext += 'Use these for flights, tickets, invoices, travel. Cite the document. For dates: use EXACT values. Never say "I don\'t have access" when content is here.\n\n';
-          docResults.forEach((d, i) => {
+          docResults.forEach((d) => {
             const text = (d.content_text || d.content_preview || '').slice(0, 20000);
-            documentContext += `**${d.filename}:**\n${text}\n\n`;
+            const cite = d.citation ? ` [Source: ${d.filename}, section ${(d.citation.chunk_index ?? 0) + 1}]` : '';
+            documentContext += `**${d.filename}**${cite}:\n${text}\n\n`;
           });
         } else {
           documentContext += '(No documents found. User can upload in Documents page.)\n';
@@ -869,7 +973,16 @@ async function createReplyStream(userMessage, history = [], ownerId = null, mode
     }
   }
 
-  let systemPrompt = EVA_SYSTEM + structuredFactsStream + memoryContextStream + emailContext + documentContext + calendarContextStream;
+  // Resolve Alice mode for stream (same logic as reply())
+  let isAliceModeStream = process.env.EVA_ALICE_MODE === 'true';
+  if (!isAliceModeStream && ownerId) {
+    try {
+      const { getAliceMode } = require('./services/settingsService');
+      isAliceModeStream = await getAliceMode(ownerId);
+    } catch (_) { /* settingsService may not export getAliceMode yet */ }
+  }
+  const streamBasePrompt = getSystemPromptBase(isAliceModeStream);
+  let systemPrompt = streamBasePrompt + structuredFactsStream + memoryContextStream + emailContext + documentContext + calendarContextStream;
   // P4: Style / voice profile injection
   if (ownerId) {
     try {
@@ -918,4 +1031,4 @@ function needsCalendarTools(message) {
   return calendarIntent || deleteCalendarIntent || memoryIntent || correctionIntent || draftIntent;
 }
 
-module.exports = { reply, createReplyStream, parseCommand, getClient, EVA_SYSTEM, MODE_HINTS, needsCalendarTools };
+module.exports = { reply, createReplyStream, parseCommand, getClient, EVA_SYSTEM, ALICE_SYSTEM, getSystemPromptBase, MODE_HINTS, needsCalendarTools };

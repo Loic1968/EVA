@@ -369,10 +369,58 @@ async function getUpcomingEvents(ownerId, limit = 15, daysAhead = 14, gmailAccou
   }
 }
 
+/**
+ * Search calendar events by query (title/description). Used for flight questions.
+ * Time window: [-daysBack, +daysAhead] from now.
+ * @param {number} ownerId
+ * @param {string} query - search terms (e.g. "flight OR e-ticket OR Shanghai OR PVG")
+ * @param {number} daysBack - default 30
+ * @param {number} daysAhead - default 90
+ * @param {number} limit - default 20
+ */
+async function searchCalendarEvents(ownerId, query, daysBack = 30, daysAhead = 90, limit = 20) {
+  try {
+    const from = new Date();
+    from.setDate(from.getDate() - daysBack);
+    const to = new Date();
+    to.setDate(to.getDate() + daysAhead);
+
+    const words = (query || '')
+      .split(/\s+/)
+      .map((w) => w.trim().replace(/[%_\\]/g, (c) => '\\' + c))
+      .filter((w) => w.length >= 2)
+      .slice(0, 10);
+
+    const conds = words.length > 0
+      ? words.map((_, i) => `(ce.title ILIKE $${i + 5} OR ce.description ILIKE $${i + 5})`).join(' OR ')
+      : '1=1';
+    const params = [ownerId, from, to, Math.min(limit, 50)];
+    words.forEach((w) => params.push('%' + w + '%'));
+
+    const r = await db.query(
+      `SELECT ce.id, ce.event_id, ce.title, ce.description, ce.start_at, ce.end_at, ce.location, ce.is_all_day,
+              ce.gmail_account_id, ga.gmail_address
+       FROM eva.calendar_events ce
+       JOIN eva.gmail_accounts ga ON ga.id = ce.gmail_account_id AND ga.owner_id = ce.owner_id
+       WHERE ce.owner_id = $1 AND ce.start_at >= $2 AND ce.start_at <= $3 AND (${conds})
+       ORDER BY ce.start_at ASC
+       LIMIT $4`,
+      params
+    );
+    return r.rows;
+  } catch (err) {
+    if (/relation "eva\.calendar_events" does not exist/i.test(String(err.message))) {
+      return [];
+    }
+    throw err;
+  }
+}
+
 module.exports = {
   syncCalendar,
   syncCalendarForAllAccounts,
   getUpcomingEvents,
+  searchCalendarEvents,
   createEvent,
   updateEvent,
   deleteEvent,

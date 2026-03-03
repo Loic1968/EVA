@@ -7,21 +7,21 @@ const googleOAuth = require('../services/googleOAuth');
 
 async function gmailCallback(req, res, next) {
   try {
+    const base = (process.env.EVA_FRONTEND_URL || process.env.EVA_WEB_URL || 'http://localhost:5173').replace(/\/$/, '');
+    if (!googleOAuth.hasCredentials()) {
+      return res.redirect(base + '/sources?error=' + encodeURIComponent('Gmail OAuth not configured. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to eva/.env'));
+    }
     const { code, state } = req.query;
     if (!code) return res.status(400).json({ error: 'Authorization code missing' });
 
     const ownerId = state ? parseInt(state, 10) : null;
     if (!ownerId || isNaN(ownerId)) {
-      const frontendUrl = process.env.EVA_FRONTEND_URL || process.env.EVA_WEB_URL;
-    const base = frontendUrl ? frontendUrl.replace(/\/$/, '') : '';
-    return res.redirect(base + '/login?error=' + encodeURIComponent('Invalid OAuth state. Please log in and try again.'));
+      return res.redirect(base + '/login?error=' + encodeURIComponent('Invalid OAuth state. Please log in and try again.'));
     }
 
     const tokens = await googleOAuth.exchangeCode(code);
     if (!tokens || !tokens.access_token) {
-      const frontendUrl = process.env.EVA_FRONTEND_URL || process.env.EVA_WEB_URL;
-    const base = frontendUrl ? frontendUrl.replace(/\/$/, '') : '';
-    return res.redirect(base + '/sources?error=' + encodeURIComponent('Token exchange failed'));
+      return res.redirect(base + '/sources?error=' + encodeURIComponent('Token exchange failed'));
     }
 
     const gmailAddress = await googleOAuth.getUserEmail(tokens.access_token, tokens.refresh_token);
@@ -62,14 +62,12 @@ async function gmailCallback(req, res, next) {
       [ownerId, JSON.stringify({ gmail_address: gmailAddress })]
     );
 
-    const frontendUrl = process.env.EVA_FRONTEND_URL || process.env.EVA_WEB_URL;
-    const base = frontendUrl ? frontendUrl.replace(/\/$/, '') : '';
     res.redirect(base + '/sources?connected=gmail');
   } catch (e) {
-    console.error('[EVA] Gmail OAuth callback error:', e);
-    const frontendUrl = process.env.EVA_FRONTEND_URL || process.env.EVA_WEB_URL;
-    const base = frontendUrl ? frontendUrl.replace(/\/$/, '') : '';
-    res.redirect(base + '/sources?error=' + encodeURIComponent(e.message || 'OAuth failed'));
+    console.error('[EVA] Gmail OAuth callback error:', e.message, e.stack);
+    const base = (process.env.EVA_FRONTEND_URL || process.env.EVA_WEB_URL || 'http://localhost:5173').replace(/\/$/, '');
+    const msg = (e.message || 'OAuth failed').replace(/^\[EVA\]\s*/i, '').slice(0, 200);
+    res.redirect(base + '/sources?error=' + encodeURIComponent(msg));
   }
 }
 

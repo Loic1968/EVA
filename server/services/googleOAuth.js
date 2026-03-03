@@ -13,17 +13,23 @@ const SCOPES = [
   'https://www.googleapis.com/auth/userinfo.email',
 ];
 
+function hasCredentials() {
+  const clientId = process.env.EVA_GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || process.env.GOOGLE_OAUTH_CLIENT_ID;
+  const clientSecret = process.env.EVA_GOOGLE_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || process.env.GOOGLE_OAUTH_CLIENT_SECRET;
+  return !!(clientId && clientSecret);
+}
+
 function getOAuth2Client() {
-  const clientId = process.env.EVA_GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID;
-  const clientSecret = process.env.EVA_GOOGLE_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET;
+  if (!hasCredentials()) {
+    throw new Error('EVA_GOOGLE_CLIENT_ID et EVA_GOOGLE_CLIENT_SECRET (ou GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET) doivent être définis. Add to eva/.env — see .env.example');
+  }
+  const clientId = process.env.EVA_GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || process.env.GOOGLE_OAUTH_CLIENT_ID;
+  const clientSecret = process.env.EVA_GOOGLE_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || process.env.GOOGLE_OAUTH_CLIENT_SECRET;
   const redirectUri =
     process.env.NODE_ENV === 'production'
       ? process.env.GOOGLE_OAUTH_REDIRECT_URI || 'https://eva.halisoft.biz/api/oauth/gmail/callback'
       : process.env.GOOGLE_OAUTH_REDIRECT_URI || 'http://localhost:5002/api/oauth/gmail/callback';
 
-  if (!clientId || !clientSecret) {
-    throw new Error('EVA_GOOGLE_CLIENT_ID et EVA_GOOGLE_CLIENT_SECRET (ou GOOGLE_*) doivent être définis');
-  }
   return new google.auth.OAuth2(clientId, clientSecret, redirectUri);
 }
 
@@ -106,6 +112,7 @@ async function revokeToken(token) {
 }
 
 module.exports = {
+  hasCredentials,
   getAuthUrl,
   exchangeCode,
   refreshAccessToken,

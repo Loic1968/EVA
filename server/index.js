@@ -76,12 +76,19 @@ const apiStrictLimiter = rateLimit({
   max: isProd ? 30 : 150,
   message: { error: 'Too many API requests. Try again later.' },
 });
+// Voice (STT/TTS) needs higher limit — many requests per conversation (Docker/local often NODE_ENV=production)
+const voiceLimit = process.env.EVA_DOCKER === 'true' || !isProd ? 600 : 200;
+const voiceLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: voiceLimit,
+  message: { error: 'Too many voice requests. Try again later.' },
+});
 app.use('/api/chat', apiStrictLimiter);
 app.use('/api/chat/stream', apiStrictLimiter);
 app.use('/api/eva/chat', apiStrictLimiter);
 app.use('/api/oauth', apiStrictLimiter);
-app.use('/api/voice/stt', apiStrictLimiter);
-app.use('/api/voice/tts', apiStrictLimiter);
+app.use('/api/voice/stt', voiceLimiter);
+app.use('/api/voice/tts', voiceLimiter);
 app.use('/api/realtime', apiStrictLimiter);
 
 app.use(express.json({ limit: '2mb' }));
@@ -129,6 +136,15 @@ app.use('/api/realtime', verifyAuth, apiKeyOrSameOrigin, realtimeRoutes);
 const voiceRoutes = require('./routes/voice');
 app.use('/api/voice', verifyAuth, apiKeyOrSameOrigin, voiceRoutes);
 
+// Public status (openai_available for Settings Chat AI) — no auth so frontend always gets it
+app.get('/api/status', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.json({
+    eva_enabled: !!((process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY) || '').trim(),
+    openai_available: !!(process.env.OPENAI_API_KEY || '').trim(),
+  });
+});
+
 // Main API (chat, documents, settings, etc.)
 app.use('/api', evaRoutes);
 
@@ -136,8 +152,9 @@ app.use('/api', evaRoutes);
 const distPath = path.resolve(__dirname, '../web/dist');
 const assetsPath = path.join(distPath, 'assets');
 const frontendUrl = process.env.EVA_FRONTEND_URL || process.env.EVA_WEB_URL;
+const isDocker = process.env.EVA_DOCKER === 'true' || process.env.DOCKER === 'true';
 
-if (frontendUrl && !isProd) {
+if (frontendUrl && !isProd && !isDocker) {
   // Dev: redirect page requests to Vite frontend so 5002/sources → localhost:3001/sources
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api') || req.path === '/health') return next();
@@ -183,6 +200,21 @@ console.log(`[EVA] listening on ${HOST}:${PORT}${voice}${distOk ? ` (frontend: $
     }
   } else {
     console.log('[EVA] Gmail sync worker skipped (EVA_GOOGLE_CLIENT_ID / GOOGLE_CLIENT_ID not set)');
+  }
+
+  // MCP Hub — connect to platform MCP server for extended tools
+  if (process.env.EVA_MCP_ENABLED !== 'false') {
+    try {
+      const { initMcp } = require('./services/toolOrchestrator');
+      initMcp().then(ok => {
+        if (ok) console.log('[EVA] MCP Hub connected — platform tools available');
+        else console.log('[EVA] MCP Hub not available (EVA continues without it)');
+      });
+    } catch (err) {
+      console.warn('[EVA] MCP init failed:', err.message);
+    }
+  } else {
+    console.log('[EVA] MCP Hub disabled (EVA_MCP_ENABLED=false)');
   }
 
   // Notification worker — calendar reminders

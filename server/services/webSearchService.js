@@ -69,19 +69,26 @@ function formatForContext(data) {
  * Check if user message suggests need for web search.
  * Includes: news, flights (vols Dubai NY), real-time info, city updates.
  */
-const NEWS_KEYWORDS = /derni[eè]res?\s*infos?|actualit[eé]s?|quoi\s*de\s*neuf|latest\s*news?|recent\s*info|search\s*web|cherche\s*(?:sur\s*)?(?:le\s*)?web|google|trouve\s*(?:moi\s*)?(?:des\s*)?infos?|informations?\s*r[eé]centes?|ce\s*qui\s*se\s*passe|il\s*se\s*passe\s*quoi|quoi\s*à\s+(?:dubai|duba[iï]|paris|new\s*york|london|shanghai|singapore)|what['']?s\s*happening|current\s*events?|aujourd['']?hui\s*dans|situation\s*actuelle|(?:c['']?est\s+)?quoi\s+la\s+situation|la\s+situation|situation\s+[aà]|what['']?s\s+(?:the\s+)?situation|(?:dubai|duba[iï]|paris|new\s*york|london).*situation|situation.*(?:dubai|duba[iï]|paris|new\s*york|london)/i;
-const FLIGHT_KEYWORDS = /(?:donne[rz]?|donnes?)\s*(?:moi\s*)?(?:les\s*)?(?:prochains?\s*)?vols?|prochains?\s*vols?|vols?\s+(?:de\s+|à\s+|entre\s+)?|flights?\s+(?:from\s+|to\s+|between\s+)?|give\s*me\s*(?:the\s*)?(?:next\s*)?flights?|prix\s*(?:des?\s*)?vols?|flight\s*prices?/i;
-const CITY_PAIR = /\b(?:dubai|duba[iï]|paris|new\s*york|london|shanghai|singapore)\b.*\b(?:dubai|duba[iï]|paris|new\s*york|london|shanghai|singapore)\b/i;
-const CITIES = /\b(?:dubai|duba[iï]|paris|new\s*york|london|shanghai|singapore|doha|abu\s*dhabi|mumbai|hong\s*kong)\b/i;
-// "what up in dubai", "what's going on in paris", "quoi de neuf à Dubai" — city + casual "what's new" phrasing
-const CITY_WHATSUP = /(?:what\s*['']?s?\s*up|whats?\s+up|what['']?s\s*going\s*on|what['']?s\s*new|quoi\s*de\s*neuf|what\s*is\s*happening).*(?:in|à|à\s+)\s*(?:dubai|duba[iï]|paris|new\s*york|london|shanghai|singapore|doha|abu\s*dhabi|mumbai|hong\s*kong)|(?:dubai|duba[iï]|paris|new\s*york|london|shanghai|singapore|doha|abu\s*dhabi|mumbai|hong\s*kong).*(?:what\s*['']?s?\s*up|whats?\s+up|what['']?s\s*going\s*on|what['']?s\s*new|quoi\s*de\s*neuf)/i;
+const NEWS_KEYWORDS = /derni[eè]res?\s*infos?|actualit[eé]s?|quoi\s*de\s*neuf|latest\s*news?|recent\s*info|search\s*web|cherche\s*(?:sur\s*)?(?:le\s*)?web|recherche\s*(?:sur\s*)?(?:le\s*)?web|google|trouve\s*(?:moi\s*)?(?:des\s*)?infos?|informations?\s*r[eé]centes?|ce\s*qui\s*se\s*passe|il\s*se\s*passe\s*quoi|quoi\s*[aà]\s+(?:dubai|doubai|duba[iï]|paris|new\s*york|london|shanghai|singapore)|what['']?s\s*happening|current\s*events?|aujourd['']?hui\s*dans|situation\s*actuelle|(?:c['']?est\s+)?quoi\s+la\s+situation|la\s+situation|situation\s+[aà]|what['']?s\s+(?:the\s+)?situation|(?:dubai|doubai|duba[iï]|paris|new\s*york|london).*situation|situation.*(?:dubai|doubai|duba[iï]|paris|new\s*york|london)/i;
+const FLIGHT_KEYWORDS = /(?:donne[rz]?|donnes?)\s*(?:moi\s*)?(?:les\s*)?(?:prochains?\s*)?vols?|prochains?\s*vols?|vols?\s+(?:de\s+|à\s+|pour\s+|entre\s+)?|flights?\s+(?:from\s+|to\s+|between\s+)?|give\s*me\s*(?:the\s*)?(?:next\s*)?flights?|prix\s*(?:des?\s*)?vols?|flight\s*prices?/i;
+const CITY_PAIR = /\b(?:dubai|doubai|duba[iï]|paris|new\s*york|london|shanghai|singapore)\b.*\b(?:dubai|doubai|duba[iï]|paris|new\s*york|london|shanghai|singapore)\b/i;
+const CITIES = /\b(?:dubai|doubai|duba[iï]|paris|new\s*york|london|shanghai|singapore|doha|abu\s*dhabi|mumbai|hong\s*kong)\b/i;
+// "what up in dubai", "quoi de neuf a/à Dubai", "quoi de neuf à doubai" — "a" or "à", city with/without typo
+const CITY_WHATSUP = /(?:what\s*['']?s?\s*up|whats?\s+up|what['']?s\s*going\s*on|what['']?s\s*new|quoi\s*de\s*neuf|what\s*is\s*happening).*(?:in|[aà]\s*)\s*(?:dubai|doubai|duba[iï]|paris|new\s*york|london|shanghai|singapore|doha|abu\s*dhabi|mumbai|hong\s*kong)|(?:dubai|doubai|duba[iï]|paris|new\s*york|london|shanghai|singapore|doha|abu\s*dhabi|mumbai|hong\s*kong).*(?:what\s*['']?s?\s*up|whats?\s+up|what['']?s\s*going\s*on|what['']?s\s*new|quoi\s*de\s*neuf)/i;
+// Weather: météo, temps (il fait quel temps), température, forecast
+const WEATHER_KEYWORDS = /\bm[eé]t[eé]o\b|weather|temps\s*(?:à|a|pour)|quel\s*temps|il\s*fait\s*(?:quel\s*)?temps|temp[eé]rature|forecast|pr[eé]visions?\s*m[eé]t[eé]o|climat\s*(?:à|a|pour)/i;
+// Airport: statut aéroport, conditions, retards, DXB
+const AIRPORT_KEYWORDS = /\ba[eé]roport\b|airport|dxb|statut\s*(?:de\s+l['']?)?(?:a[eé]roport)?|conditions?\s*(?:de\s+l['']?)?(?:a[eé]roport)?|retards?|delays?|perturbations?/i;
 
 function needsWebSearch(message) {
   if (!message || typeof message !== 'string') return false;
   const t = message.trim();
   return NEWS_KEYWORDS.test(t) || FLIGHT_KEYWORDS.test(t) || CITY_WHATSUP.test(t) ||
     (/\b(?:vols?|flights?)\b/i.test(t) && CITY_PAIR.test(t)) ||
-    (/\bsituation\b/i.test(t) && CITIES.test(t));
+    (/\bsituation\b/i.test(t) && CITIES.test(t)) ||
+    (WEATHER_KEYWORDS.test(t) && CITIES.test(t)) ||
+    (AIRPORT_KEYWORDS.test(t) && CITIES.test(t)) ||
+    /\b(?:wt|what)\s*(?:about|with|at)\s*(?:dubai|shanghai|paris|london)\s*(?:airport|a[eé]roport)?/i.test(t);
 }
 
 function isNewsQuery(message) {
@@ -98,11 +105,20 @@ function extractQuery(message) {
   const t = (message || '').trim();
   if (!t) return '';
 
-  // "what up in dubai", "quoi de neuf à Paris" → "Dubai news today"
   const cityMatch = t.match(CITY_EXTRACT);
-  if (cityMatch && /what\s*up|whats?\s*up|quoi\s*de\s*neuf|what['']?s\s*(going\s*on|new)/i.test(t)) {
-    const city = cityMatch[1].replace(/\s+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  const city = cityMatch ? cityMatch[1].replace(/\s+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : '';
+
+  // "what up in dubai", "quoi de neuf à Paris" → "Dubai news today"
+  if (city && /what\s*up|whats?\s*up|quoi\s*de\s*neuf|what['']?s\s*(going\s*on|new)/i.test(t)) {
     return `${city} news today current events`;
+  }
+  // "il fait quel temps à Shanghai", "weather in Dubai" → "Shanghai weather"
+  if (city && WEATHER_KEYWORDS.test(t)) {
+    return `${city} weather forecast today`;
+  }
+  // "wt dubai airport", "statut aéroport Dubai" → "Dubai airport status"
+  if (city && AIRPORT_KEYWORDS.test(t)) {
+    return `${city} airport status today`;
   }
 
   const cleaned = t

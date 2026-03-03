@@ -1,9 +1,12 @@
 /**
- * EVA Voice — OpenAI Realtime API (ChatGPT-level fluid conversation).
+ * EVA Voice — One app for Realtime (GPT) and Alice (Claude).
+ * Settings AI choice applies to both: Claude → Alice pipeline (push-to-talk); GPT → OpenAI Realtime API.
  * Phone-style UI: Call → Connected → Hang up.
  */
 import { useEffect, useRef, useState, useCallback } from 'react';
 import MicSpeakerTest from '../components/MicSpeakerTest';
+import VoiceAlice from './VoiceAlice';
+import { api } from '../api';
 
 function getApiBase() {
   if (import.meta.env.VITE_EVA_API_URL)
@@ -31,12 +34,14 @@ export default function ChatRealtime() {
   const [audioDevices, setAudioDevices] = useState([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState(() => localStorage.getItem(EVA_AUDIO_INPUT_KEY) || '');
   const [outputDeviceId, setOutputDeviceId] = useState(() => localStorage.getItem(EVA_AUDIO_OUTPUT_KEY) || '');
+  const [aiProvider, setAiProvider] = useState('gpt'); // 'claude' | 'gpt' — from Settings (same as Alice)
   const peerRef = useRef(null);
   const dataChannelRef = useRef(null);
   const audioRef = useRef(null);
   const durationInterval = useRef(null);
   const micStreamRef = useRef(null);
   const evaStreamRef = useRef(null);
+  const claudeSessionRef = useRef(false); // true when connected via Claude (Alice pipeline), not WebRTC
   const [liveMicLevel, setLiveMicLevel] = useState(0);
   const [liveEvaLevel, setLiveEvaLevel] = useState(0);
   const [hasEvaStream, setHasEvaStream] = useState(false);
@@ -46,6 +51,17 @@ export default function ChatRealtime() {
   const stopEvaRef = useRef(null);
   const baseInstructionsRef = useRef(null);
   const audioContextRef = useRef(null);
+
+  // Load Settings so Realtime uses same AI choice as Alice (Claude → Alice pipeline, GPT → Realtime API)
+  useEffect(() => {
+    let cancelled = false;
+    api.getSettings().then((s) => {
+      if (cancelled) return;
+      const p = s?.ai_provider?.provider ?? s?.ai_provider ?? 'claude';
+      setAiProvider(p === 'gpt' ? 'gpt' : 'claude');
+    }).catch(() => { if (!cancelled) setAiProvider('claude'); });
+    return () => { cancelled = true; };
+  }, []);
 
   // Client-side: cancel immediately if this might need web search — no compromise, never play wrong answer first
   const MIGHT_NEED_WEB = /\b(?:vols?|flights?|actualit[eé]s?|quoi\s*de\s*neuf|latest\s*news?|donne[s]?\s*moi\s*(?:les\s*)?vols?|prochains?\s*vols?|cherche\s*(?:sur\s*)?(?:le\s*)?web|prix\s*(?:des?\s*)?vols?|situation\s*actuelle|quoi\s+la\s+situation|la\s+situation|situation\s+[aà]|il\s*se\s*passe\s*quoi|quoi\s*à\s+(?:dubai|duba[iï]|paris|new\s*york|london|shanghai))\b|situation.*(?:dubai|duba[iï]|paris|new\s*york|london)|\b(?:dubai|duba[iï]|paris|new\s*york|london|shanghai)\b/i;
@@ -78,6 +94,12 @@ export default function ChatRealtime() {
       clearInterval(durationInterval.current);
       durationInterval.current = null;
     }
+    if (claudeSessionRef.current) {
+      claudeSessionRef.current = false;
+      setStatus('idle');
+      setCallDuration(0);
+      return;
+    }
     const el = audioRef.current;
     if (el?.parentNode) el.parentNode.removeChild(el);
     audioRef.current = null;
@@ -109,6 +131,13 @@ export default function ChatRealtime() {
   const startSession = useCallback(async () => {
     setError(null);
     setStatus('connecting');
+    if (aiProvider === 'claude') {
+      claudeSessionRef.current = true;
+      setStatus('connected');
+      setCallDuration(0);
+      durationInterval.current = setInterval(() => setCallDuration((d) => d + 1), 1000);
+      return;
+    }
     try {
       // Create AudioContext during user gesture (required for Safari/iOS) — used by VU meters
       try {
@@ -288,7 +317,7 @@ export default function ChatRealtime() {
       setStatus('error');
       stopSession();
     }
-  }, [stopSession, selectedDeviceId]);
+  }, [aiProvider, stopSession, selectedDeviceId]);
 
   // Live mic level (when you speak) — time-domain RMS for responsive VU
   useEffect(() => {
@@ -377,7 +406,9 @@ export default function ChatRealtime() {
           </div>
           <h2 className="text-xl font-semibold text-white">Call EVA</h2>
           <p className="text-slate-400 text-sm text-center max-w-xs">
-            Live voice conversation (like ChatGPT)
+            {aiProvider === 'claude'
+              ? 'Voice: Claude (Alice) — push-to-talk, same engine as Alice'
+              : 'Voice: GPT (Realtime) — live conversation (like ChatGPT)'}
           </p>
           {audioDevices.length > 0 && (
             <div className="w-full max-w-xs space-y-2">
@@ -446,87 +477,97 @@ export default function ChatRealtime() {
         </div>
       ) : (
         <div className="flex flex-col w-full max-w-lg">
-          <div className="flex flex-col items-center py-6 gap-2">
+          <div className="flex flex-col items-center py-4 gap-2">
             <div className="w-16 h-16 rounded-full bg-emerald-500/20 flex items-center justify-center">
               <span className="w-4 h-4 rounded-full bg-emerald-400 animate-pulse" />
             </div>
             <p className="text-emerald-400 font-medium">Connected</p>
             <p className="text-slate-500 text-sm font-mono">{formatDuration(callDuration)}</p>
-            {/* Indication : EVA a compris et travaille sur la réponse */}
-            {(isAwaitingEva || isEvaThinking) && (
-              <div className="flex items-center gap-3 mt-3 px-6 py-3 rounded-xl bg-amber-500/30 border-2 border-amber-500/60 shadow-xl shadow-amber-500/20">
-                <div className="flex gap-1">
-                  <span className="w-2 h-2 rounded-full bg-amber-300 animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <span className="w-2 h-2 rounded-full bg-amber-300 animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <span className="w-2 h-2 rounded-full bg-amber-300 animate-bounce" style={{ animationDelay: '300ms' }} />
-                </div>
-                <span className="text-amber-100 text-base font-semibold">EVA a compris, travaille sur la réponse…</span>
-              </div>
-            )}
-            {/* Level visualizers: You (mic) + EVA (output) */}
-            <div className="flex items-center gap-8 mt-4">
-              <div className="flex flex-col items-center gap-1">
-                <p className="text-[10px] text-cyan-400 font-medium">You</p>
-                <div className="flex items-end justify-center gap-0.5 h-8">
-                  {Array.from({ length: 12 }, (_, i) => {
-                    const v = (liveMicLevel / 100) * (Math.sin((i / 12) * Math.PI) * 0.25 + 0.75);
-                    const h = 4 + Math.min(24, v * 24);
-                    return (
-                      <div
-                        key={i}
-                        className="w-1.5 rounded-sm bg-cyan-500/90 transition-all duration-75"
-                        style={{ height: `${h}px` }}
-                      />
-                    );
-                  })}
-                </div>
-              </div>
-              <div className="flex flex-col items-center gap-1">
-                <p className="text-[10px] text-violet-400 font-medium">EVA</p>
-                <div className="flex items-end justify-center gap-0.5 h-8">
-                  {Array.from({ length: 12 }, (_, i) => {
-                    const v = (liveEvaLevel / 100) * (Math.sin((i / 12) * Math.PI) * 0.25 + 0.75);
-                    const h = 4 + Math.min(24, v * 24);
-                    return (
-                      <div
-                        key={i}
-                        className="w-1.5 rounded-sm bg-violet-500/90 transition-all duration-75"
-                        style={{ height: `${h}px` }}
-                      />
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-            {/* Stop EVA button — say "tais-toi" or "stop" to interrupt, or click */}
-            {(isAwaitingEva || isEvaThinking || liveEvaLevel > 5) && (
-              <button
-                type="button"
-                onClick={() => stopEvaRef.current?.()}
-                className="mt-3 px-4 py-2 rounded-lg bg-red-500/30 hover:bg-red-500/50 text-red-300 text-sm font-medium border border-red-500/50 transition-colors"
-              >
-                Stop EVA
-              </button>
+            {aiProvider === 'claude' && (
+              <p className="text-slate-400 text-xs">Claude (Alice) — push-to-talk below</p>
             )}
           </div>
-          <div className="flex-1 rounded-xl bg-slate-800/60 border border-slate-700/40 p-4 max-h-64 overflow-y-auto space-y-3">
-            {transcript.length === 0 ? (
-              <p className="text-slate-500 text-sm text-center py-4">
-                Speak… Say <span className="text-cyan-400">tais-toi</span> or <span className="text-cyan-400">stop</span> to interrupt EVA.
-              </p>
-            ) : (
-              transcript.map((item, i) => (
-                <div key={i} className={`flex ${item.role === 'user' ? 'justify-end' : ''}`}>
-                  <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 ${item.role === 'user' ? 'bg-cyan-500/20 text-cyan-100' : 'bg-slate-700/60 text-slate-200'}`}>
-                    <div className="text-sm whitespace-pre-wrap">{item.text}</div>
+          {aiProvider === 'claude' ? (
+            <div className="flex-1 min-h-0 rounded-xl bg-slate-800/40 border border-slate-700/40 p-3 overflow-auto">
+              <VoiceAlice />
+            </div>
+          ) : (
+            <>
+              <div className="flex flex-col items-center gap-2 -mt-2">
+                {(isAwaitingEva || isEvaThinking) && (
+                  <div className="flex items-center gap-3 px-6 py-3 rounded-xl bg-amber-500/30 border-2 border-amber-500/60 shadow-xl shadow-amber-500/20">
+                    <div className="flex gap-1">
+                      <span className="w-2 h-2 rounded-full bg-amber-300 animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <span className="w-2 h-2 rounded-full bg-amber-300 animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <span className="w-2 h-2 rounded-full bg-amber-300 animate-bounce" style={{ animationDelay: '300ms' }} />
+                    </div>
+                    <span className="text-amber-100 text-base font-semibold">EVA a compris, travaille sur la réponse…</span>
+                  </div>
+                )}
+                <div className="flex items-center gap-8 mt-2">
+                  <div className="flex flex-col items-center gap-1">
+                    <p className="text-[10px] text-cyan-400 font-medium">You</p>
+                    <div className="flex items-end justify-center gap-0.5 h-8">
+                      {Array.from({ length: 12 }, (_, i) => {
+                        const v = (liveMicLevel / 100) * (Math.sin((i / 12) * Math.PI) * 0.25 + 0.75);
+                        const h = 4 + Math.min(24, v * 24);
+                        return (
+                          <div
+                            key={i}
+                            className="w-1.5 rounded-sm bg-cyan-500/90 transition-all duration-75"
+                            style={{ height: `${h}px` }}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-center gap-1">
+                    <p className="text-[10px] text-violet-400 font-medium">EVA</p>
+                    <div className="flex items-end justify-center gap-0.5 h-8">
+                      {Array.from({ length: 12 }, (_, i) => {
+                        const v = (liveEvaLevel / 100) * (Math.sin((i / 12) * Math.PI) * 0.25 + 0.75);
+                        const h = 4 + Math.min(24, v * 24);
+                        return (
+                          <div
+                            key={i}
+                            className="w-1.5 rounded-sm bg-violet-500/90 transition-all duration-75"
+                            style={{ height: `${h}px` }}
+                          />
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
-              ))
-            )}
-            <p className="text-[10px] text-slate-500 text-center pt-2 border-t border-slate-700/40 mt-2">
-              Say tais-toi or stop to interrupt
-            </p>
-          </div>
+                {(isAwaitingEva || isEvaThinking || liveEvaLevel > 5) && (
+                  <button
+                    type="button"
+                    onClick={() => stopEvaRef.current?.()}
+                    className="mt-3 px-4 py-2 rounded-lg bg-red-500/30 hover:bg-red-500/50 text-red-300 text-sm font-medium border border-red-500/50 transition-colors"
+                  >
+                    Stop EVA
+                  </button>
+                )}
+              </div>
+              <div className="flex-1 rounded-xl bg-slate-800/60 border border-slate-700/40 p-4 max-h-64 overflow-y-auto space-y-3 mt-2">
+                {transcript.length === 0 ? (
+                  <p className="text-slate-500 text-sm text-center py-4">
+                    Speak… Say <span className="text-cyan-400">tais-toi</span> or <span className="text-cyan-400">stop</span> to interrupt EVA.
+                  </p>
+                ) : (
+                  transcript.map((item, i) => (
+                    <div key={i} className={`flex ${item.role === 'user' ? 'justify-end' : ''}`}>
+                      <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 ${item.role === 'user' ? 'bg-cyan-500/20 text-cyan-100' : 'bg-slate-700/60 text-slate-200'}`}>
+                        <div className="text-sm whitespace-pre-wrap">{item.text}</div>
+                      </div>
+                    </div>
+                  ))
+                )}
+                <p className="text-[10px] text-slate-500 text-center pt-2 border-t border-slate-700/40 mt-2">
+                  Say tais-toi or stop to interrupt
+                </p>
+              </div>
+            </>
+          )}
           <button
             onClick={stopSession}
             className="mt-6 w-16 h-16 min-w-[56px] min-h-[56px] rounded-full bg-red-500/30 hover:bg-red-500/50 text-red-300 mx-auto flex items-center justify-center transition-colors touch-manipulation"

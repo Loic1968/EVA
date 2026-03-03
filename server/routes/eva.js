@@ -51,6 +51,13 @@ Tu comprends bien : reformule si besoin pour clarifier, réponds au fond de la q
 Tu aides pour les opérations plateforme, l'analyse et le support décisionnel.
 En cas de doute sur la demande, pose une question courte pour préciser.`;
 
+const EVA_CHAT_ANTI_GENERIC = `
+JAMAIS: "Je ne peux pas accéder à vos informations", "consulter votre email", "site de la compagnie aérienne", "application de voyage".
+Quand ## Emails / ## Calendar / ## Documents ont du contenu → lis et réponds. Tu AS accès.
+Quand vides (vol, billet) → "Je n'ai pas cette info dans mes données. Connecte Gmail et Google Calendar (Paramètres > Données), ou uploade ton billet dans Documents."
+Rapporte UNIQUEMENT ce qui est EXPLICITEMENT écrit. Si l'heure de départ n'est pas dans le texte → ne pas l'inventer.
+`;
+
 const EVA_VOICE_EXTRA = `IMPORTANT: Ce message vient de la voix (reconnaissance vocale).
 La transcription peut contenir des erreurs (mots mal entendus, accents). Interprète avec bienveillance et réponds au sens probable.`;
 
@@ -69,9 +76,24 @@ router.post('/eva/chat', async (req, res, next) => {
       return res.status(400).json({ error: 'messages (array) required' });
     }
 
+    const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user')?.content || '';
+    let systemContent = origin === 'voice' ? `${EVA_CHAT_SYSTEM}\n\n${EVA_VOICE_EXTRA}` : EVA_CHAT_SYSTEM;
+    systemContent += EVA_CHAT_ANTI_GENERIC;
+
+    // Inject personal context (Calendar, Emails, Documents) when ownerId present
+    if (req.ownerId && lastUserMsg.trim().length >= 6) {
+      try {
+        const contextBuilder = require('../contextBuilder');
+        const history = messages.slice(-10).map((m) => ({ role: m.role, content: m.content }));
+        const { context } = await contextBuilder.buildContext({ ownerId: req.ownerId, userMessage: lastUserMsg, history });
+        if (context) systemContent += context;
+      } catch (err) {
+        console.warn('[EVA /eva/chat] Context build failed:', err.message);
+      }
+    }
+
     const OpenAI = require('openai');
     const client = new OpenAI({ apiKey: openaiKey });
-    const systemContent = origin === 'voice' ? `${EVA_CHAT_SYSTEM}\n\n${EVA_VOICE_EXTRA}` : EVA_CHAT_SYSTEM;
     const fullMessages = [
       { role: 'system', content: systemContent },
       ...messages,
@@ -260,6 +282,61 @@ router.post('/chat', async (req, res, next) => {
           return res.json({ reply: `Mémoire : ${list}`, model: null, tokens: { input: 0, output: 0 } });
         }
       } catch (e) { return next(e); }
+    }
+
+    // eva diag personal-tools => diagnostic (dev-only, no LLM)
+    if (command === 'eva_diag_personal_tools' && req.ownerId) {
+      try {
+        const personalTools = require('../services/personalToolsService');
+        const diag = await personalTools.runDiagnostic(req.ownerId);
+        const lines = [
+          '**EVA Personal Tools Diagnostic**',
+          `enabled: ${diag.enabled}`,
+          `mailbox: ${diag.mailbox || '—'}`,
+          `auth: ${diag.authStatus}`,
+          `calendar: ${diag.calendar?.status} (${diag.calendar?.count} events)`,
+          `gmail: ${diag.gmail?.status} (${diag.gmail?.count} emails)`,
+        ];
+        if (diag.calendar?.message) lines.push(`calendar_msg: ${diag.calendar.message}`);
+        if (diag.gmail?.message) lines.push(`gmail_msg: ${diag.gmail.message}`);
+        return res.json({
+          reply: lines.join('\n'),
+          model: 'eva-diag',
+          tokens: { input: 0, output: 0 },
+        });
+      } catch (e) {
+        console.warn('[EVA] eva diag personal-tools failed:', e.message);
+        return res.json({
+          reply: `Diagnostic failed: ${e.message}`,
+          model: 'eva-diag',
+          tokens: { input: 0, output: 0 },
+        });
+      }
+    }
+
+    // /alice [on|off] => toggle Alice persona
+    if (command === 'alice_toggle' && req.ownerId) {
+      try {
+        const { getAliceMode, setAliceMode } = require('../services/settingsService');
+        const currentMode = await getAliceMode(req.ownerId);
+        const parsed = req.body.message ? evaChat.parseCommand(req.body.message) : {};
+        const toggle = parsed.toggle;
+        const newMode = toggle === 'on' ? true : toggle === 'off' ? false : !currentMode;
+        await setAliceMode(req.ownerId, newMode);
+        const status = newMode ? '✓ Alice mode activated. I\'m Alice now.' : '✗ Alice mode off. Back to EVA.';
+        return res.json({
+          reply: status + (newMode ? '\n\n*— Alice*' : ''),
+          model: 'eva-settings',
+          tokens: { input: 0, output: 0 },
+        });
+      } catch (e) {
+        console.warn('[EVA] /alice toggle failed:', e.message);
+        return res.json({
+          reply: `Alice toggle failed: ${e.message}`,
+          model: 'eva-settings',
+          tokens: { input: 0, output: 0 },
+        });
+      }
     }
 
     // /reset => create new conversation, no LLM call
@@ -896,10 +973,69 @@ router.post('/settings/flags/:key', async (req, res, next) => {
     const featureFlagService = require('../services/featureFlagService');
     await featureFlagService.setFlag(key, enabled === true);
     featureFlagService.invalidateCache();
+
+    // Special handling: MCP toggle — connect/disconnect the MCP hub
+    if (key === 'mcp_enabled') {
+      try {
+        const { initMcp } = require('../services/toolOrchestrator');
+        const mcpClient = require('../services/mcpClient');
+        if (enabled) {
+          await initMcp();
+        } else {
+          mcpClient.disconnect();
+        }
+      } catch (mcpErr) {
+        console.warn('[EVA] MCP toggle error:', mcpErr.message);
+      }
+    }
+
     const flags = await featureFlagService.getAllFlags();
     res.json({ key, enabled: flags[key] === true, flags });
   } catch (e) {
     next(e);
+  }
+});
+
+// MCP Hub status
+router.get('/mcp/status', async (req, res) => {
+  try {
+    const mcpClient = require('../services/mcpClient');
+    const connected = mcpClient.isConnected();
+    const tools = connected ? mcpClient.listTools() : [];
+    res.json({
+      connected,
+      tools_count: tools.length,
+      tools: tools.map(t => ({ name: t.name, description: t.description })),
+    });
+  } catch (e) {
+    res.json({ connected: false, tools_count: 0, tools: [], error: e.message });
+  }
+});
+
+// Trigger MCP connection (call initMcp). Use when "MCP Hub" flag is ON but not connected.
+router.post('/mcp/connect', async (req, res) => {
+  try {
+    const { initMcp } = require('../services/toolOrchestrator');
+    const ok = await initMcp();
+    const mcpClient = require('../services/mcpClient');
+    const connected = mcpClient.isConnected();
+    const tools = connected ? mcpClient.listTools() : [];
+    res.json({
+      connected,
+      triggered: true,
+      tools_count: tools.length,
+      tools: tools.map(t => ({ name: t.name, description: t.description })),
+      message: ok ? 'MCP Hub connected' : 'MCP Hub not available (check mcp-hub and feature flag)',
+    });
+  } catch (e) {
+    res.json({
+      connected: false,
+      triggered: true,
+      tools_count: 0,
+      tools: [],
+      error: e.message,
+      message: 'Trigger failed: ' + e.message,
+    });
   }
 });
 
@@ -1032,7 +1168,13 @@ router.get('/documents', async (req, res, next) => {
     q += ' ORDER BY created_at DESC LIMIT $' + (params.length + 1);
     params.push(Math.min(Number(limit) || 50, 200));
     const r = await db.query(q, params);
-    res.json({ documents: r.rows });
+    const statusLabels = { indexed: 'Indexed', uploaded: 'Pending extraction', processing: 'Extracting...', error: 'Failed' };
+    const documents = r.rows.map((d) => ({
+      ...d,
+      status_label: statusLabels[d.status] || d.status,
+      needs_ocr: d.status === 'error' && d.metadata?.error && /ocr|extract|claude/i.test(String(d.metadata.error)),
+    }));
+    res.json({ documents });
   } catch (e) {
     next(e);
   }
@@ -1308,6 +1450,12 @@ router.post('/feedback', async (req, res, next) => {
 // Start OAuth flow — returns Google consent URL
 router.get('/oauth/gmail/start', async (req, res, next) => {
   try {
+    if (!googleOAuth.hasCredentials()) {
+      return res.status(503).json({
+        error: 'gmail_not_configured',
+        message: 'Gmail OAuth not configured. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to eva/.env — see eva/.env.example',
+      });
+    }
     const authUrl = googleOAuth.getAuthUrl(String(req.ownerId));
     res.json({ auth_url: authUrl });
   } catch (e) {
@@ -1356,7 +1504,7 @@ router.delete('/gmail/accounts/:id', async (req, res, next) => {
       'SELECT access_token, gmail_address FROM eva.gmail_accounts WHERE id = $1 AND owner_id = $2',
       [accountId, req.ownerId]
     );
-    if (acct.rows[0]) {
+    if (acct.rows[0] && googleOAuth.hasCredentials()) {
       await googleOAuth.revokeToken(acct.rows[0].access_token);
       // Delete account (cascades to emails via FK)
       await db.query('DELETE FROM eva.gmail_accounts WHERE id = $1 AND owner_id = $2', [accountId, req.ownerId]);

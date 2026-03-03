@@ -80,4 +80,26 @@ async function getAIProvider(ownerId) {
   return v === 'gpt' ? 'gpt' : 'claude';
 }
 
-module.exports = { getSetting, getKillSwitch, getShadowMode, getAutonomousMode, getStyleProfile, getNotificationPreferences, getEmailImportancePreferences, getAIProvider };
+/** @returns {Promise<boolean>} true = Alice persona active */
+async function getAliceMode(ownerId) {
+  const s = await getSetting(ownerId, 'alice_mode');
+  return s?.enabled === true;
+}
+
+/** @param {number} ownerId @param {boolean} enabled */
+async function setAliceMode(ownerId, enabled) {
+  try {
+    await db.query(
+      `INSERT INTO eva.settings (owner_id, key, value)
+       VALUES ($1, 'alice_mode', $2::jsonb)
+       ON CONFLICT (owner_id, key) DO UPDATE SET value = $2::jsonb, updated_at = now()`,
+      [ownerId, JSON.stringify({ enabled: !!enabled })]
+    );
+    return true;
+  } catch (e) {
+    if (/relation .* does not exist/i.test(String(e.message))) return false;
+    throw e;
+  }
+}
+
+module.exports = { getSetting, getKillSwitch, getShadowMode, getAutonomousMode, getStyleProfile, getNotificationPreferences, getEmailImportancePreferences, getAIProvider, getAliceMode, setAliceMode };

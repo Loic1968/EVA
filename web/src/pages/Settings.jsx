@@ -30,9 +30,12 @@ export default function Settings() {
   const [activeTab, setActiveTab] = useState('general');
   const [controlError, setControlError] = useState(null);
   const [featureFlags, setFeatureFlags] = useState({});
+  const [mcpStatus, setMcpStatus] = useState({ connected: false, tools_count: 0, tools: [] });
+  const [mcpTriggering, setMcpTriggering] = useState(false);
 
   const TABS = [
     { id: 'general', label: 'General', icon: '⚙️' },
+    { id: 'voice', label: 'Voice', icon: '🎙️' },
     { id: 'sync', label: 'Sync & Data', icon: '📧' },
     { id: 'notifications', label: 'Notifications', icon: '🔔' },
     { id: 'control', label: 'Control', icon: '🛡️' },
@@ -40,6 +43,10 @@ export default function Settings() {
   ];
 
   const [openaiAvailable, setOpenaiAvailable] = useState(false);
+  const [voiceSettings, setVoiceSettings] = useState(null);
+  const [voiceSaving, setVoiceSaving] = useState(false);
+  const [voiceSaved, setVoiceSaved] = useState(false);
+  const [voicePreview, setVoicePreview] = useState(null); // Audio element for preview
 
   useEffect(() => {
     api.getSettings()
@@ -56,6 +63,13 @@ export default function Settings() {
     api.status().then((r) => setOpenaiAvailable(r.openai_available === true)).catch(() => {});
   }, []);
 
+  // Refetch status when opening General tab (Chat AI) so GPT option is up to date
+  useEffect(() => {
+    if (activeTab === 'general') {
+      api.status().then((r) => setOpenaiAvailable(r.openai_available === true)).catch(() => {});
+    }
+  }, [activeTab]);
+
   useEffect(() => {
     api.getLocation()
       .then(({ location }) => setLocationState(location || ''))
@@ -65,6 +79,19 @@ export default function Settings() {
   useEffect(() => {
     api.getFeatureFlags().then((f) => setFeatureFlags(f)).catch(() => setFeatureFlags({}));
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 'control') {
+      api.getMcpStatus().then((s) => setMcpStatus(s)).catch(() => setMcpStatus({ connected: false, tools_count: 0, tools: [] }));
+    }
+    if (activeTab === 'voice' && !voiceSettings) {
+      api.getVoiceSettings().then((s) => setVoiceSettings(s)).catch(() => setVoiceSettings({
+        tts_model: 'tts-1-hd', tts_voice_fr: 'nova', tts_voice_en: 'shimmer', tts_speed: 1.05,
+        available_voices: ['alloy','ash','ballad','coral','echo','fable','nova','onyx','sage','shimmer','verse'],
+        available_models: ['tts-1','tts-1-hd'],
+      }));
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     api.getPushStatus().then((s) => setPushStatus(s)).catch(() => setPushStatus({ subscribed: false, configured: false }));
@@ -488,7 +515,7 @@ export default function Settings() {
       <div className="bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 p-6 max-w-2xl">
         <h2 className="text-lg font-medium text-slate-900 dark:text-white mb-2">Chat AI</h2>
         <p className="text-slate-500 dark:text-eva-muted text-sm mb-4">
-          Choose which AI powers EVA chat. Claude (default) has calendar &amp; memory tools. GPT requires OPENAI_API_KEY.
+          One choice for all voice: <strong>Claude</strong> or <strong>GPT</strong> powers EVA chat, <strong>Alice Voice</strong> (push-to-talk), and <strong>Realtime</strong> (call UI). With Claude, Realtime uses the same Alice engine; with GPT, Realtime uses the OpenAI Realtime API. Claude has calendar &amp; memory tools; GPT requires OPENAI_API_KEY.
         </p>
         <div className="flex flex-wrap gap-3">
           <button
@@ -518,6 +545,15 @@ export default function Settings() {
           </button>
         </div>
         {!openaiAvailable && <p className="text-amber-600 dark:text-amber-400 text-xs mt-2">GPT unavailable — OPENAI_API_KEY not set.</p>}
+        <div className="flex items-center gap-2 mt-2">
+          <button
+            type="button"
+            onClick={() => api.status().then((r) => { setOpenaiAvailable(r.openai_available === true); }).catch(() => {})}
+            className="text-xs px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+          >
+            Vérifier OpenAI
+          </button>
+        </div>
         {saved && <span className="text-emerald-600 dark:text-emerald-400 text-sm mt-2 block">Saved</span>}
       </div>
 
@@ -610,6 +646,145 @@ export default function Settings() {
           {saved && <span className="text-emerald-600 dark:text-emerald-400 text-sm">Saved</span>}
         </div>
       </div>
+      </div>
+      )}
+
+      {/* Voice Settings */}
+      {activeTab === 'voice' && voiceSettings && (
+      <div className="space-y-6">
+        <div className="bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 p-6 max-w-2xl">
+          <h2 className="text-lg font-medium text-slate-900 dark:text-white mb-1">Alice Voice</h2>
+          <p className="text-slate-500 dark:text-eva-muted text-sm mb-5">
+            Choose the TTS model, voice, and speed for Alice. HD model sounds more natural but is slightly slower per sentence.
+          </p>
+
+          {/* TTS Model */}
+          <div className="mb-5">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">TTS Model</label>
+            <div className="flex gap-3">
+              {(voiceSettings.available_models || ['tts-1', 'tts-1-hd']).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setVoiceSettings((s) => ({ ...s, tts_model: m }))}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium border transition-all ${voiceSettings.tts_model === m
+                    ? 'bg-eva-accent/10 border-eva-accent text-eva-accent'
+                    : 'bg-slate-100 dark:bg-slate-700/40 border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:border-slate-400'
+                  }`}
+                >
+                  {m === 'tts-1-hd' ? 'HD (recommended)' : 'Standard (faster)'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Voice FR */}
+          <div className="mb-5">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Voice (French)</label>
+            <div className="flex flex-wrap gap-2">
+              {(voiceSettings.available_voices || []).map((v) => (
+                <button
+                  key={v}
+                  onClick={() => setVoiceSettings((s) => ({ ...s, tts_voice_fr: v }))}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all capitalize ${voiceSettings.tts_voice_fr === v
+                    ? 'bg-violet-500/10 border-violet-500 text-violet-600 dark:text-violet-400'
+                    : 'bg-slate-100 dark:bg-slate-700/40 border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400 hover:border-slate-400'
+                  }`}
+                >
+                  {v}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Voice EN */}
+          <div className="mb-5">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Voice (English)</label>
+            <div className="flex flex-wrap gap-2">
+              {(voiceSettings.available_voices || []).map((v) => (
+                <button
+                  key={v}
+                  onClick={() => setVoiceSettings((s) => ({ ...s, tts_voice_en: v }))}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all capitalize ${voiceSettings.tts_voice_en === v
+                    ? 'bg-cyan-500/10 border-cyan-500 text-cyan-600 dark:text-cyan-400'
+                    : 'bg-slate-100 dark:bg-slate-700/40 border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400 hover:border-slate-400'
+                  }`}
+                >
+                  {v}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Speed */}
+          <div className="mb-5">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+              Speed: <span className="text-eva-accent">{voiceSettings.tts_speed?.toFixed(2) || '1.05'}x</span>
+            </label>
+            <input
+              type="range"
+              min="0.7"
+              max="1.5"
+              step="0.05"
+              value={voiceSettings.tts_speed || 1.05}
+              onChange={(e) => setVoiceSettings((s) => ({ ...s, tts_speed: parseFloat(e.target.value) }))}
+              className="w-full max-w-xs accent-eva-accent"
+            />
+            <div className="flex justify-between text-[10px] text-slate-400 dark:text-slate-600 max-w-xs mt-1">
+              <span>Slow</span><span>Normal</span><span>Fast</span>
+            </div>
+          </div>
+
+          {/* Preview + Save */}
+          <div className="flex items-center gap-3 mt-4">
+            <button
+              onClick={async () => {
+                setVoiceSaving(true);
+                setVoiceSaved(false);
+                try {
+                  const result = await api.saveVoiceSettings({
+                    tts_model: voiceSettings.tts_model,
+                    tts_voice_fr: voiceSettings.tts_voice_fr,
+                    tts_voice_en: voiceSettings.tts_voice_en,
+                    tts_speed: voiceSettings.tts_speed,
+                  });
+                  setVoiceSettings((s) => ({ ...s, ...result }));
+                  setVoiceSaved(true);
+                  setTimeout(() => setVoiceSaved(false), 2000);
+                } catch (e) {
+                  setControlError(e.message || 'Save failed');
+                } finally {
+                  setVoiceSaving(false);
+                }
+              }}
+              disabled={voiceSaving}
+              className="px-5 py-2 rounded-lg bg-eva-accent text-white hover:opacity-90 disabled:opacity-50 text-sm font-medium"
+            >
+              {voiceSaving ? 'Saving...' : 'Save'}
+            </button>
+            <button
+              onClick={async () => {
+                if (voicePreview) { voicePreview.pause(); setVoicePreview(null); return; }
+                try {
+                  const sample = voiceSettings.tts_voice_fr === voiceSettings.tts_voice_en
+                    ? 'Bonjour, je suis Alice, votre assistante.'
+                    : 'Bonjour, je suis Alice.';
+                  const blob = await api.voiceTts(sample);
+                  const url = URL.createObjectURL(blob);
+                  const a = new Audio(url);
+                  a.onended = () => { URL.revokeObjectURL(url); setVoicePreview(null); };
+                  setVoicePreview(a);
+                  a.play();
+                } catch (e) {
+                  setControlError('Preview failed: ' + e.message);
+                }
+              }}
+              className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/40 text-sm"
+            >
+              {voicePreview ? '⏹ Stop' : '▶ Preview'}
+            </button>
+            {voiceSaved && <span className="text-emerald-600 dark:text-emerald-400 text-sm">Saved</span>}
+          </div>
+        </div>
       </div>
       )}
 
@@ -800,6 +975,40 @@ export default function Settings() {
       {/* Control */}
       {activeTab === 'control' && (
       <div className="space-y-6">
+      {/* MCP Hub — visible trigger and status */}
+      <div className="rounded-xl border p-6 max-w-2xl bg-white dark:bg-eva-panel border-slate-200 dark:border-slate-700/40" data-testid="mcp-hub-block">
+        <h2 className="text-lg font-medium text-slate-900 dark:text-white mb-1">MCP Hub</h2>
+        <p className="text-slate-500 dark:text-eva-muted text-sm mb-4">
+          Connect EVA to the platform MCP server (DB queries, file read, route scan, QA). When connected, <strong>EVA Chat and Alice</strong> (voice and text) can use MCP tools. Enable the runtime flag below, then trigger the connection.
+        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <span className={`text-sm px-2 py-1 rounded ${mcpStatus.connected ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' : 'bg-slate-200 dark:bg-slate-600/40 text-slate-600 dark:text-slate-500'}`}>
+            {mcpStatus.connected ? `Connected (${mcpStatus.tools_count} tools)` : 'Not connected'}
+          </span>
+          <button
+            type="button"
+            onClick={async () => {
+              setMcpTriggering(true);
+              try {
+                const res = await api.triggerMcpConnect();
+                setMcpStatus({ connected: res.connected, tools_count: res.tools_count || 0, tools: res.tools || [] });
+              } catch (e) {
+                setMcpStatus({ connected: false, tools_count: 0, tools: [], error: e.message });
+              } finally {
+                setMcpTriggering(false);
+              }
+            }}
+            disabled={mcpTriggering}
+            className="px-4 py-2 rounded-lg bg-eva-accent text-white text-sm font-medium hover:opacity-90 disabled:opacity-50"
+          >
+            {mcpTriggering ? 'Connecting…' : 'Trigger MCP connection'}
+          </button>
+        </div>
+        {mcpStatus.tools && mcpStatus.tools.length > 0 && (
+          <p className="text-xs text-slate-500 dark:text-eva-muted mt-2">Tools: {mcpStatus.tools.map(t => t.name).join(', ')}</p>
+        )}
+      </div>
+
       {/* Feature flags — runtime ON/OFF */}
       <div className="rounded-xl border p-6 max-w-2xl bg-white dark:bg-eva-panel border-slate-200 dark:border-slate-700/40">
         <h2 className="text-lg font-medium text-slate-900 dark:text-white mb-1">Runtime flags</h2>
@@ -807,6 +1016,7 @@ export default function Settings() {
         <div className="space-y-3">
           {[
             { key: 'assistant_mode', label: 'Assistant Mode' },
+            { key: 'mcp_enabled', label: 'MCP Hub', hint: 'Connect to platform MCP server (DB queries, file read, route scan, QA, deploy...)' },
             { key: 'voice_safe_mode', label: 'Voice Safe Mode', hint: 'Block memory writes from voice (recommended ON)' },
             { key: 'memory_learning', label: 'Memory Learning' },
             { key: 'conversation_learning', label: 'Conversation Learning' },

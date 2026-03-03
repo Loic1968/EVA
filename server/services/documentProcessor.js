@@ -186,6 +186,29 @@ async function extractText(filePathOrBuffer, fileType, filename = '') {
   return null;
 }
 
+const CHUNK_SIZE = 1000;
+const CHUNK_OVERLAP = 200;
+
+function chunkText(text, size = CHUNK_SIZE, overlap = CHUNK_OVERLAP) {
+  if (!text || text.length <= size) return text ? [text] : [];
+  const chunks = [];
+  let start = 0;
+  while (start < text.length) {
+    let end = Math.min(start + size, text.length);
+    // Prefer sentence boundary for cleaner chunks
+    if (end < text.length) {
+      const lastPeriod = text.lastIndexOf('.', end);
+      const lastNewline = text.lastIndexOf('\n', end);
+      const best = Math.max(lastPeriod, lastNewline);
+      if (best > start + size / 2) end = best + 1;
+    }
+    chunks.push(text.slice(start, end).trim());
+    start = end - overlap;
+    if (start >= text.length - overlap) break;
+  }
+  return chunks.filter((c) => c.length > 0);
+}
+
 async function processDocument(documentId, ownerId) {
   const r = await db.query(
     'SELECT id, storage_path, file_type, filename, file_data FROM eva.documents WHERE id = $1 AND owner_id = $2',
@@ -223,10 +246,31 @@ async function processDocument(documentId, ownerId) {
     await db.query("UPDATE eva.documents SET status = 'processing' WHERE id = $1", [documentId]);
     const text = await extractText(input, doc.file_type, doc.filename || '');
     if (text && text.length > 0) {
+      const contentText = text.slice(0, 500000);
       await db.query(
         "UPDATE eva.documents SET content_text = $1, status = 'indexed', processed_at = now() WHERE id = $2",
-        [text.slice(0, 500000), documentId]
+        [contentText, documentId]
       );
+      // Chunk and index for search with citations
+      try {
+        await db.query('DELETE FROM eva.document_chunks WHERE doc_id = $1', [documentId]);
+        const chunks = chunkText(contentText);
+        for (let i = 0; i < chunks.length; i++) {
+          await db.query(
+            `INSERT INTO eva.document_chunks (doc_id, owner_id, chunk_index, content)
+             VALUES ($1, $2, $3, $4)`,
+            [documentId, ownerId, i, chunks[i]]
+          );
+        }
+        await db.query(
+          "UPDATE eva.documents SET chunk_count = $1 WHERE id = $2",
+          [chunks.length, documentId]
+        );
+      } catch (chunkErr) {
+        if (!/relation "eva\.document_chunks" does not exist/i.test(String(chunkErr.message))) {
+          console.warn(`[DocumentProcessor] Chunk index failed (run migration): ${chunkErr.message}`);
+        }
+      }
       // Structured memory: extract facts into eva.facts when feature-flagged
       if (process.env.EVA_STRUCTURED_MEMORY === 'true') {
         try {
@@ -261,6 +305,42 @@ async function processDocument(documentId, ownerId) {
 
 // Stopwords to skip when building OR-query (French + English)
 const SEARCH_STOPWORDS = new Set(['a', 'à', 'le', 'la', 'les', 'un', 'une', 'des', 'du', 'de', 'et', 'ou', 'pour', 'avec', 'mon', 'ma', 'mes', 'son', 'sa', 'ses', 'notre', 'votre', 'leur', 'quelle', 'quels', 'quelle', 'quelles', 'est', 'sont', 'the', 'is', 'are', 'my', 'your', 'our', 'to', 'for', 'with', 'at', 'in', 'on']);
+
+async function searchDocumentsByChunks(ownerId, queryText, limit = 8) {
+  const q = (queryText || '').trim();
+  if (!q || q.length < 2) return [];
+
+  const words = q.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/)
+    .filter((w) => w.length >= 2 && !SEARCH_STOPWORDS.has(w));
+  const tsQuery = words.slice(0, 5).map((w) => w.replace(/'/g, "''")).join(' & ');
+
+  try {
+    const r = await db.query(
+      `SELECT dc.chunk_id, dc.doc_id, dc.chunk_index, dc.content,
+              d.filename, d.content_text
+       FROM eva.document_chunks dc
+       JOIN eva.documents d ON d.id = dc.doc_id AND d.owner_id = dc.owner_id
+       WHERE dc.owner_id = $1
+         AND (dc.tsv @@ plainto_tsquery('simple', $2) OR dc.content ILIKE $3)
+       ORDER BY ts_rank(dc.tsv, plainto_tsquery('simple', $2)) DESC NULLS LAST,
+                dc.doc_id, dc.chunk_index
+       LIMIT $4`,
+      [ownerId, tsQuery || q, `%${q.replace(/[%_\\]/g, (c) => '\\' + c)}%`, limit]
+    );
+    return r.rows.map((row) => ({
+      id: row.doc_id,
+      chunk_id: row.chunk_id,
+      chunk_index: row.chunk_index,
+      filename: row.filename,
+      content_text: row.content,
+      content_preview: row.content?.slice(0, 1500),
+      citation: { doc_id: row.doc_id, filename: row.filename, chunk_index: row.chunk_index, chunk_id: row.chunk_id },
+    }));
+  } catch (e) {
+    if (/relation "eva\.document_chunks" does not exist/i.test(String(e.message))) return [];
+    throw e;
+  }
+}
 
 function searchDocuments(ownerId, queryText, limit = 5) {
   const q = (queryText || '').trim();
@@ -305,6 +385,17 @@ function searchDocuments(ownerId, queryText, limit = 5) {
       if (/column "content_text" does not exist/i.test(String(e.message))) return [];
       throw e;
     });
+}
+
+async function searchDocumentsWithCitations(ownerId, queryText, limit = 8) {
+  const chunkResults = await searchDocumentsByChunks(ownerId, queryText, limit);
+  if (chunkResults.length > 0) return chunkResults;
+  const docResults = await searchDocuments(ownerId, queryText, limit);
+  return docResults.map((d) => ({
+    ...d,
+    content_preview: (d.content_text || '').slice(0, 3000),
+    citation: { doc_id: d.id, filename: d.filename, chunk_index: 0, chunk_id: null },
+  }));
 }
 
 /**
@@ -396,4 +487,44 @@ async function reindexAllDocuments(ownerId) {
   return { total: r.rows.length, ok, fail };
 }
 
-module.exports = { extractText, processDocument, searchDocuments, searchDocumentsByFilename, getRecentDocuments, getDocumentStats, reindexAllDocuments };
+async function getChunk(chunkId, ownerId) {
+  try {
+    const r = await db.query(
+      `SELECT dc.chunk_id, dc.doc_id, dc.chunk_index, dc.content, d.filename
+       FROM eva.document_chunks dc
+       JOIN eva.documents d ON d.id = dc.doc_id AND d.owner_id = dc.owner_id
+       WHERE dc.chunk_id = $1 AND dc.owner_id = $2`,
+      [chunkId, ownerId]
+    );
+    return r.rows[0] || null;
+  } catch (e) {
+    if (/relation "eva\.document_chunks" does not exist/i.test(String(e.message))) return null;
+    throw e;
+  }
+}
+
+async function getDoc(docId, ownerId) {
+  try {
+    const r = await db.query(
+      'SELECT id, filename, content_text, status, chunk_count, processed_at FROM eva.documents WHERE id = $1 AND owner_id = $2',
+      [docId, ownerId]
+    );
+    return r.rows[0] || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+module.exports = {
+  extractText,
+  processDocument,
+  searchDocuments,
+  searchDocumentsByChunks,
+  searchDocumentsWithCitations,
+  searchDocumentsByFilename,
+  getRecentDocuments,
+  getDocumentStats,
+  reindexAllDocuments,
+  getChunk,
+  getDoc,
+};

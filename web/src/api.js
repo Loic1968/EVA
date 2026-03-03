@@ -134,7 +134,7 @@ export const api = {
     }
   },
 
-  status: () => request('/status'),
+  status: () => request('/status?t=' + Date.now()),
 
   // Conversations
   getConversations: (params) => request('/conversations?' + new URLSearchParams(params || {})),
@@ -157,6 +157,9 @@ export const api = {
   setSetting: (key, value) => request(`/settings/${key}`, { method: 'PUT', body: JSON.stringify(value) }),
   getFeatureFlags: () => request('/settings/flags'),
   setFeatureFlag: (key, enabled) => request(`/settings/flags/${key}`, { method: 'POST', body: JSON.stringify({ enabled }) }),
+
+  getMcpStatus: () => request('/mcp/status'),
+  triggerMcpConnect: () => request('/mcp/connect', { method: 'POST' }),
 
   // Push notifications (browser/phone)
   getPushVapidPublic: () => request('/push/vapid-public'),
@@ -263,7 +266,7 @@ export const api = {
       r.readAsDataURL(audioBlob);
     });
     const t = (audioBlob.type || '').toLowerCase();
-    const format = /mp4|m4a|x-m4a/.test(t) ? 'm4a' : /ogg|opus/.test(t) ? 'ogg' : /mpeg|mp3/.test(t) ? 'mp3' : 'webm';
+    const format = /webm/.test(t) ? 'webm' : /mp4|m4a|x-m4a/.test(t) ? 'm4a' : /ogg|oga/.test(t) ? 'ogg' : /mpeg|mp3/.test(t) ? 'mp3' : 'webm';
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
@@ -271,9 +274,13 @@ export const api = {
     });
     if (res.status === 401) { onAuthFailure(); throw new Error('Session expired'); }
     if (!res.ok) {
-      const err = new Error(res.statusText || 'STT failed');
+      const err = new Error('STT failed');
       err.status = res.status;
-      try { err.body = await res.json(); } catch (_) {}
+      try {
+        const body = await res.json();
+        err.body = body;
+        if (body?.error) err.message = body.error;
+      } catch (_) {}
       throw err;
     }
     return res.json();
@@ -293,4 +300,49 @@ export const api = {
     }
     return res.blob();
   },
+
+  /**
+   * Streaming TTS — returns an async generator of mp3 Blobs (one per sentence).
+   * Frontend can play each chunk immediately for much faster time-to-first-audio.
+   */
+  voiceTtsStream: async function* (text) {
+    const url = `${API_BASE.replace(/\/$/, '')}/voice/tts-stream`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify({ text: (text || '').slice(0, 4096), lang: 'auto' }),
+    });
+    if (res.status === 401) { onAuthFailure(); throw new Error('Session expired'); }
+    if (!res.ok) throw new Error(res.statusText || 'TTS stream failed');
+    const reader = res.body.getReader();
+    let buffer = new Uint8Array(0);
+    while (true) {
+      const { done, value } = await reader.read();
+      if (value) {
+        // Append to buffer
+        const tmp = new Uint8Array(buffer.length + value.length);
+        tmp.set(buffer);
+        tmp.set(value, buffer.length);
+        buffer = tmp;
+      }
+      // Parse frames: [4 bytes length][N bytes mp3]
+      while (buffer.length >= 4) {
+        const len = (buffer[0] << 24) | (buffer[1] << 16) | (buffer[2] << 8) | buffer[3];
+        if (len === 0) return; // end marker
+        if (buffer.length < 4 + len) break; // need more data
+        const mp3 = buffer.slice(4, 4 + len);
+        buffer = buffer.slice(4 + len);
+        yield new Blob([mp3], { type: 'audio/mpeg' });
+      }
+      if (done) break;
+    }
+  },
+
+  /** Get/save voice settings */
+  getVoiceSettings: () => request('/voice/settings'),
+  saveVoiceSettings: (settings) => request('/voice/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  }),
 };

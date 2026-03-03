@@ -312,9 +312,12 @@ async function storeEmail(ownerId, gmailAccountId, parsed) {
 async function searchEmails(ownerId, queryText, limit = 5, gmailAccountId = null, folder = 'inbox') {
   if (!queryText || queryText.trim().length === 0) return [];
 
-  const words = queryText.trim().split(/\s+/).filter(w => w.length > 2);
+  // Use 'simple' config to avoid English stemming (Shanghai, vol, PVG, Emirates stay exact)
+  const words = queryText.trim().split(/\s+/)
+    .map((w) => w.replace(/[^a-zA-Z0-9\u00c0-\u024f]/g, ''))
+    .filter((w) => w.length >= 2);
   if (words.length === 0) return [];
-  const tsquery = words.map(w => w.replace(/[^a-zA-Z0-9]/g, '')).filter(Boolean).join(' | ');
+  const tsquery = [...new Set(words)].slice(0, 6).map((w) => w.replace(/'/g, "''")).filter(Boolean).join(' | ');
 
   const folderLabel = folder === 'sent' ? 'SENT' : folder === 'draft' ? 'DRAFT' : folder === 'all' ? null : 'INBOX';
   const labelCondition = folderLabel
@@ -322,19 +325,21 @@ async function searchEmails(ownerId, queryText, limit = 5, gmailAccountId = null
     : '';
 
   const selectCols = 'id, gmail_account_id, thread_id, from_email, from_name, to_emails, subject, snippet';
+  const rankExpr = `ts_rank(to_tsvector('simple', coalesce(subject,'') || ' ' || coalesce(body_plain,'')), to_tsquery('simple', $2))`;
   let query = `SELECT ${selectCols},
-        left(body_plain, 1200) as body_preview,
-        received_at, labels, is_read, is_starred, has_attachments
+        left(body_plain, 5000) as body_preview,
+        received_at, labels, is_read, is_starred, has_attachments,
+        ${rankExpr} as rank
      FROM eva.emails
      WHERE owner_id = $1
-       AND to_tsvector('english', coalesce(subject,'') || ' ' || coalesce(body_plain,''))
-           @@ to_tsquery('english', $2)${labelCondition}`;
+       AND to_tsvector('simple', coalesce(subject,'') || ' ' || coalesce(body_plain,''))
+           @@ to_tsquery('simple', $2)${labelCondition}`;
   const params = [ownerId, tsquery];
   if (gmailAccountId) {
     query += ' AND gmail_account_id = $3';
     params.push(gmailAccountId);
   }
-  query += ' ORDER BY received_at DESC LIMIT $' + (params.length + 1);
+  query += ' ORDER BY rank DESC, received_at DESC LIMIT $' + (params.length + 1);
   params.push(limit);
 
   const result = await db.query(query, params);

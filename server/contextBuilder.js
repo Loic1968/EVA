@@ -1,6 +1,6 @@
 // Keywords for query-aware retrieval (match evaChat.js)
-const EMAIL_KEYWORDS = /email|mail|vol|billet|avion|Shanghai|PVG|voyage|flight|ticket|emirates|etihad|reservation|confirmation|booking/i;
-const DOCUMENT_KEYWORDS = /vol|billet|avion|train|Shanghai|PVG|voyage|travel|flight|emirates|etihad|ticket|document|passport|horaire|heure|date/i;
+const EMAIL_KEYWORDS = /email|mail|vol[s]?|vole|billet|avion|Shanghai|PVG|voyage|flight|ticket|emirates|etihad|reservation|confirmation|booking/i;
+const DOCUMENT_KEYWORDS = /vol[s]?|vole|billet|avion|train|Shanghai|PVG|voyage|travel|flight|emirates|etihad|ticket|document|passport|horaire|heure|date/i;
 
 function isMinimalMessage(msg) {
   const t = (msg || '').trim();
@@ -95,7 +95,7 @@ async function buildContext({ ownerId, userMessage, history = [] }) {
             : await docProcessor.getRecentDocuments(ownerId, 5);
           if (docs.length === 0 && useSearch) docs = await docProcessor.getRecentDocuments(ownerId, 5);
           if (docs.length > 0) {
-            const isFlightQuery = /vol|avion|billet|flight|ticket|Shanghai|emirates|etihad|horaire|heure/i.test(userMessage);
+            const isFlightQuery = /vol[s]?|vole|avion|billet|flight|ticket|Shanghai|emirates|etihad|horaire|heure/i.test(userMessage);
             const charLimit = isFlightQuery ? 15000 : 3000; // Full content for flight questions
             parts.push('## Documents (Memory Vault) — TU AS ACCÈS : lis et réponds à partir du contenu ci-dessous.');
             docs.forEach((d, i) => {
@@ -103,6 +103,8 @@ async function buildContext({ ownerId, userMessage, history = [] }) {
               parts.push(`**${d.filename}:**\n${text || '(no text)'}\n`);
             });
             parts.push('');
+          } else if (/vol[s]?|vole|avion|billet|flight|ticket|Shanghai|heure|horaire|réservation|reservation/i.test(userMessage)) {
+            parts.push('## Documents (vide)\nRéponse à donner si question sur vol/billet: "Je n\'ai pas cette info dans mes données. Connecte Gmail et Google Calendar (Paramètres > Données), ou uploade ton billet dans Documents."\n');
           }
         } catch (e) {
           console.warn('[EVA contextBuilder] Documents failed:', e.message);
@@ -126,6 +128,8 @@ async function buildContext({ ownerId, userMessage, history = [] }) {
               parts.push(`- Event ${i + 1} (id: ${ev.id}): ${ev.title || '(no title)'} | ${fmt}${ev.location ? ` @ ${ev.location}` : ''}`);
             });
             parts.push('');
+          } else if (/vol[s]?|vole|avion|billet|flight|Shanghai|heure|horaire|agenda|calendrier/i.test(userMessage)) {
+            parts.push('## Calendar (vide)\nRéponse à donner si question sur vol/agenda: "Je n\'ai pas cette info. Connecte Google Calendar (Paramètres > Données) ou uploade ton billet dans Documents."\n');
           }
         }
       } catch (e) {
@@ -137,7 +141,8 @@ async function buildContext({ ownerId, userMessage, history = [] }) {
     if (!skipHeavyContext) {
       try {
         const ws = require('./services/webSearchService');
-        if (ws && ws.isAvailable && ws.isAvailable() && ws.needsWebSearch && ws.needsWebSearch(userMessage)) {
+        const wantsWebSearch = ws && ws.needsWebSearch && ws.needsWebSearch(userMessage);
+        if (wantsWebSearch && ws.isAvailable && ws.isAvailable()) {
           const query = ws.extractQuery ? ws.extractQuery(userMessage) : userMessage;
           const data = await ws.search(query, { maxResults: 5, topic: 'general' });
           const formatted = ws.formatForContext ? ws.formatForContext(data) : null;
@@ -145,9 +150,23 @@ async function buildContext({ ownerId, userMessage, history = [] }) {
             parts.push('## Web search (latest info)');
             parts.push(formatted);
             parts.push('');
+          } else {
+            const cityMatch = (userMessage || '').match(/\b(dubai|duba[iï]|paris|london|shanghai|singapore|doha|new\s*york)\b/i);
+            const city = cityMatch ? cityMatch[1] : '';
+            parts.push(`## Web search (vide)\nRéponse OBLIGATOIRE: "Je n'ai pas trouvé d'infos récentes sur ${city || 'cette ville'}." JAMAIS de réponse générique (Expo, gratte-ciels, tourisme).\n`);
           }
+        } else if (wantsWebSearch) {
+          const cityMatch = (userMessage || '').match(/\b(dubai|duba[iï]|paris|london|shanghai|singapore|doha|new\s*york)\b/i);
+          const city = cityMatch ? cityMatch[1] : '';
+          parts.push(`## Web search (non configuré)\nRéponse OBLIGATOIRE: "Je n'ai pas trouvé d'infos récentes sur ${city || 'cette ville'}." JAMAIS de réponse générique.\n`);
         }
       } catch (e) {
+        const ws = require('./services/webSearchService');
+        const cityMatch = (userMessage || '').match(/\b(dubai|duba[iï]|paris|london|shanghai|singapore|doha|new\s*york)\b/i);
+        if (ws && ws.needsWebSearch && ws.needsWebSearch(userMessage)) {
+          const city = cityMatch ? cityMatch[1] : '';
+          parts.push(`## Web search (erreur)\nRéponse OBLIGATOIRE: "Je n'ai pas trouvé d'infos récentes sur ${city || 'cette ville'}."\n`);
+        }
         console.warn('[EVA contextBuilder] Web search failed:', e.message);
       }
     }

@@ -89,12 +89,22 @@ function isNewsQuery(message) {
   return NEWS_KEYWORDS.test(message.trim());
 }
 
+const CITY_EXTRACT = /\b(dubai|duba[iï]|paris|london|new\s*york|shanghai|singapore|doha|abu\s*dhabi|mumbai|hong\s*kong)\b/i;
+
 /**
- * Extract search query from user message (simplified: use message or a cleaned version).
+ * Extract search query from user message. For "what up in X" type → "X news today" for better results.
  */
 function extractQuery(message) {
   const t = (message || '').trim();
   if (!t) return '';
+
+  // "what up in dubai", "quoi de neuf à Paris" → "Dubai news today"
+  const cityMatch = t.match(CITY_EXTRACT);
+  if (cityMatch && /what\s*up|whats?\s*up|quoi\s*de\s*neuf|what['']?s\s*(going\s*on|new)/i.test(t)) {
+    const city = cityMatch[1].replace(/\s+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+    return `${city} news today current events`;
+  }
+
   const cleaned = t
     .replace(/^(dis?-?moi|tell\s*me|cherche|search|find|donne[rz]?\s*moi|donnes?\s*moi|give\s*me)\s+/i, '')
     .replace(/\s+(s['']?il\s*te\s*pla[iî]t|please|stp)\s*$/i, '')

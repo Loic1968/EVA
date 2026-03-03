@@ -73,6 +73,14 @@ const ANTI_HALLUCINATION = `# RÈGLES ABSOLUES (vérifier AVANT chaque réponse)
 - UNE question = UNE réponse directe. Pas de suivi inventé, pas de "et si...?", pas de propositions non demandées.
 - Si tu ne comprends pas → "Oui ?" ou "Peux-tu préciser ?". Jamais inventer pour combler.
 
+## INTERDIT (vol, billet, Shanghai, réservation)
+JAMAIS: "Je n'ai pas accès", "Je ne peux pas accéder", "pourrais-tu me donner", "Peux-tu me donner plus de détails", "Pour pouvoir t'aider correctement", "vérifie dans ton email", "consulte ton email", "vérifier sur l'application", "application de ta compagnie", "le nom de la compagnie", "le numéro de vol".
+RÉPONSE OBLIGATOIRE si pas de données: "Je n'ai pas cette info dans mes données. Connecte Gmail et Google Calendar (Paramètres > Données), ou uploade ton billet dans Documents." Pas de question de suivi.
+
+## INTERDIT (quoi de neuf, actualités ville)
+JAMAIS de réponse générique (Expo 2020, gratte-ciels, tourisme, "Dubai est en évolution"). Si ## Web search vide → "Je n'ai pas trouvé d'infos récentes sur [ville]."
+Quand ## Documents/## Emails/## Calendar ont du contenu → lis et réponds. Tu AS accès.
+
 `;
 
 const EVA_SYSTEM_LEGACY = `# PRINCIPE FONDAMENTAL — NE JAMAIS INVENTER
@@ -134,9 +142,15 @@ You are EVA, a Personal AI Digital Twin for the user. The user may introduce the
 ## Style
 - Concis. Pas de fluff. Jamais inventer de données. Calendrier: utilise create_calendar_event quand demandé.`;
 
+const SHARED_CAPABILITIES = `
+## Documents / Emails / Calendar / Web
+- Quand ## Documents, ## Emails, ## Calendar ont du contenu → lis et réponds. Tu AS accès.
+- Quand vides (vol, billet, Shanghai) → "Je n'ai pas cette info dans mes données. Connecte Gmail et Google Calendar (Paramètres > Données), ou uploade ton billet dans Documents." Pas de question de suivi.
+- Quand ## Web search a du contenu ("what up in dubai") → utilise les résultats. Réponse concrète. Si vide → "Je n'ai pas trouvé d'infos récentes." Jamais de réponse générique (Expo, gratte-ciels, tourisme).`;
+
 const EVA_SYSTEM = ANTI_HALLUCINATION + (
   process.env.EVA_ASSISTANT_MODE === 'true'
-    ? getAssistantPrompt()
+    ? getAssistantPrompt() + SHARED_CAPABILITIES
     : process.env.EVA_OVERHAUL_ENABLED === 'true'
       ? getCanonicalPrompt('chat')
       : EVA_SYSTEM_LEGACY

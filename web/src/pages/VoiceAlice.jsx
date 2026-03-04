@@ -149,9 +149,20 @@ export default function VoiceAlice() {
   }
 
   // ── VAD (hands-free) ──
+  // Adaptive noise floor: track ambient noise level to distinguish speech from background
+  const noiseFloor = useRef(0.02);
+  const VAD_SPEECH_RATIO = 2.5; // speech must be 2.5x above noise floor
+
   function doVAD(rms) {
     const now = Date.now();
-    if (rms > 0.03) {
+    const threshold = Math.max(0.025, noiseFloor.current * VAD_SPEECH_RATIO);
+
+    // Slowly adapt noise floor when not recording (exponential moving average)
+    if (!vadRec.current && rms < 0.08) {
+      noiseFloor.current = noiseFloor.current * 0.97 + rms * 0.03;
+    }
+
+    if (rms > threshold) {
       silenceT.current = null;
       if (!speechT.current) speechT.current = now;
       if (!vadRec.current && now - speechT.current > 500) {
@@ -170,15 +181,11 @@ export default function VoiceAlice() {
     } else {
       if (speechT.current && now - speechT.current > 3000) speechT.current = null;
     }
+    // Max recording duration safety: 12 seconds
     if (vadRec.current && recStartTime.current && now - recStartTime.current > 12000) {
       vadRec.current = false;
       speechT.current = null;
       silenceT.current = null;
-      endRecordingAndProcess();
-    }
-    if (vadRec.current && speechT.current && now - speechT.current > 30000) {
-      vadRec.current = false;
-      speechT.current = null;
       endRecordingAndProcess();
     }
   }
@@ -209,7 +216,15 @@ export default function VoiceAlice() {
       return;
     }
     log('Stopping recorder...');
+
+    // Safety: if onstop doesn't fire within 3s, force reset
+    const onstopTimeout = setTimeout(() => {
+      log('onstop timeout — force reset');
+      setPhase('idle');
+    }, 3000);
+
     mr.onstop = () => {
+      clearTimeout(onstopTimeout);
       const blob = new Blob(chunks.current, { type: mr.mimeType || 'audio/webm' });
       chunks.current = [];
       const duration = Date.now() - recStartTime.current;
@@ -222,7 +237,13 @@ export default function VoiceAlice() {
       }
       processAudio(blob);
     };
-    mr.stop();
+    try {
+      mr.stop();
+    } catch (e) {
+      clearTimeout(onstopTimeout);
+      log('mr.stop() error: ' + e.message);
+      setPhase('idle');
+    }
   }
 
   // ── PTT handlers (synchronous — mic already open from mount) ──
@@ -273,119 +294,152 @@ export default function VoiceAlice() {
 
   // ── Process: STT → Claude → TTS ──
   async function processAudio(blob) {
-    if (busy.current) return;
+    if (busy.current) { log('Busy, skipping'); return; }
     busy.current = true;
     setPhase('processing');
     setError(null);
 
-    // 1. Whisper STT
-    let text = '';
+    // Safety timeout — force reset if stuck for more than 45 seconds
+    const safetyTimer = setTimeout(() => {
+      if (busy.current) {
+        log('Safety timeout — force reset');
+        if (audio.current) { audio.current.pause(); audio.current = null; }
+        if (spkInterval.current) clearInterval(spkInterval.current);
+        setAliceLvl(0);
+        busy.current = false;
+        setPhase('idle');
+        setError('Timeout — réessaie');
+      }
+    }, 45000);
+
     try {
-      log('Calling Whisper STT... (blob ' + blob.size + ' bytes)');
-      const r = await api.voiceStt(blob, { lang });
-      text = (r.text || '').trim();
-      log('STT: "' + text + '"');
-    } catch (e) {
-      const serverMsg = e.body?.error || e.message || 'erreur';
-      log('STT error: ' + serverMsg);
-      setError('STT: ' + serverMsg);
-      busy.current = false;
-      setPhase('idle');
-      return;
-    }
-
-    // Filter noise
-    if (!text || text.length < 3 || NOISE_RE.some(p => p.test(text))) {
-      log('Noise filtered: "' + text + '"');
-      busy.current = false;
-      setPhase('idle');
-      return;
-    }
-
-    // Detect language
-    const fr = (text.match(/[éèêëàâùûîïçô]/gi) || []).length +
-      (text.match(/\b(est|les|des|une|dans|pour|avec|qui|que|pas|mais|je|tu|il|elle|nous|vous|oui|non|bonjour|salut)\b/gi) || []).length;
-    if (fr >= 2) setLang('fr');
-    else if (fr === 0 && text.length > 10) setLang('en');
-
-    // Show user msg
-    setMsgs(p => [...p, { role: 'user', text }]);
-
-    // 2. Claude (Alice + tools)
-    let reply = '';
-    try {
-      log('Calling Claude...');
-      const r = await api.chat(text, history, convId, null, { origin: 'voice' });
-      reply = (r.reply || '').trim();
-      log('Claude: "' + reply.slice(0, 80) + '..."');
-      if (r.conversation_id) setConvId(r.conversation_id);
-      setHistory(p => [...p.slice(-20), { role: 'user', content: text }, { role: 'assistant', content: reply }]);
-    } catch (e) {
-      const serverMsg = e.body?.error || e.message || 'erreur';
-      log('Claude error: ' + serverMsg);
-      setError('Claude: ' + serverMsg);
-      busy.current = false;
-      setPhase('idle');
-      return;
-    }
-
-    if (!reply) { busy.current = false; setPhase('idle'); return; }
-
-    // Clean for display + speech
-    const clean = reply.replace(/\*?—\s*Alice\*?/g, '').replace(/\*\*/g, '').trim();
-    setMsgs(p => [...p, { role: 'assistant', text: clean }]);
-
-    // 3. Streaming TTS — play sentence-by-sentence for instant response
-    setPhase('speaking');
-    try {
-      log('Streaming TTS...');
-      const queue = [];
-      let playing = false;
-
-      const playNext = () => {
-        if (queue.length === 0) { playing = false; return; }
-        playing = true;
-        const blob = queue.shift();
-        const url = URL.createObjectURL(blob);
-        const a = new Audio(url);
-        audio.current = a;
-        spkInterval.current = setInterval(() => {
-          setAliceLvl(a.paused || a.ended ? 0 : 20 + Math.random() * 60);
-        }, 80);
-        const done = () => {
-          clearInterval(spkInterval.current);
-          setAliceLvl(0);
-          URL.revokeObjectURL(url);
-          audio.current = null;
-          playNext();
-        };
-        a.onended = done;
-        a.onerror = done;
-        a.play().catch(done);
-      };
-
-      for await (const chunk of api.voiceTtsStream(clean.slice(0, 2000))) {
-        if (phaseRef.current !== 'speaking') break; // interrupted
-        queue.push(chunk);
-        if (!playing) playNext();
+      // 1. Whisper STT
+      let text = '';
+      try {
+        log('Calling Whisper STT... (blob ' + blob.size + ' bytes)');
+        const r = await api.voiceStt(blob, { lang });
+        text = (r.text || '').trim();
+        log('STT: "' + text + '"');
+      } catch (e) {
+        const serverMsg = e.body?.error || e.message || 'erreur';
+        log('STT error: ' + serverMsg);
+        setError('STT: ' + serverMsg);
+        return;
       }
 
-      // Wait for remaining audio to finish
-      await new Promise(resolve => {
-        const check = () => {
-          if (!playing && queue.length === 0) resolve();
-          else if (phaseRef.current !== 'speaking') resolve();
-          else setTimeout(check, 100);
-        };
-        check();
-      });
-      log('Audio done');
-    } catch (e) {
-      log('TTS error: ' + e.message);
-    }
+      // Filter noise
+      if (!text || text.length < 3 || NOISE_RE.some(p => p.test(text))) {
+        log('Noise filtered: "' + text + '"');
+        return;
+      }
 
-    busy.current = false;
-    setPhase('idle');
+      // Detect language
+      const fr = (text.match(/[éèêëàâùûîïçô]/gi) || []).length +
+        (text.match(/\b(est|les|des|une|dans|pour|avec|qui|que|pas|mais|je|tu|il|elle|nous|vous|oui|non|bonjour|salut)\b/gi) || []).length;
+      if (fr >= 2) setLang('fr');
+      else if (fr === 0 && text.length > 10) setLang('en');
+
+      // Show user msg
+      setMsgs(p => [...p, { role: 'user', text }]);
+
+      // 2. Claude (Alice + tools)
+      let reply = '';
+      try {
+        log('Calling Claude...');
+        const r = await api.chat(text, history, convId, null, { origin: 'voice' });
+        reply = (r.reply || '').trim();
+        log('Claude: "' + reply.slice(0, 80) + '..."');
+        if (r.conversation_id) setConvId(r.conversation_id);
+        setHistory(p => [...p.slice(-20), { role: 'user', content: text }, { role: 'assistant', content: reply }]);
+      } catch (e) {
+        const serverMsg = e.body?.error || e.message || 'erreur';
+        log('Claude error: ' + serverMsg);
+        setError('Claude: ' + serverMsg);
+        return;
+      }
+
+      if (!reply) return;
+
+      // Clean for display + speech
+      const clean = reply.replace(/\*?—\s*Alice\*?/g, '').replace(/\*\*/g, '').trim();
+      setMsgs(p => [...p, { role: 'assistant', text: clean }]);
+
+      // 3. TTS — try streaming first, fallback to single-shot
+      setPhase('speaking');
+      const ttsText = clean.slice(0, 2000);
+      let ttsOk = false;
+
+      // 3a. Try streaming TTS (sentence-by-sentence)
+      try {
+        log('Streaming TTS...');
+        const queue = [];
+        let playing = false;
+
+        const playNext = () => {
+          if (queue.length === 0) { playing = false; return; }
+          playing = true;
+          const b = queue.shift();
+          const u = URL.createObjectURL(b);
+          const a = new Audio(u);
+          audio.current = a;
+          spkInterval.current = setInterval(() => {
+            setAliceLvl(a.paused || a.ended ? 0 : 20 + Math.random() * 60);
+          }, 80);
+          const done = () => {
+            clearInterval(spkInterval.current);
+            setAliceLvl(0);
+            URL.revokeObjectURL(u);
+            audio.current = null;
+            playNext();
+          };
+          a.onended = done;
+          a.onerror = done;
+          a.play().catch(done);
+        };
+
+        for await (const chunk of api.voiceTtsStream(ttsText)) {
+          if (phaseRef.current !== 'speaking') break;
+          queue.push(chunk);
+          if (!playing) playNext();
+        }
+
+        // Wait for remaining audio to finish (max 30s)
+        await new Promise((resolve) => {
+          const deadline = Date.now() + 30000;
+          const check = () => {
+            if (!playing && queue.length === 0) resolve();
+            else if (phaseRef.current !== 'speaking') resolve();
+            else if (Date.now() > deadline) resolve();
+            else setTimeout(check, 100);
+          };
+          check();
+        });
+        ttsOk = true;
+        log('Streaming TTS done');
+      } catch (e) {
+        log('Streaming TTS failed: ' + e.message + ' — trying single-shot...');
+      }
+
+      // 3b. Fallback: single-shot TTS (old endpoint, always exists)
+      if (!ttsOk && phaseRef.current === 'speaking') {
+        try {
+          const ttsBlob = await api.voiceTts(ttsText);
+          if (phaseRef.current === 'speaking') {
+            await playBlob(ttsBlob);
+          }
+          log('Single-shot TTS done');
+        } catch (e2) {
+          log('TTS fallback also failed: ' + e2.message);
+          setError('TTS indisponible');
+        }
+      }
+
+      log('Audio done');
+    } finally {
+      clearTimeout(safetyTimer);
+      busy.current = false;
+      setPhase('idle');
+    }
   }
 
   function playBlob(blob) {

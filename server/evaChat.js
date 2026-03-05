@@ -675,6 +675,7 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
     messages,
     tools: ownerId ? filterToolsBySettings(buildAllTools(CALENDAR_TOOLS), { isAssistantMode, isMemoryLearning, isVoiceSafeMode, isVoiceMemoryWrite, isVoice }) : [],
   };
+  console.log(`[EVA Chat] Tools sent: ${createOptions.tools.length} (${createOptions.tools.map(t => t.name).join(', ')})`);
   if (useThinking) {
     createOptions.thinking = { type: 'enabled', budget_tokens: 2048 };
     createOptions.temperature = 1; // Required when thinking is enabled (Anthropic API)

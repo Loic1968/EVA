@@ -201,7 +201,7 @@ async function buildInstructionsWithContext(ownerId) {
     try {
       let emails = [];
       if (useMcp) {
-        const result = await mcpClient.callTool('gmail.recent', { owner_id: owner.id, limit: 10, preview_chars: 5000 });
+        const result = await mcpClient.callTool('gmail.recent', { owner_id: owner.id, limit: 40, preview_chars: 5000 });
         emails = result.ok ? (result.data?.emails || []) : [];
         if (emails.length > 0) console.log(`[EVA Realtime] MCP: ${emails.length} emails`);
       }
@@ -210,7 +210,7 @@ async function buildInstructionsWithContext(ownerId) {
         try {
           const gmailSync = require('../services/gmailSync');
           if (gmailSync?.getRecentEmails) {
-            emails = await gmailSync.getRecentEmails(owner.id, 10, 5000);
+            emails = await gmailSync.getRecentEmails(owner.id, 40, 5000);
           }
         } catch (_) {}
       }
@@ -233,7 +233,7 @@ async function buildInstructionsWithContext(ownerId) {
     try {
       let docs = [];
       if (useMcp) {
-        const result = await mcpClient.callTool('docs.list', { owner_id: owner.id, limit: 5 });
+        const result = await mcpClient.callTool('docs.list', { owner_id: owner.id, limit: 10 });
         docs = result.ok ? (result.data?.documents || []) : [];
         if (docs.length > 0) console.log(`[EVA Realtime] MCP: ${docs.length} documents`);
       }
@@ -241,7 +241,7 @@ async function buildInstructionsWithContext(ownerId) {
         try {
           const docProcessor = require('../services/documentProcessor');
           if (docProcessor?.getRecentDocuments) {
-            docs = await docProcessor.getRecentDocuments(owner.id, 4);
+            docs = await docProcessor.getRecentDocuments(owner.id, 10);
           }
         } catch (_) {}
       }
@@ -261,7 +261,7 @@ async function buildInstructionsWithContext(ownerId) {
     try {
       let events = [];
       if (useMcp) {
-        const result = await mcpClient.callTool('calendar.events', { owner_id: owner.id, days: 14, limit: 10 });
+        const result = await mcpClient.callTool('calendar.events', { owner_id: owner.id, days: 30, limit: 20 });
         events = result.ok ? (result.data?.events || []) : [];
         if (events.length > 0) console.log(`[EVA Realtime] MCP: ${events.length} calendar events`);
       }
@@ -269,7 +269,7 @@ async function buildInstructionsWithContext(ownerId) {
         try {
           const calendarSync = require('../services/calendarSync');
           if (calendarSync?.getUpcomingEvents) {
-            events = await calendarSync.getUpcomingEvents(owner.id, 6, 7);
+            events = await calendarSync.getUpcomingEvents(owner.id, 20, 30);
           }
         } catch (_) {}
       }

@@ -1014,7 +1014,34 @@ export default function Settings() {
 
       {/* Feature flags — runtime ON/OFF */}
       <div className="rounded-xl border p-6 max-w-2xl bg-white dark:bg-eva-panel border-slate-200 dark:border-slate-700/40">
-        <h2 className="text-lg font-medium text-slate-900 dark:text-white mb-1">Runtime flags</h2>
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-lg font-medium text-slate-900 dark:text-white">Runtime flags</h2>
+          {(() => {
+            const FLAG_KEYS = ['assistant_mode','mcp_enabled','voice_safe_mode','memory_learning','conversation_learning','smart_context','auto_object_update','voice_memory_write'];
+            const allOn = FLAG_KEYS.every(k => featureFlags[k]);
+            return (
+              <button
+                type="button"
+                onClick={async () => {
+                  const next = !allOn;
+                  for (const k of FLAG_KEYS) {
+                    try {
+                      await api.setFeatureFlag(k, next);
+                    } catch (_) {}
+                  }
+                  setFeatureFlags(f => {
+                    const copy = { ...f };
+                    FLAG_KEYS.forEach(k => { copy[k] = next; });
+                    return copy;
+                  });
+                }}
+                className={`text-xs px-3 py-1 rounded-lg font-medium transition-all ${allOn ? 'bg-red-500/10 text-red-500 hover:bg-red-500/20' : 'bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20'}`}
+              >
+                {allOn ? 'Disable All' : 'Enable All'}
+              </button>
+            );
+          })()}
+        </div>
         <p className="text-slate-500 dark:text-eva-muted text-sm mb-4">Toggle features without redeploy. All OFF = simple chat, no automatic learning.</p>
         <div className="space-y-3">
           {[

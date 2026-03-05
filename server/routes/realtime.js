@@ -483,11 +483,13 @@ router.post('/web-assist', async (req, res) => {
         results = result.data.results;
         source = 'mcp';
         // If news results don't match query, retry with general search via MCP
+        // Filter out generic words (news, today, current, events, latest) — check for TOPIC words only
         if (topic === 'news') {
-          const queryLower = routedQuery.toLowerCase();
-          const anyRelevant = results.some(r => {
+          const GENERIC = new Set(['news', 'today', 'current', 'events', 'latest', 'actualités', 'quoi', 'neuf']);
+          const topicWords = routedQuery.toLowerCase().split(/\s+/).filter(w => w.length > 3 && !GENERIC.has(w));
+          const anyRelevant = topicWords.length === 0 || results.some(r => {
             const text = ((r.title || '') + ' ' + (r.content || '')).toLowerCase();
-            return queryLower.split(/\s+/).filter(w => w.length > 3).some(w => text.includes(w));
+            return topicWords.some(w => text.includes(w));
           });
           if (!anyRelevant) {
             console.log('[EVA Realtime] web-assist: MCP news results irrelevant, retrying with general');
@@ -516,11 +518,11 @@ router.post('/web-assist', async (req, res) => {
           results = data?.results || [];
           // If news results don't match the query (location-specific), retry with "general"
           if (topic === 'news' && results.length > 0) {
-            const queryLower = routedQuery.toLowerCase();
-            const anyRelevant = results.some(r => {
+            const GENERIC = new Set(['news', 'today', 'current', 'events', 'latest', 'actualités', 'quoi', 'neuf']);
+            const topicWords = routedQuery.toLowerCase().split(/\s+/).filter(w => w.length > 3 && !GENERIC.has(w));
+            const anyRelevant = topicWords.length === 0 || results.some(r => {
               const text = ((r.title || '') + ' ' + (r.content || '')).toLowerCase();
-              // Check if any key word from the query appears in results
-              return queryLower.split(/\s+/).filter(w => w.length > 3).some(w => text.includes(w));
+              return topicWords.some(w => text.includes(w));
             });
             if (!anyRelevant) {
               console.log('[EVA Realtime] web-assist: news results irrelevant, retrying with general');

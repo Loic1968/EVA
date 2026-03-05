@@ -123,10 +123,10 @@ async function extractViaClaude(buffer, filename = '', docType, mediaType) {
     if (!text) throw new Error('Claude returned empty response');
     return text;
   } catch (e) {
-    const errBody = e.error?.error?.message || e.message || ‘Extraction failed’;
-    const status = e.status || e.statusCode || ‘?’;
+    const errBody = e.error?.error?.message || e.message || 'Extraction failed';
+    const status = e.status || e.statusCode || '?';
     console.warn(`[DocumentProcessor] Claude extraction failed (${status}):`, errBody);
-    // Propagate API/configuration errors so they’re stored in document metadata for the UI
+    // Propagate API/configuration errors so they're stored in document metadata for the UI
     throw new Error(`Claude ${status}: ${errBody}`);
   }
 }

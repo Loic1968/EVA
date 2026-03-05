@@ -95,6 +95,11 @@ async function executeOrchestratorTool(toolName, input, ownerId) {
 }
 
 async function _dispatchTool(toolName, input, ownerId) {
+  // Try MCP first if connected, fallback to direct service call
+  if (mcpClient.isConnected()) {
+    const mcpResult = await _dispatchViaMcp(toolName, input, ownerId);
+    if (mcpResult) return mcpResult;
+  }
   switch (toolName) {
     case 'gmail_search':
       return _execGmailSearch(input, ownerId);
@@ -104,6 +109,53 @@ async function _dispatchTool(toolName, input, ownerId) {
       return _execDocSearch(input, ownerId);
     default:
       return { ok: false, error: `Unknown orchestrator tool: ${toolName}`, source: toolName };
+  }
+}
+
+/** Route orchestrator tools to their MCP equivalents */
+async function _dispatchViaMcp(toolName, input, ownerId) {
+  try {
+    switch (toolName) {
+      case 'gmail_search': {
+        const result = await mcpClient.callTool('gmail.search', {
+          owner_id: ownerId, query: input.query, limit: input.limit || 8, folder: input.folder || 'all',
+        });
+        if (!result.ok) return null; // fallback to direct
+        const emails = (result.data?.emails || []).map(e => ({
+          id: e.id, thread_id: e.thread_id,
+          from: e.from_name ? `${e.from_name} <${e.from_email}>` : e.from_email,
+          to: e.to_emails, subject: e.subject,
+          date: e.received_at ? new Date(e.received_at).toISOString().slice(0, 10) : null,
+          preview: (e.body_preview || e.snippet || '').slice(0, 800),
+          is_read: e.is_read, has_attachments: e.has_attachments,
+        }));
+        return { ok: true, data: emails, source: 'gmail_search (mcp)' };
+      }
+      case 'calendar_search': {
+        const result = await mcpClient.callTool('calendar.search', {
+          owner_id: ownerId, query: input.query,
+          days_before: input.days_back || 7, days_after: input.days_ahead || 30, limit: input.limit || 10,
+        });
+        if (!result.ok) return null;
+        const events = (result.data?.events || []).map(ev => ({
+          id: ev.id, title: ev.title, start: ev.start_at, end: ev.end_at,
+          location: ev.location || null, all_day: ev.is_all_day || false,
+        }));
+        return { ok: true, data: events, source: 'calendar_search (mcp)' };
+      }
+      case 'doc_search': {
+        const result = await mcpClient.callTool('docs.search', {
+          owner_id: ownerId, query: input.query, limit: input.limit || 5,
+        });
+        if (!result.ok) return null;
+        return { ok: true, data: result.data, source: 'doc_search (mcp)' };
+      }
+      default:
+        return null;
+    }
+  } catch (e) {
+    console.warn(`[toolOrchestrator] MCP dispatch for ${toolName} failed, falling back:`, e.message);
+    return null;
   }
 }
 

@@ -338,6 +338,23 @@ async function executeTool(ownerId, name, input, toolOpts = {}) {
  * @param {{ attachedDocuments?: Array<{id:number, filename:string, content_text:string}> }} [opts]
  * @returns {Promise<{reply:string, model:string, tokens:{input:number,output:number}}>}
  */
+
+/** Filter tools based on settings toggles */
+function filterToolsBySettings(tools, { isAssistantMode, isMemoryLearning, isVoiceSafeMode, isVoiceMemoryWrite, isVoice }) {
+  if (!isAssistantMode) return []; // Assistant mode OFF = no tools at all
+  return tools.filter(t => {
+    // Memory learning OFF = remove save_memory
+    if (!isMemoryLearning && t.name === 'save_memory') return false;
+    // Voice safe mode: block write tools from voice
+    if (isVoice && isVoiceSafeMode) {
+      if (t.name === 'create_calendar_event' || t.name === 'delete_calendar_event' || t.name === 'create_draft') return false;
+      // save_memory from voice: allowed only if voice_memory_write is ON
+      if (t.name === 'save_memory' && !isVoiceMemoryWrite) return false;
+    }
+    return true;
+  });
+}
+
 async function reply(userMessage, history = [], ownerId = null, mode = null, opts = {}) {
   const aiProvider = opts.aiProvider === 'gpt' ? 'gpt' : 'claude';
   const model = aiProvider === 'gpt'
@@ -349,6 +366,20 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
   const personalTools = require('./services/personalToolsService');
   const intent = personalTools.classifyIntent(userMessage);
   const isFlightIntent = intent === personalTools.INTENTS.FLIGHT_QUESTION;
+
+  // ── Read settings toggles ──
+  const settings = require('./services/settingsService');
+  const [isAssistantMode, isSmartContext, isMemoryLearning, isConversationLearning,
+         isVoiceSafeMode, isVoiceMemoryWrite] = await Promise.allSettled([
+    ownerId ? settings.getAssistantMode(ownerId) : true,
+    ownerId ? settings.getSmartContext(ownerId) : true,
+    ownerId ? settings.getMemoryLearning(ownerId) : true,
+    ownerId ? settings.getConversationLearning(ownerId) : true,
+    ownerId ? settings.getVoiceSafeMode(ownerId) : true,
+    ownerId ? settings.getVoiceMemoryWrite(ownerId) : true,
+  ]).then(results => results.map(r => r.status === 'fulfilled' ? r.value : true));
+
+  const isVoice = opts.origin === 'voice';
 
   // Resolve Alice mode: env var (global) or per-owner setting
   let isAliceMode = process.env.EVA_ALICE_MODE === 'true';
@@ -366,7 +397,7 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
       if (flightContext?.authBlock) authErrorBlock = '\n\n' + flightContext.authBlock + '\n';
     }
     const contextBuilder = require('./contextBuilder');
-    const { context } = await contextBuilder.buildContext({ ownerId, userMessage, history });
+    const { context } = await contextBuilder.buildContext({ ownerId, userMessage, history, isSmartContext, isConversationLearning });
     const attached = (opts.attachedDocuments || []).map((d) => `**${d.filename}:**\n${(d.content_text || '').slice(0, 80000) || '(no text)'}`).join('\n\n');
     const attachedBlock = attached ? `\n\n## Attached by user (analyse first)\n${attached}\n` : '';
     const now = new Date();
@@ -378,7 +409,7 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
   const useToolsFirst = personalTools.isPersonalToolsEnabled() || isFlightIntent;
 
   let flightContext = null;
-  if (ownerId && !isMinimalMessage(userMessage) && useToolsFirst && isFlightIntent) {
+  if (isSmartContext && ownerId && !isMinimalMessage(userMessage) && useToolsFirst && isFlightIntent) {
     flightContext = await personalTools.fetchFlightContext(ownerId, userMessage);
   }
 
@@ -390,7 +421,7 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
 
   // Build email context: use flight context when available, else search on keywords
   let emailContext = '';
-  if (ownerId && !isMinimalMessage(userMessage)) {
+  if (isSmartContext && ownerId && !isMinimalMessage(userMessage)) {
     try {
       const sync = getGmailSync();
       if (sync) {
@@ -439,7 +470,7 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
 
   // Build document context — DOCS-FIRST: always search for non-minimal messages
   let documentContext = '';
-  if (ownerId && !isMinimalMessage(userMessage)) {
+  if (isSmartContext && ownerId && !isMinimalMessage(userMessage)) {
     try {
       const docProcessor = require('./services/documentProcessor');
       const shouldInject = ALWAYS_INJECT_RECENT || DOCUMENT_KEYWORDS.test(userMessage);
@@ -545,7 +576,7 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
 
   // Calendar context: use flight context when available (wider window), else upcoming events
   let calendarContext = '';
-  if (ownerId && !isMinimalMessage(userMessage)) {
+  if (isSmartContext && ownerId && !isMinimalMessage(userMessage)) {
     try {
       const calSync = getCalendarSync();
       if (calSync) {
@@ -584,7 +615,7 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
 
   // Web search (Tavily) — when user asks for latest news, current info, etc.
   let webContext = '';
-  if (!isMinimalMessage(userMessage)) {
+  if (isSmartContext && !isMinimalMessage(userMessage)) {
     let ws;
     try {
       ws = getWebSearchService();
@@ -629,8 +660,9 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
   }
 
   const contextWindow = Math.max(5, Math.min(100, Number(process.env.EVA_CONTEXT_WINDOW) || 25));
+  const histSlice = isConversationLearning ? history.slice(-contextWindow) : [];
   const messages = [
-    ...history.slice(-contextWindow).map((m) => ({
+    ...histSlice.map((m) => ({
       role: m.role === 'assistant' ? 'assistant' : 'user',
       content: m.content,
     })),
@@ -643,7 +675,7 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
     max_tokens: 4096, // Must be > thinking.budget_tokens when thinking enabled
     system: systemPrompt,
     messages,
-    tools: ownerId ? buildAllTools(CALENDAR_TOOLS) : [],
+    tools: ownerId ? filterToolsBySettings(buildAllTools(CALENDAR_TOOLS), { isAssistantMode, isMemoryLearning, isVoiceSafeMode, isVoiceMemoryWrite, isVoice }) : [],
   };
   if (useThinking) {
     createOptions.thinking = { type: 'enabled', budget_tokens: 2048 };
@@ -664,7 +696,7 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
   if (aiProvider === 'gpt') {
     try {
       const openai = getOpenAIClient();
-      const anthropicTools = ownerId ? buildAllTools(CALENDAR_TOOLS) : [];
+      const anthropicTools = ownerId ? filterToolsBySettings(buildAllTools(CALENDAR_TOOLS), { isAssistantMode, isMemoryLearning, isVoiceSafeMode, isVoiceMemoryWrite, isVoice }) : [];
       const oaiTools = anthropicTools.length
         ? anthropicTools.map((t) => ({
             type: 'function',
@@ -807,9 +839,16 @@ async function createReplyStream(userMessage, history = [], ownerId = null, mode
   const client = getClient();
   const model = process.env.EVA_CHAT_MODEL || 'claude-sonnet-4-20250514';
 
+  // ── Read settings toggles for stream ──
+  const settings = require('./services/settingsService');
+  const [isSmartCtx, isConvLearning] = await Promise.allSettled([
+    ownerId ? settings.getSmartContext(ownerId) : true,
+    ownerId ? settings.getConversationLearning(ownerId) : true,
+  ]).then(rs => rs.map(r => r.status === 'fulfilled' ? r.value : true));
+
   // Email context: same logic as reply() — skip if minimal (évite confusion)
   let emailContext = '';
-  if (ownerId && !isMinimalMessage(userMessage)) {
+  if (isSmartCtx && ownerId && !isMinimalMessage(userMessage)) {
     try {
       const sync = getGmailSync();
       if (sync) {
@@ -842,7 +881,7 @@ async function createReplyStream(userMessage, history = [], ownerId = null, mode
 
   // Document context: DOCS-FIRST — same logic as reply()
   let documentContext = '';
-  if (ownerId && !isMinimalMessage(userMessage)) {
+  if (isSmartCtx && ownerId && !isMinimalMessage(userMessage)) {
     try {
       const docProcessor = require('./services/documentProcessor');
       const shouldInject = ALWAYS_INJECT_RECENT || DOCUMENT_KEYWORDS.test(userMessage);
@@ -936,7 +975,7 @@ async function createReplyStream(userMessage, history = [], ownerId = null, mode
 
   // Calendar context in stream mode (skip if minimal)
   let calendarContextStream = '';
-  if (ownerId && !isMinimalMessage(userMessage)) {
+  if (isSmartCtx && ownerId && !isMinimalMessage(userMessage)) {
     try {
       const calSync = getCalendarSync();
       if (calSync) {
@@ -990,8 +1029,9 @@ async function createReplyStream(userMessage, history = [], ownerId = null, mode
   }
 
   const contextWindow = Math.max(5, Math.min(100, Number(process.env.EVA_CONTEXT_WINDOW) || 25));
+  const histSlice2 = isConvLearning ? history.slice(-contextWindow) : [];
   const messages = [
-    ...history.slice(-contextWindow).map((m) => ({
+    ...histSlice2.map((m) => ({
       role: m.role === 'assistant' ? 'assistant' : 'user',
       content: m.content,
     })),

@@ -208,12 +208,19 @@ console.log(`[EVA] listening on ${HOST}:${PORT}${voice}${distOk ? ` (frontend: $
   if (process.env.EVA_MCP_ENABLED !== 'false') {
     try {
       const { initMcp } = require('./services/toolOrchestrator');
+      const mcpClient = require('./services/mcpClient');
       initMcp().then(ok => {
-        if (ok) console.log('[EVA] MCP Hub connected — platform tools available');
-        else console.log('[EVA] MCP Hub not available (EVA continues without it)');
+        if (ok) {
+          const status = mcpClient.getStatus();
+          console.log(`[EVA] ✅ MCP Hub connected — ${status.tools_count} tools available`);
+        } else {
+          const status = mcpClient.getStatus();
+          console.error(`[EVA] ❌ MCP Hub connection failed${status.error ? ': ' + status.error : ''}`);
+          console.error('[EVA] ❌ Gmail, Calendar, Web Search tools will use fallback (direct service calls)');
+        }
       });
     } catch (err) {
-      console.warn('[EVA] MCP init failed:', err.message);
+      console.error(`[EVA] ❌ MCP init error: ${err.message}`);
     }
   } else {
     console.log('[EVA] MCP Hub disabled (EVA_MCP_ENABLED=false)');

@@ -36,6 +36,7 @@ const CALL_TIMEOUT_MS    = Number(process.env.MCP_CALL_TIMEOUT_MS) || 20000;
 let child = null;           // ChildProcess
 let rl = null;              // readline on child.stdout
 let connected = false;
+let lastError = null;       // last connection error message
 let pendingRequests = {};   // id → { resolve, reject, timer }
 let nextId = 1;
 let cachedTools = null;     // tools/list result cache
@@ -150,6 +151,7 @@ async function connect() {
     rl.on('line', handleLine);
 
     connected = true;
+    lastError = null;
 
     // Send initialize
     const initResult = await sendRequest('initialize');
@@ -166,6 +168,7 @@ async function connect() {
 
     return true;
   } catch (err) {
+    lastError = err.message;
     console.error('[mcpClient] Connect failed:', err.message);
     disconnect();
     return false;
@@ -299,6 +302,17 @@ function isConnected() {
   return connected;
 }
 
+/**
+ * Get MCP status summary (for /mcp/status endpoint and UI).
+ */
+function getStatus() {
+  return {
+    connected,
+    error: lastError,
+    tools_count: cachedTools ? cachedTools.length : 0,
+  };
+}
+
 module.exports = {
   connect,
   disconnect,
@@ -307,4 +321,5 @@ module.exports = {
   isMcpTool,
   buildMcpToolSchemas,
   isConnected,
+  getStatus,
 };

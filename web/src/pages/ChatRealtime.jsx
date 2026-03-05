@@ -47,6 +47,7 @@ export default function ChatRealtime() {
   const [hasEvaStream, setHasEvaStream] = useState(false);
   const [isEvaThinking, setIsEvaThinking] = useState(false);
   const [isAwaitingEva, setIsAwaitingEva] = useState(false); // from user speaks until EVA responds
+  const [isSearching, setIsSearching] = useState(false); // web-assist / recherche en cours
   const outputDeviceRef = useRef(outputDeviceId);
   const stopEvaRef = useRef(null);
   const baseInstructionsRef = useRef(null);
@@ -251,6 +252,7 @@ export default function ChatRealtime() {
               const dc = dataChannelRef.current;
               if (base && dc?.readyState === 'open' && txt.length >= 4) {
                 stopEvaSpeaking();
+                setIsSearching(true);
                 (async () => {
                   try {
                     const token = localStorage.getItem('eva_token') || sessionStorage.getItem('eva_token');
@@ -270,6 +272,8 @@ export default function ChatRealtime() {
                     if (d?.readyState === 'open' && base) {
                       d.send(JSON.stringify({ type: 'response.create', response: { instructions: base } }));
                     }
+                  } finally {
+                    setIsSearching(false);
                   }
                 })();
               }
@@ -498,7 +502,13 @@ export default function ChatRealtime() {
           ) : (
             <>
               <div className="flex flex-col items-center gap-2 -mt-2">
-                {(isAwaitingEva || isEvaThinking) && (
+                {isSearching && (
+                  <div className="flex items-center gap-3 px-6 py-3 rounded-xl bg-cyan-500/25 border-2 border-cyan-400/60 shadow-xl shadow-cyan-500/20 animate-pulse">
+                    <svg className="w-5 h-5 text-cyan-300 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                    <span className="text-cyan-100 text-base font-semibold">EVA recherche sur le web…</span>
+                  </div>
+                )}
+                {(isAwaitingEva || isEvaThinking) && !isSearching && (
                   <div className="flex items-center gap-3 px-6 py-3 rounded-xl bg-amber-500/30 border-2 border-amber-500/60 shadow-xl shadow-amber-500/20">
                     <div className="flex gap-1">
                       <span className="w-2 h-2 rounded-full bg-amber-300 animate-bounce" style={{ animationDelay: '0ms' }} />

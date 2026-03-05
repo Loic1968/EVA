@@ -24,6 +24,10 @@ Exemples OUI:
 "De Shanghai." (après météo) → YES|Shanghai weather today|general
 "Actualités à Tokyo?" → YES|Tokyo news today|news
 "C'est la guerre, c'est ce qui se passe" → YES|world news today|news
+"Vols Dubaï Shanghai samedi" → YES|flights Dubai Shanghai March 2026 price|general
+"Vol vers Shanghai samedi 7 mars" → YES|flights Dubai Shanghai March 7 2026 price|general
+"Quel prix pour un vol Shanghai ?" → YES|flights Dubai Shanghai price March 2026|general
+"Tu peux chercher un vol ?" (après contexte Shanghai) → YES|flights Dubai Shanghai price|general
 
 Exemples NO:
 "Bonjour" → NO

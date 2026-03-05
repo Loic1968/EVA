@@ -11,7 +11,7 @@ const fs = require('fs');
 const googleOAuth = require('../services/googleOAuth');
 const gmailSync = require('../services/gmailSync');
 const calendarSync = require('../services/calendarSync');
-const { getKillSwitch, getShadowMode, getAutonomousMode, getStyleProfile, getAIProvider } = require('../services/settingsService');
+const { getKillSwitch, getShadowMode, getAutonomousMode, getStyleProfile, getAIProvider, getAssistantMode, getSmartContext, getConversationLearning } = require('../services/settingsService');
 const gmailSend = require('../services/gmailSend');
 
 const { verifyAuth } = require('../middleware/auth');
@@ -70,6 +70,18 @@ router.post('/eva/chat', async (req, res, next) => {
     const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user')?.content || '';
     let systemContent = origin === 'voice' ? `${EVA_CHAT_SYSTEM}\n\n${EVA_VOICE_EXTRA}` : EVA_CHAT_SYSTEM;
 
+    // Read settings toggles (assistant_mode, smart_context, conversation_learning)
+    let isAssistantMode = true, isSmartContext = true, isConversationLearning = true;
+    if (req.ownerId) {
+      try {
+        [isAssistantMode, isSmartContext, isConversationLearning] = await Promise.allSettled([
+          getAssistantMode(req.ownerId),
+          getSmartContext(req.ownerId),
+          getConversationLearning(req.ownerId),
+        ]).then(rs => rs.map(r => r.status === 'fulfilled' ? r.value : true));
+      } catch (_) {}
+    }
+
     // Start streaming headers BEFORE context build so the client knows we're alive
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
@@ -77,12 +89,12 @@ router.post('/eva/chat', async (req, res, next) => {
     res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders?.();
 
-    // Inject personal context (Calendar, Emails, Documents) — now parallelized + cached
-    if (req.ownerId && lastUserMsg.trim().length >= 6) {
+    // Inject personal context (Calendar, Emails, Documents) — gated by assistant_mode + smart_context
+    if (isAssistantMode && req.ownerId && lastUserMsg.trim().length >= 6) {
       try {
         const contextBuilder = require('../contextBuilder');
         const history = messages.slice(-10).map((m) => ({ role: m.role, content: m.content }));
-        const { context } = await contextBuilder.buildContext({ ownerId: req.ownerId, userMessage: lastUserMsg, history });
+        const { context } = await contextBuilder.buildContext({ ownerId: req.ownerId, userMessage: lastUserMsg, history, isSmartContext, isConversationLearning });
         if (context) systemContent += context;
       } catch (err) {
         console.warn('[EVA /eva/chat] Context build failed:', err.message);
@@ -991,10 +1003,11 @@ router.post('/settings/flags/:key', async (req, res, next) => {
 router.get('/mcp/status', async (req, res) => {
   try {
     const mcpClient = require('../services/mcpClient');
-    const connected = mcpClient.isConnected();
-    const tools = connected ? mcpClient.listTools() : [];
+    const status = mcpClient.getStatus();
+    const tools = status.connected ? mcpClient.listTools() : [];
     res.json({
-      connected,
+      connected: status.connected,
+      error: status.error || null,
       tools_count: tools.length,
       tools: tools.map(t => ({ name: t.name, description: t.description })),
     });
@@ -1009,11 +1022,12 @@ router.post('/mcp/connect', async (req, res) => {
     const { initMcp } = require('../services/toolOrchestrator');
     const ok = await initMcp();
     const mcpClient = require('../services/mcpClient');
-    const connected = mcpClient.isConnected();
-    const tools = connected ? mcpClient.listTools() : [];
+    const status = mcpClient.getStatus();
+    const tools = status.connected ? mcpClient.listTools() : [];
     res.json({
-      connected,
+      connected: status.connected,
       triggered: true,
+      error: status.error || null,
       tools_count: tools.length,
       tools: tools.map(t => ({ name: t.name, description: t.description })),
       message: ok ? 'MCP Hub connected' : 'MCP Hub not available (check mcp-hub and feature flag)',

@@ -93,7 +93,7 @@ const EVA_INSTRUCTIONS_LEGACY = `# EVA — Voice Assistant (HaliSoft)
 ## Web search (when ## Web search appears below)
 - Si la section ## Web search est présente dans tes instructions, utilise ces résultats pour répondre. Cite les sources (titre + URL). Vols, actualités, prix.`;
 
-const EVA_VOICE_DIRECT = `You are EVA. Answer naturally—same intelligence as ChatGPT/Claude. Use ## Emails, ## Documents, ## Calendar below when relevant. Match language (FR/EN). Short responses for voice. "Stop"/"tais-toi" → stop.`;
+const EVA_VOICE_DIRECT = `You are EVA. Comprends et réponds comme ChatGPT — naturellement. Tu as accès à ## Emails, ## Documents, ## Calendar, ## Web search. Utilise-les quand pertinent. Réponses courtes pour la voix. "Stop"/"tais-toi" pour arrêter.`;
 
 const EVA_INSTRUCTIONS_BASE = process.env.EVA_DIRECT_MODE === 'true'
   ? EVA_VOICE_DIRECT
@@ -279,7 +279,7 @@ router.get('/token', async (req, res) => {
         type: 'realtime',
         model,
         instructions,
-        max_output_tokens: 512,
+        max_output_tokens: 1024,
         audio: {
           input: {
             transcription: transcriptionLang ? {

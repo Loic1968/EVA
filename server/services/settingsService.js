@@ -102,4 +102,43 @@ async function setAliceMode(ownerId, enabled) {
   }
 }
 
-module.exports = { getSetting, getKillSwitch, getShadowMode, getAutonomousMode, getStyleProfile, getNotificationPreferences, getEmailImportancePreferences, getAIProvider, getAliceMode, setAliceMode };
+// ── Feature toggles (read from feature flags, default ON) ──
+
+async function _getFlag(ownerId, key, defaultValue = true) {
+  try {
+    const featureFlagService = require('./featureFlagService');
+    const val = await featureFlagService.getFlag(key, ownerId);
+    return val !== null ? !!val : defaultValue;
+  } catch {
+    return defaultValue;
+  }
+}
+
+/** Assistant mode ON = context injection + tools. OFF = plain chat */
+async function getAssistantMode(ownerId) { return _getFlag(ownerId, 'assistant_mode', true); }
+
+/** Voice safe mode ON = block save_memory + create_calendar_event from voice */
+async function getVoiceSafeMode(ownerId) { return _getFlag(ownerId, 'voice_safe_mode', true); }
+
+/** Memory learning ON = save_memory tool available */
+async function getMemoryLearning(ownerId) { return _getFlag(ownerId, 'memory_learning', true); }
+
+/** Conversation learning ON = inject conversation history into context */
+async function getConversationLearning(ownerId) { return _getFlag(ownerId, 'conversation_learning', true); }
+
+/** Smart context ON = inject emails, calendar, docs into context */
+async function getSmartContext(ownerId) { return _getFlag(ownerId, 'smart_context', true); }
+
+/** Auto object update ON = auto-update structured objects from conversation */
+async function getAutoObjectUpdate(ownerId) { return _getFlag(ownerId, 'auto_object_update', true); }
+
+/** Voice memory write ON = allow save_memory from voice (overrides voice_safe_mode for memory) */
+async function getVoiceMemoryWrite(ownerId) { return _getFlag(ownerId, 'voice_memory_write', true); }
+
+module.exports = {
+  getSetting, getKillSwitch, getShadowMode, getAutonomousMode, getStyleProfile,
+  getNotificationPreferences, getEmailImportancePreferences, getAIProvider,
+  getAliceMode, setAliceMode,
+  getAssistantMode, getVoiceSafeMode, getMemoryLearning, getConversationLearning,
+  getSmartContext, getAutoObjectUpdate, getVoiceMemoryWrite,
+};

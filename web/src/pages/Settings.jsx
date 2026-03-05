@@ -982,8 +982,8 @@ export default function Settings() {
           Connect EVA to the platform MCP server (DB queries, file read, route scan, QA). When connected, <strong>EVA Chat and Alice</strong> (voice and text) can use MCP tools. Enable the runtime flag below, then trigger the connection.
         </p>
         <div className="flex flex-wrap items-center gap-3">
-          <span className={`text-sm px-2 py-1 rounded ${mcpStatus.connected ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' : 'bg-slate-200 dark:bg-slate-600/40 text-slate-600 dark:text-slate-500'}`}>
-            {mcpStatus.connected ? `Connected (${mcpStatus.tools_count} tools)` : 'Not connected'}
+          <span className={`text-sm px-2 py-1 rounded ${mcpStatus.connected ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' : mcpStatus.error ? 'bg-red-500/20 text-red-600 dark:text-red-400' : 'bg-slate-200 dark:bg-slate-600/40 text-slate-600 dark:text-slate-500'}`}>
+            {mcpStatus.connected ? `Connected (${mcpStatus.tools_count} tools)` : mcpStatus.error ? 'Connection failed' : 'Not connected'}
           </span>
           <button
             type="button"
@@ -1006,6 +1006,9 @@ export default function Settings() {
         </div>
         {mcpStatus.tools && mcpStatus.tools.length > 0 && (
           <p className="text-xs text-slate-500 dark:text-eva-muted mt-2">Tools: {mcpStatus.tools.map(t => t.name).join(', ')}</p>
+        )}
+        {mcpStatus.error && !mcpStatus.connected && (
+          <p className="text-xs text-red-500 dark:text-red-400 mt-2">Error: {mcpStatus.error}</p>
         )}
       </div>
 

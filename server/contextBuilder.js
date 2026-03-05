@@ -58,9 +58,24 @@ async function fetchEmails(ownerId, userMessage, isFlightIntent) {
   const cached = cacheGet(cacheKey);
   if (cached !== undefined) return cached;
   try {
+    const mcpClient = require('./services/mcpClient');
+    const useSearch = EMAIL_KEYWORDS.test(userMessage);
+
+    if (mcpClient.isConnected()) {
+      // MCP path
+      const personalTools = require('./services/personalToolsService');
+      const searchQuery = useSearch && isFlightIntent ? personalTools.buildFlightEmailQuery(userMessage) : userMessage;
+      const result = useSearch
+        ? await mcpClient.callTool('gmail.search', { owner_id: ownerId, query: searchQuery, limit: 8 })
+        : await mcpClient.callTool('gmail.recent', { owner_id: ownerId, limit: 10, preview_chars: 5000 });
+      const emails = result.ok ? (result.data?.emails || []) : [];
+      cacheSet(cacheKey, emails);
+      return emails;
+    }
+
+    // Fallback: direct service call
     const gmailSync = require('./services/gmailSync');
     if (!gmailSync) return [];
-    const useSearch = EMAIL_KEYWORDS.test(userMessage);
     const personalTools = require('./services/personalToolsService');
     const searchQuery = useSearch && isFlightIntent ? personalTools.buildFlightEmailQuery(userMessage) : userMessage;
     const emails = useSearch && gmailSync.searchEmails
@@ -79,10 +94,26 @@ async function fetchDocuments(ownerId, userMessage, isFlightIntent) {
   const cached = cacheGet(cacheKey);
   if (cached !== undefined) return cached;
   try {
-    const docProcessor = require('./services/documentProcessor');
-    if (!docProcessor || !docProcessor.searchDocumentsWithCitations) return [];
     const personalTools = require('./services/personalToolsService');
     const searchQuery = userMessage + (isFlightIntent ? ' ' + (personalTools.buildFlightEmailQuery(userMessage) || 'itinerary flight') : '');
+    const mcpClient = require('./services/mcpClient');
+
+    if (mcpClient.isConnected()) {
+      // MCP path
+      const result = await mcpClient.callTool('docs.search', { owner_id: ownerId, query: searchQuery, top_k: 8 });
+      let docs = result.ok ? (result.data?.results || []) : [];
+      if (docs.length === 0) {
+        const listResult = await mcpClient.callTool('docs.list', { owner_id: ownerId, limit: 5 });
+        const recent = listResult.ok ? (listResult.data?.documents || []) : [];
+        docs = recent.map((d) => ({ ...d, content_text: '', citation: { doc_id: d.doc_id, filename: d.filename, chunk_index: 0 } }));
+      }
+      cacheSet(cacheKey, docs);
+      return docs;
+    }
+
+    // Fallback: direct service call
+    const docProcessor = require('./services/documentProcessor');
+    if (!docProcessor || !docProcessor.searchDocumentsWithCitations) return [];
     let docs = await docProcessor.searchDocumentsWithCitations(ownerId, searchQuery, 8);
     if (docs.length === 0) {
       const recent = await docProcessor.getRecentDocuments(ownerId, 5);
@@ -101,10 +132,23 @@ async function fetchCalendar(ownerId, userMessage, isFlightIntent) {
   const cached = cacheGet(cacheKey);
   if (cached !== undefined) return cached;
   try {
-    const calendarSync = require('./services/calendarSync');
-    if (!calendarSync) return [];
+    const mcpClient = require('./services/mcpClient');
     const pts = require('./services/personalToolsService');
     const isFlight = pts.classifyIntent(userMessage) === pts.INTENTS.FLIGHT_QUESTION;
+
+    if (mcpClient.isConnected()) {
+      // MCP path
+      const result = isFlight
+        ? await mcpClient.callTool('calendar.search', { owner_id: ownerId, query: pts.buildFlightCalendarQuery(), days_before: 30, days_after: 90, limit: 20 })
+        : await mcpClient.callTool('calendar.events', { owner_id: ownerId, days: 14, limit: 15 });
+      const evList = result.ok ? (result.data?.events || []) : [];
+      cacheSet(cacheKey, evList);
+      return evList;
+    }
+
+    // Fallback: direct service call
+    const calendarSync = require('./services/calendarSync');
+    if (!calendarSync) return [];
     const events = (isFlight && calendarSync.searchCalendarEvents)
       ? await calendarSync.searchCalendarEvents(ownerId, pts.buildFlightCalendarQuery(), 30, 90, 20)
       : await calendarSync.getUpcomingEvents(ownerId, 10, 14);
@@ -122,10 +166,25 @@ async function fetchWebSearch(userMessage) {
     const ws = require('./services/webSearchService');
     const wantsWebSearch = ws && ws.needsWebSearch && ws.needsWebSearch(userMessage);
     if (!wantsWebSearch) return { wanted: false, results: null };
-    if (!ws.isAvailable || !ws.isAvailable()) return { wanted: true, results: null };
-    const query = ws.extractQuery ? ws.extractQuery(userMessage) : userMessage;
+
+    const mcpClient = require('./services/mcpClient');
+    const searchQuery = ws.extractQuery ? ws.extractQuery(userMessage) : userMessage;
     const topic = (ws.isNewsQuery && ws.isNewsQuery(userMessage)) ? 'news' : 'general';
-    const data = await ws.search(query, { maxResults: 5, topic });
+
+    if (mcpClient.isConnected()) {
+      // MCP path
+      const toolName = topic === 'news' ? 'web.search_news' : 'web.search';
+      const result = await mcpClient.callTool(toolName, { query: searchQuery, max_results: 5 });
+      if (result.ok && result.data?.results?.length > 0) {
+        const formatted = result.data.results.map(r => `- **${r.title}** (${r.url})\n  ${r.content || ''}`).join('\n');
+        return { wanted: true, results: formatted };
+      }
+      return { wanted: true, results: null };
+    }
+
+    // Fallback: direct service call
+    if (!ws.isAvailable || !ws.isAvailable()) return { wanted: true, results: null };
+    const data = await ws.search(searchQuery, { maxResults: 5, topic });
     const formatted = ws.formatForContext ? ws.formatForContext(data) : null;
     return { wanted: true, results: formatted };
   } catch (e) {
@@ -186,7 +245,7 @@ function formatDocuments(docs, userMessage) {
   const charLimit = isFlightQuery ? 15000 : 3000;
   const lines = ['## Documents'];
   docs.forEach((d) => {
-    const text = (d.content_text || d.content_preview || '').slice(0, charLimit);
+    const text = (d.content_text || d.content || d.content_preview || '').slice(0, charLimit);
     const cite = d.citation ? ` [Source: ${d.filename}, section ${(d.citation.chunk_index ?? 0) + 1}]` : '';
     lines.push(`**${d.filename}**${cite}:\n${text || '(no text)'}\n`);
   });
@@ -211,10 +270,10 @@ function formatCalendar(events) {
  * Smart context builder — PARALLEL version.
  * All I/O runs concurrently via Promise.allSettled (3-4x faster).
  */
-async function buildContext({ ownerId, userMessage, history = [] }) {
+async function buildContext({ ownerId, userMessage, history = [], isSmartContext = true, isConversationLearning = true }) {
   if (!ownerId) return { context: '' };
 
-  const skipHeavyContext = isMinimalMessage(userMessage);
+  const skipHeavyContext = isMinimalMessage(userMessage) || !isSmartContext;
   const personalTools = require('./services/personalToolsService');
   const isFlightIntent = personalTools.classifyIntent(userMessage) === personalTools.INTENTS.FLIGHT_QUESTION;
 
@@ -268,9 +327,9 @@ async function buildContext({ ownerId, userMessage, history = [] }) {
     parts.push('## Web search\n' + web.results);
   }
 
-  // Conversation history
+  // Conversation history (gated by isConversationLearning toggle)
   const ctxWindow = Math.max(5, Math.min(50, Number(process.env.EVA_CONTEXT_WINDOW) || 25));
-  const hist = (history || []).slice(-ctxWindow);
+  const hist = isConversationLearning ? (history || []).slice(-ctxWindow) : [];
   if (hist.length > 0) {
     parts.push('## Conversation history');
     hist.forEach((m) => {

@@ -45,8 +45,8 @@ const EVA_INSTRUCTIONS_LEGACY = `# EVA — Voice Assistant (HaliSoft)
 - Noise, silence, breathing, "euh", "hmm", "ah", coughing — DO NOT RESPOND. Stay completely silent.
 - NEVER say "j'ai compris", "oui", "d'accord" as a response to nothing. Never invent questions.
 - If unsure (short/ambiguous message, possible noise) → stay silent. Do not guess.
-- SINGLE ISOLATED WORDS that make no sense as a question ("chien", "sylvestre", "cette", "d'aider", "ils sont") → these are TRANSCRIPTION ERRORS. Stay SILENT. Do NOT respond to gibberish.
-- If you receive 1-2 incoherent words → IGNORE completely. Wait for a real sentence.
+- SINGLE ISOLATED WORDS that make no sense ("chien", "sylvestre", "dernier", "leader", "grinçant") → likely TRANSCRIPTION ERRORS. Say "Peux-tu répéter ?" or stay silent. Do NOT answer with calendar/flight info.
+- If you receive 1-2 incoherent words → IGNORE or "Peux-tu répéter ?" — wait for a real sentence. Never assume it's about a flight.
 
 ## Check-in
 - "Tu m'entends?", "Tu m'écoutes?", "Are you there?" → "Oui" or "Oui, je t'entends." Only. Nothing else.
@@ -69,10 +69,11 @@ const EVA_INSTRUCTIONS_LEGACY = `# EVA — Voice Assistant (HaliSoft)
 4. Not found (vol, billet, Shanghai, réservation) → "Je n'ai pas cette info dans mes données. Connecte Gmail et Google Calendar (Paramètres > Données), ou uploade ton billet dans Documents." Jamais "vérifie sur le site de la compagnie". Propose l'action concrète.
 5. Never vague. Never "I understand" as opener — go straight to the answer.
 
-## Documents (billets, factures)
-- When ## Documents appears below: YOU HAVE ACCESS. Read and answer from it. Never say "I don't have access to personal documents" or "consulte ton email".
-- Use EXACT dates from the document. 2 mars ≠ 1 mars.
-- Documents = for ANSWERING. Never "je note que tu mesures X" from a document.
+## Documents & Calendar — USE ONLY when explicitly asked
+- Use ## Documents / ## Calendar ONLY when the user CLEARLY asks about: vol, billet, flight, Shanghai, Dubaï, rendez-vous, meeting, email, calendrier, réservation.
+- Ambiguous or generic questions ("c'est l'heure?", "bienvenue", "je suis", "quel temps?") → do NOT answer from documents/calendar. Answer literally (time, weather via web, etc.) or ask to repeat.
+- Never assume a short/incomplete phrase ("je suis", "dernier", "bienvenue") = flight/calendar question. When in doubt → ask "Tu parles de quoi — l'heure, la météo, ton vol ?"
+- When ## Documents appears and question IS about flight/ticket: use EXACT dates from the document. 2 mars ≠ 1 mars.
 
 ## Corrections & uncertain facts
 - "C'est faux", "non c'est le 2 mars" → "D'accord, je note : [their version]." Never insist.
@@ -92,15 +93,21 @@ const EVA_INSTRUCTIONS_LEGACY = `# EVA — Voice Assistant (HaliSoft)
 ## Web search (when ## Web search appears below)
 - Si la section ## Web search est présente dans tes instructions, utilise ces résultats pour répondre. Cite les sources (titre + URL). Vols, actualités, prix.`;
 
-const EVA_INSTRUCTIONS_BASE = process.env.EVA_OVERHAUL_ENABLED === 'true'
-  ? getCanonicalPrompt('voice')
-  : EVA_INSTRUCTIONS_LEGACY;
+const EVA_VOICE_DIRECT = `You are EVA. Answer naturally—same intelligence as ChatGPT/Claude. Use ## Emails, ## Documents, ## Calendar below when relevant. Match language (FR/EN). Short responses for voice. "Stop"/"tais-toi" → stop.`;
+
+const EVA_INSTRUCTIONS_BASE = process.env.EVA_DIRECT_MODE === 'true'
+  ? EVA_VOICE_DIRECT
+  : process.env.EVA_OVERHAUL_ENABLED === 'true'
+    ? getCanonicalPrompt('voice')
+    : EVA_INSTRUCTIONS_LEGACY;
 
 async function buildInstructionsWithContext(ownerId) {
-  const SILENCE_RULE = 'STRICT: Réponds UNIQUEMENT aux questions/demandes claires. Bruit, "euh", silence → NE RÉPONDS PAS.\n\n';
+  const SILENCE_RULE = process.env.EVA_DIRECT_MODE === 'true'
+    ? ''
+    : 'STRICT: Réponds UNIQUEMENT aux questions/demandes claires. Bruit, "euh", silence → NE RÉPONDS PAS.\n\n';
 
-  // Check Alice mode: env var OR per-user setting
-  let isAlice = process.env.EVA_ALICE_MODE === 'true';
+  // Check Alice mode: env var OR per-user setting (ignored when EVA_DIRECT_MODE)
+  let isAlice = process.env.EVA_DIRECT_MODE === 'true' ? false : process.env.EVA_ALICE_MODE === 'true';
   if (!isAlice && ownerId) {
     try { isAlice = await getAliceMode(ownerId); } catch (_) {}
   }
@@ -344,24 +351,78 @@ router.get('/status', (req, res) => {
   res.json({ enabled: REALTIME_ENABLED });
 });
 
-/** Web search assist for Voice — called when user asks for flights, news, etc. */
+/** Format MCP search results for EVA Realtime context. */
+function formatWebContextForRealtime(results) {
+  if (!Array.isArray(results) || results.length === 0) return null;
+  let text = '\n\n## Web search (infos à jour — cite les sources)\n';
+  text += "Utilise ces résultats pour répondre. Cite la source (titre + URL) quand tu t'en sers. Si l'info n'est pas ici, dis \"Je n'ai pas trouvé d'info récente\".\n\n";
+  results.forEach((r, i) => {
+    const title = r.title || 'Source';
+    const url = r.url || '';
+    const content = (r.content || '').trim().slice(0, 1500);
+    text += `**${i + 1}. ${title}**\n`;
+    if (url) text += `URL: ${url}\n`;
+    if (content) text += `${content}\n\n`;
+  });
+  return text;
+}
+
+/** Web search assist for EVA Realtime voice — LLM router + MCP or Tavily fallback. */
 router.post('/web-assist', async (req, res) => {
   try {
-    const { transcript } = req.body || {};
+    const { transcript, history } = req.body || {};
     const txt = typeof transcript === 'string' ? transcript.trim() : '';
     if (!txt || txt.length > 2000) return res.json({ webContext: null });
-    let ws = null;
-    try {
-      ws = require('../services/webSearchService');
-    } catch (_) {}
-    if (!ws?.isAvailable() || !ws.needsWebSearch(txt)) {
-      return res.json({ webContext: null });
+
+    const router = require('../services/webSearchRouter');
+    const hist = Array.isArray(history) ? history.filter((h) => h?.role && h?.content) : [];
+    const { need, query: routedQuery, topic } = await router.routeWithLLM(txt, hist);
+    if (!need || !routedQuery) return res.json({ webContext: null });
+
+    const mcpClient = require('../services/mcpClient');
+    let results = null;
+    let source = null;
+
+    if (mcpClient.isConnected()) {
+      const toolName = topic === 'news' ? 'web.search_news' : 'web.search';
+      const args = { query: routedQuery, topic, max_results: 5, time_range: topic === 'news' ? 'day' : undefined };
+      const result = await mcpClient.callTool(toolName, args, {
+        actor_id: req.ownerId || 'eva-assistant',
+        actor_role: 'platform_admin',
+        tenant_id: null,
+      });
+      if (result.ok && Array.isArray(result.data?.results) && result.data.results.length > 0) {
+        results = result.data.results;
+        source = 'mcp';
+      }
     }
-    const query = ws.extractQuery(txt) || txt;
-    const topic = ws.isNewsQuery(txt) ? 'news' : 'general';
-    const data = await ws.search(query, { maxResults: 5, topic });
-    const webContext = ws.formatForContext(data);
-    res.json({ webContext: webContext || null });
+
+    if (!results) {
+      const ws = require('../services/webSearchService');
+      if (ws?.isAvailable && ws.isAvailable()) {
+        try {
+          const data = await ws.search(routedQuery, {
+            maxResults: 5,
+            topic: topic === 'news' ? 'news' : 'general',
+            timeRange: topic === 'news' ? 'day' : null,
+          });
+          results = data?.results || [];
+          source = 'tavily';
+        } catch (e) {
+          console.warn('[EVA Realtime] web-assist Tavily fallback failed:', e.message);
+        }
+      }
+    }
+
+    const webContext = Array.isArray(results) && results.length > 0
+      ? formatWebContextForRealtime(results)
+      : null;
+
+    if (webContext) {
+      console.log('[EVA Realtime] web-assist via', source || 'none');
+    }
+
+    res.json({ webContext });
   } catch (err) {
     console.warn('[EVA Realtime] web-assist failed:', err.message);
     res.json({ webContext: null });

@@ -234,16 +234,41 @@ function isMcpTool(name) {
 }
 
 /**
+ * Sanitize JSON Schema for Claude API (requires draft 2020-12, no $ref).
+ * MCP tools may have $ref, $schema, or other invalid keywords.
+ */
+function sanitizeSchemaForClaude(schema) {
+  if (!schema || typeof schema !== 'object') return { type: 'object', properties: {} };
+  const s = schema.schema || schema;
+  if (typeof s !== 'object') return { type: 'object', properties: {} };
+  if (s.$ref) return { type: 'object', properties: {} };
+  const out = { type: 'object', properties: {} };
+  if (s.properties && typeof s.properties === 'object') {
+    for (const [k, v] of Object.entries(s.properties)) {
+      if (!v || v.$ref) continue;
+      if (typeof v === 'object' && !Array.isArray(v) && v.properties) {
+        out.properties[k] = sanitizeSchemaForClaude(v);
+      } else {
+        out.properties[k] = { type: (v.type && ['string','number','integer','boolean','array','object'].includes(v.type)) ? v.type : 'string', description: v.description };
+      }
+    }
+  }
+  if (s.required && Array.isArray(s.required)) {
+    out.required = s.required.filter((r) => typeof r === 'string');
+  }
+  return out;
+}
+
+/**
  * Build Claude-compatible tool schemas from MCP tools.
- * Prefixes tool names with 'mcp_' to avoid collision with existing orchestrator tools.
- * Returns array of { name, description, input_schema }.
+ * Sanitizes input_schema to comply with JSON Schema draft 2020-12 (no $ref).
  */
 function buildMcpToolSchemas() {
   if (!cachedTools || cachedTools.length === 0) return [];
   return cachedTools.map(t => ({
     name: `mcp_${t.name.replace(/\./g, '_')}`,
-    description: `[MCP] ${t.description}`,
-    input_schema: t.inputSchema || { type: 'object', properties: {} },
+    description: `[MCP] ${t.description || t.name}`,
+    input_schema: sanitizeSchemaForClaude(t.inputSchema || { type: 'object', properties: {} }),
   }));
 }
 

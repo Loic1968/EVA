@@ -7,202 +7,276 @@ function isMinimalMessage(msg) {
   return !t || t.length < 6;
 }
 
+// ── Simple TTL cache (avoids re-fetching Gmail/Calendar/Docs on rapid messages) ──
+const _cache = new Map();
+const CACHE_TTL_MS = 60_000; // 60 seconds
+
+function cacheGet(key) {
+  const entry = _cache.get(key);
+  if (!entry) return undefined;
+  if (Date.now() - entry.ts > CACHE_TTL_MS) { _cache.delete(key); return undefined; }
+  return entry.value;
+}
+function cacheSet(key, value) {
+  _cache.set(key, { value, ts: Date.now() });
+}
+
+// ── Parallel fetchers (each returns its own block or '') ──
+
+async function fetchFacts(ownerId) {
+  const cacheKey = `facts:${ownerId}`;
+  const cached = cacheGet(cacheKey);
+  if (cached !== undefined) return cached;
+  try {
+    const factsService = require('./services/factsService');
+    const facts = await factsService.getFacts(ownerId, 50);
+    cacheSet(cacheKey, facts);
+    return facts;
+  } catch (e) {
+    console.warn('[EVA contextBuilder] Facts failed:', e.message);
+    return [];
+  }
+}
+
+async function fetchObjects(ownerId) {
+  if (process.env.EVA_STRUCTURED_MEMORY !== 'true') return [];
+  const cacheKey = `objects:${ownerId}`;
+  const cached = cacheGet(cacheKey);
+  if (cached !== undefined) return cached;
+  try {
+    const objectsService = require('./services/objectsService');
+    const objects = await objectsService.getActiveObjects(ownerId, 10);
+    cacheSet(cacheKey, objects);
+    return objects;
+  } catch (e) {
+    return [];
+  }
+}
+
+async function fetchEmails(ownerId, userMessage, isFlightIntent) {
+  const cacheKey = `emails:${ownerId}:${userMessage.slice(0, 60)}`;
+  const cached = cacheGet(cacheKey);
+  if (cached !== undefined) return cached;
+  try {
+    const gmailSync = require('./services/gmailSync');
+    if (!gmailSync) return [];
+    const useSearch = EMAIL_KEYWORDS.test(userMessage);
+    const personalTools = require('./services/personalToolsService');
+    const searchQuery = useSearch && isFlightIntent ? personalTools.buildFlightEmailQuery(userMessage) : userMessage;
+    const emails = useSearch && gmailSync.searchEmails
+      ? await gmailSync.searchEmails(ownerId, searchQuery, 8, null, 'all')
+      : await gmailSync.getRecentEmails(ownerId, 10, 5000);
+    cacheSet(cacheKey, emails);
+    return emails;
+  } catch (e) {
+    console.warn('[EVA contextBuilder] Emails failed:', e.message);
+    return [];
+  }
+}
+
+async function fetchDocuments(ownerId, userMessage, isFlightIntent) {
+  const cacheKey = `docs:${ownerId}:${userMessage.slice(0, 60)}`;
+  const cached = cacheGet(cacheKey);
+  if (cached !== undefined) return cached;
+  try {
+    const docProcessor = require('./services/documentProcessor');
+    if (!docProcessor || !docProcessor.searchDocumentsWithCitations) return [];
+    const personalTools = require('./services/personalToolsService');
+    const searchQuery = userMessage + (isFlightIntent ? ' ' + (personalTools.buildFlightEmailQuery(userMessage) || 'itinerary flight') : '');
+    let docs = await docProcessor.searchDocumentsWithCitations(ownerId, searchQuery, 8);
+    if (docs.length === 0) {
+      const recent = await docProcessor.getRecentDocuments(ownerId, 5);
+      docs = recent.map((d) => ({ ...d, citation: { doc_id: d.id, filename: d.filename, chunk_index: 0 } }));
+    }
+    cacheSet(cacheKey, docs);
+    return docs;
+  } catch (e) {
+    console.warn('[EVA contextBuilder] Documents failed:', e.message);
+    return [];
+  }
+}
+
+async function fetchCalendar(ownerId, userMessage, isFlightIntent) {
+  const cacheKey = `calendar:${ownerId}:${isFlightIntent}`;
+  const cached = cacheGet(cacheKey);
+  if (cached !== undefined) return cached;
+  try {
+    const calendarSync = require('./services/calendarSync');
+    if (!calendarSync) return [];
+    const pts = require('./services/personalToolsService');
+    const isFlight = pts.classifyIntent(userMessage) === pts.INTENTS.FLIGHT_QUESTION;
+    const events = (isFlight && calendarSync.searchCalendarEvents)
+      ? await calendarSync.searchCalendarEvents(ownerId, pts.buildFlightCalendarQuery(), 30, 90, 20)
+      : await calendarSync.getUpcomingEvents(ownerId, 10, 14);
+    const evList = Array.isArray(events) ? events : [];
+    cacheSet(cacheKey, evList);
+    return evList;
+  } catch (e) {
+    console.warn('[EVA contextBuilder] Calendar failed:', e.message);
+    return [];
+  }
+}
+
+async function fetchWebSearch(userMessage) {
+  try {
+    const ws = require('./services/webSearchService');
+    const wantsWebSearch = ws && ws.needsWebSearch && ws.needsWebSearch(userMessage);
+    if (!wantsWebSearch) return { wanted: false, results: null };
+    if (!ws.isAvailable || !ws.isAvailable()) return { wanted: true, results: null };
+    const query = ws.extractQuery ? ws.extractQuery(userMessage) : userMessage;
+    const topic = (ws.isNewsQuery && ws.isNewsQuery(userMessage)) ? 'news' : 'general';
+    const data = await ws.search(query, { maxResults: 5, topic });
+    const formatted = ws.formatForContext ? ws.formatForContext(data) : null;
+    return { wanted: true, results: formatted };
+  } catch (e) {
+    console.warn('[EVA contextBuilder] Web search failed:', e.message);
+    return { wanted: true, results: null };
+  }
+}
+
+// ── Format helpers ──
+
+function formatFacts(facts) {
+  const parts = [];
+  const corrections = facts.filter((f) => (f.source_type || '').toLowerCase() === 'correction');
+  if (corrections.length > 0) {
+    parts.push('## Corrections (user-confirmed)');
+    corrections.forEach((f) => parts.push(`- ${f.key}: ${f.value}`));
+    parts.push('');
+  }
+  const otherFacts = facts.filter((f) => (f.source_type || '').toLowerCase() !== 'correction');
+  if (otherFacts.length > 0) {
+    parts.push('## Structured facts');
+    otherFacts.forEach((f) => parts.push(`- ${f.key}: ${f.value} (${f.source_type || 'unknown'})`));
+    parts.push('');
+  }
+  return parts.join('\n');
+}
+
+function formatObjects(objects) {
+  if (!objects.length) return '';
+  const lines = ['## Active matters'];
+  objects.forEach((o) => {
+    const meta = o.metadata || {};
+    const status = o.status || meta.status || '—';
+    const next = meta.next_action || '—';
+    lines.push(`- ${o.object_type}: ${o.name || o.object_type} | status: ${status} | next: ${next}`);
+  });
+  lines.push('');
+  return lines.join('\n');
+}
+
+function formatEmails(emails) {
+  if (!emails.length) return '';
+  const lines = ['## Emails'];
+  emails.forEach((e, i) => {
+    const from = e.from_name ? `${e.from_name} <${e.from_email}>` : (e.from_email || '—');
+    const body = (e.body_preview || e.snippet || '').trim();
+    lines.push(`**Email ${i + 1}:** ${e.subject || '(no subject)'}`);
+    lines.push(`From: ${from} | Date: ${e.received_at ? new Date(e.received_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}`);
+    if (e.thread_id) lines.push(`thread_id: ${e.thread_id}`);
+    lines.push(`Content:\n${body || '(empty)'}\n`);
+  });
+  return lines.join('\n');
+}
+
+function formatDocuments(docs, userMessage) {
+  if (!docs.length) return '';
+  const isFlightQuery = /vol[s]?|vole|avion|billet|flight|ticket|Shanghai|emirates|etihad|horaire|heure/i.test(userMessage);
+  const charLimit = isFlightQuery ? 15000 : 3000;
+  const lines = ['## Documents'];
+  docs.forEach((d) => {
+    const text = (d.content_text || d.content_preview || '').slice(0, charLimit);
+    const cite = d.citation ? ` [Source: ${d.filename}, section ${(d.citation.chunk_index ?? 0) + 1}]` : '';
+    lines.push(`**${d.filename}**${cite}:\n${text || '(no text)'}\n`);
+  });
+  return lines.join('\n');
+}
+
+function formatCalendar(events) {
+  if (!events.length) return '';
+  const lines = ['## Calendar'];
+  events.forEach((ev, i) => {
+    const start = ev.start_at ? new Date(ev.start_at) : null;
+    const fmt = start && ev.is_all_day
+      ? start.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })
+      : start ? start.toLocaleString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+    lines.push(`- ${ev.title || '(no title)'} | ${fmt}${ev.location ? ` @ ${ev.location}` : ''}`);
+  });
+  lines.push('');
+  return lines.join('\n');
+}
+
 /**
- * Smart context builder — used when EVA_SMART_CONTEXT=true.
- * Includes: facts, objects, emails, documents, calendar, web search.
- * Query-aware: uses search when user asks about flights/documents/emails.
+ * Smart context builder — PARALLEL version.
+ * All I/O runs concurrently via Promise.allSettled (3-4x faster).
  */
 async function buildContext({ ownerId, userMessage, history = [] }) {
   if (!ownerId) return { context: '' };
 
-  const parts = [];
   const skipHeavyContext = isMinimalMessage(userMessage);
   const personalTools = require('./services/personalToolsService');
   const isFlightIntent = personalTools.classifyIntent(userMessage) === personalTools.INTENTS.FLIGHT_QUESTION;
 
-  try {
-    // 1. Corrections (highest priority)
-    const factsService = require('./services/factsService');
-    const facts = await factsService.getFacts(ownerId, 50);
-    const corrections = facts.filter((f) => (f.source_type || '').toLowerCase() === 'correction');
-    if (corrections.length > 0) {
-      parts.push('## Corrections (user-confirmed — override everything)');
-      corrections.forEach((f) => parts.push(`- ${f.key}: ${f.value}`));
-      parts.push('');
-    }
+  // ── Launch ALL fetches in parallel ──
+  const [factsResult, objectsResult, emailsResult, docsResult, calendarResult, webResult] =
+    await Promise.allSettled([
+      fetchFacts(ownerId),
+      fetchObjects(ownerId),
+      skipHeavyContext ? [] : fetchEmails(ownerId, userMessage, isFlightIntent),
+      skipHeavyContext ? [] : fetchDocuments(ownerId, userMessage, isFlightIntent),
+      skipHeavyContext ? [] : fetchCalendar(ownerId, userMessage, isFlightIntent),
+      skipHeavyContext ? { wanted: false, results: null } : fetchWebSearch(userMessage),
+    ]);
 
-    // 2. Structured facts (excluding corrections)
-    const otherFacts = facts.filter((f) => (f.source_type || '').toLowerCase() !== 'correction');
-    if (otherFacts.length > 0) {
-      parts.push('## Structured facts');
-      otherFacts.forEach((f) => parts.push(`- ${f.key}: ${f.value} (${f.source_type || 'unknown'})`));
-      parts.push('');
-    }
+  // ── Collect results (fulfilled or empty fallback) ──
+  const facts = factsResult.status === 'fulfilled' ? factsResult.value : [];
+  const objects = objectsResult.status === 'fulfilled' ? objectsResult.value : [];
+  const emails = emailsResult.status === 'fulfilled' ? emailsResult.value : [];
+  const docs = docsResult.status === 'fulfilled' ? docsResult.value : [];
+  const events = calendarResult.status === 'fulfilled' ? calendarResult.value : [];
+  const web = webResult.status === 'fulfilled' ? webResult.value : { wanted: false, results: null };
 
-    // 3. Active objects state
-    if (process.env.EVA_STRUCTURED_MEMORY === 'true') {
-      try {
-        const objectsService = require('./services/objectsService');
-        const objects = await objectsService.getActiveObjects(ownerId, 10);
-        if (objects.length > 0) {
-          parts.push('## Active matters');
-          objects.forEach((o) => {
-            const meta = o.metadata || {};
-            const status = o.status || meta.status || '—';
-            const next = meta.next_action || '—';
-            parts.push(`- ${o.object_type}: ${o.name || o.object_type} | status: ${status} | next: ${next}`);
-          });
-          parts.push('');
-        }
-      } catch (e) {
-        // objectsService may not exist
-      }
-    }
+  // ── Assemble context ──
+  const parts = [];
 
-    // 4 & 5. Emails + Documents — DOCS-FIRST: when doc-related, Documents BEFORE Emails
-    const isDocRelated = DOCUMENT_KEYWORDS.test(userMessage);
-    let emailsBlock = '';
-    let docsBlock = '';
+  // Facts & objects (fast, always included)
+  const factsBlock = formatFacts(facts);
+  if (factsBlock) parts.push(factsBlock);
+  const objectsBlock = formatObjects(objects);
+  if (objectsBlock) parts.push(objectsBlock);
 
-    if (!skipHeavyContext) {
-      const gmailSync = require('./services/gmailSync');
-      if (gmailSync) {
-        try {
-          const useSearch = EMAIL_KEYWORDS.test(userMessage);
-          const searchQuery = useSearch && isFlightIntent ? personalTools.buildFlightEmailQuery(userMessage) : userMessage;
-          const emails = useSearch && gmailSync.searchEmails
-            ? await gmailSync.searchEmails(ownerId, searchQuery, 8, null, 'all')
-            : await gmailSync.getRecentEmails(ownerId, 10, 5000);
-          if (emails.length > 0) {
-            const lines = ['## Emails (use to answer: flights, confirmations, who said what)'];
-            emails.forEach((e, i) => {
-              const from = e.from_name ? `${e.from_name} <${e.from_email}>` : (e.from_email || '—');
-              const body = (e.body_preview || e.snippet || '').trim();
-              lines.push(`**Email ${i + 1}:** ${e.subject || '(no subject)'}`);
-              lines.push(`From: ${from} | Date: ${e.received_at ? new Date(e.received_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}`);
-              if (e.thread_id) lines.push(`thread_id: ${e.thread_id}`);
-              lines.push(`Content:\n${body || '(empty)'}\n`);
-            });
-            emailsBlock = lines.join('\n') + '\n';
-          }
-        } catch (e) {
-          console.warn('[EVA contextBuilder] Emails failed:', e.message);
-        }
-      }
+  // Emails & documents (order: docs first if doc-related)
+  const isDocRelated = DOCUMENT_KEYWORDS.test(userMessage);
+  const emailsBlock = formatEmails(emails);
+  const docsBlock = formatDocuments(docs, userMessage);
 
-      const docProcessor = require('./services/documentProcessor');
-      if (docProcessor && docProcessor.searchDocumentsWithCitations) {
-        try {
-          const searchQuery = userMessage + (isFlightIntent ? ' ' + (personalTools.buildFlightEmailQuery(userMessage) || 'itinerary flight') : '');
-          let docs = await docProcessor.searchDocumentsWithCitations(ownerId, searchQuery, 8);
-          if (docs.length === 0) {
-            const recent = await docProcessor.getRecentDocuments(ownerId, 5);
-            docs = recent.map((d) => ({ ...d, citation: { doc_id: d.id, filename: d.filename, chunk_index: 0 } }));
-          }
-          if (docs.length > 0) {
-            const isFlightQuery = /vol[s]?|vole|avion|billet|flight|ticket|Shanghai|emirates|etihad|horaire|heure/i.test(userMessage);
-            const charLimit = isFlightQuery ? 15000 : 3000;
-            const lines = ['## Documents (Memory Vault) — DOCS-FIRST : réponds à partir du contenu. Cite (Source: filename, section N).'];
-            docs.forEach((d) => {
-              const text = (d.content_text || d.content_preview || '').slice(0, charLimit);
-              const cite = d.citation ? ` [Source: ${d.filename}, section ${(d.citation.chunk_index ?? 0) + 1}]` : '';
-              lines.push(`**${d.filename}**${cite}:\n${text || '(no text)'}\n`);
-            });
-            docsBlock = lines.join('\n') + '\n';
-          } else if (isDocRelated) {
-            docsBlock = '## Documents (vide)\nRéponse: "Je n\'ai pas cette info dans tes documents. Uploade-les dans Documents, ou connecte Gmail/Calendar (Paramètres > Données)."\n';
-          }
-        } catch (e) {
-          console.warn('[EVA contextBuilder] Documents failed:', e.message);
-        }
-      }
+  if (isDocRelated && docsBlock) {
+    parts.push(docsBlock.trim());
+    if (emailsBlock) parts.push(emailsBlock.trim());
+  } else {
+    if (emailsBlock) parts.push(emailsBlock.trim());
+    if (docsBlock) parts.push(docsBlock.trim());
+  }
 
-      if (isDocRelated && docsBlock) {
-        parts.push(docsBlock.trim());
-        if (emailsBlock) parts.push(emailsBlock.trim());
-      } else {
-        if (emailsBlock) parts.push(emailsBlock.trim());
-        if (docsBlock) parts.push(docsBlock.trim());
-      }
-    }
+  // Calendar
+  const calBlock = formatCalendar(events);
+  if (calBlock) parts.push(calBlock.trim());
 
-    // 6. Calendar — search for flights (±30/90d) or upcoming events
-    if (!skipHeavyContext) {
-      try {
-        const calendarSync = require('./services/calendarSync');
-        const pts = require('./services/personalToolsService');
-        const isFlight = pts.classifyIntent(userMessage) === pts.INTENTS.FLIGHT_QUESTION;
-        if (calendarSync) {
-          const events = (isFlight && calendarSync.searchCalendarEvents)
-            ? await calendarSync.searchCalendarEvents(ownerId, pts.buildFlightCalendarQuery(), 30, 90, 20)
-            : await calendarSync.getUpcomingEvents(ownerId, 10, 14);
-          const evList = Array.isArray(events) ? events : [];
-          if (evList.length > 0) {
-            parts.push('## Calendar (upcoming events — use for flight times, meetings)');
-            evList.forEach((ev, i) => {
-              const start = ev.start_at ? new Date(ev.start_at) : null;
-              const fmt = start && ev.is_all_day
-                ? start.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })
-                : start ? start.toLocaleString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
-              parts.push(`- Event ${i + 1} (id: ${ev.id}): ${ev.title || '(no title)'} | ${fmt}${ev.location ? ` @ ${ev.location}` : ''}`);
-            });
-            parts.push('');
-          } else if (isFlight || /vol[s]?|vole|avion|billet|flight|Shanghai|heure|horaire|agenda|calendrier/i.test(userMessage)) {
-            parts.push('## Calendar (vide)\nRéponse à donner si question sur vol/agenda: "Je n\'ai pas cette info. Connecte Google Calendar (Paramètres > Données) ou uploade ton billet dans Documents."\n');
-          }
-        }
-      } catch (e) {
-        console.warn('[EVA contextBuilder] Calendar failed:', e.message);
-      }
-    }
+  // Web search
+  if (web.results) {
+    parts.push('## Web search\n' + web.results);
+  }
 
-    // 7. Web search (Tavily) — news, real-time info
-    if (!skipHeavyContext) {
-      try {
-        const ws = require('./services/webSearchService');
-        const wantsWebSearch = ws && ws.needsWebSearch && ws.needsWebSearch(userMessage);
-        if (wantsWebSearch && ws.isAvailable && ws.isAvailable()) {
-          const query = ws.extractQuery ? ws.extractQuery(userMessage) : userMessage;
-          const topic = (ws.isNewsQuery && ws.isNewsQuery(userMessage)) ? 'news' : 'general';
-          const data = await ws.search(query, { maxResults: 5, topic });
-          const formatted = ws.formatForContext ? ws.formatForContext(data) : null;
-          if (formatted) {
-            parts.push('## Web search (latest info)');
-            parts.push(formatted);
-            parts.push('');
-          } else {
-            const cityMatch = (userMessage || '').match(/\b(dubai|duba[iï]|paris|london|shanghai|singapore|doha|new\s*york)\b/i);
-            const city = cityMatch ? cityMatch[1] : '';
-            parts.push(`## Web search (vide)\nRéponse OBLIGATOIRE: "Je n'ai pas trouvé d'infos récentes sur ${city || 'cette ville'}." JAMAIS de réponse générique (Expo, gratte-ciels, tourisme).\n`);
-          }
-        } else if (wantsWebSearch) {
-          const cityMatch = (userMessage || '').match(/\b(dubai|duba[iï]|paris|london|shanghai|singapore|doha|new\s*york)\b/i);
-          const city = cityMatch ? cityMatch[1] : '';
-          parts.push(`## Web search (non configuré)\nRéponse OBLIGATOIRE: "Je n'ai pas trouvé d'infos récentes sur ${city || 'cette ville'}." JAMAIS de réponse générique.\n`);
-        }
-      } catch (e) {
-        const ws = require('./services/webSearchService');
-        const cityMatch = (userMessage || '').match(/\b(dubai|duba[iï]|paris|london|shanghai|singapore|doha|new\s*york)\b/i);
-        if (ws && ws.needsWebSearch && ws.needsWebSearch(userMessage)) {
-          const city = cityMatch ? cityMatch[1] : '';
-          parts.push(`## Web search (erreur)\nRéponse OBLIGATOIRE: "Je n'ai pas trouvé d'infos récentes sur ${city || 'cette ville'}."\n`);
-        }
-        console.warn('[EVA contextBuilder] Web search failed:', e.message);
-      }
-    }
-
-    // 8. Conversation history (last N messages)
-    const ctxWindow = Math.max(5, Math.min(50, Number(process.env.EVA_CONTEXT_WINDOW) || 25));
-    const hist = (history || []).slice(-ctxWindow);
-    if (hist.length > 0) {
-      parts.push('## Conversation history');
-      hist.forEach((m) => {
-        const role = m.role === 'assistant' ? 'EVA' : 'User';
-        parts.push(`${role}: ${(m.content || '').slice(0, 500)}`);
-      });
-    }
-  } catch (e) {
-    console.warn('[EVA contextBuilder]', e.message);
+  // Conversation history
+  const ctxWindow = Math.max(5, Math.min(50, Number(process.env.EVA_CONTEXT_WINDOW) || 25));
+  const hist = (history || []).slice(-ctxWindow);
+  if (hist.length > 0) {
+    parts.push('## Conversation history');
+    hist.forEach((m) => {
+      const role = m.role === 'assistant' ? 'EVA' : 'User';
+      parts.push(`${role}: ${(m.content || '').slice(0, 500)}`);
+    });
   }
 
   const context = parts.join('\n').trim();

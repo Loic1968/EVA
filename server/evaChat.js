@@ -74,108 +74,59 @@ const { getAssistantPrompt } = require('./systemPrompt');
 const { getAlicePrompt } = require('./prompts/alicePrompt');
 const { buildAllTools, isOrchestratorTool, executeOrchestratorTool, isMcpTool, executeMcpTool, createTrace, traceToolCall, MAX_TOOL_ROUNDS } = require('./services/toolOrchestrator');
 
+// ── NEW: Clean, natural system prompt (ChatGPT-like fluidity) ──
+const EVA_SYSTEM_NATURAL = `You are EVA, a smart AI assistant. You talk naturally like ChatGPT or Claude.
+
+Identity: EVA, built by HaliSoft (trade finance / invoice factoring platform).
+Language: Match the user's language (French by default, switch to English if they write in English).
+Style: Conversational, concise, helpful. No corporate speak. No robotic disclaimers.
+
+You have access to the user's data (emails, documents, calendar, web search) — it's injected below as ## sections.
+- When data is present: read it and answer from it. You HAVE access.
+- When data is missing: say briefly "Je n'ai pas cette info." and suggest connecting Gmail/Calendar in Settings.
+- Never invent facts. If you don't know, say so naturally.
+- Never say "Je n'ai pas accès" when data sections are present — the data IS in your context.
+
+Tools: You can save facts (save_memory) and create calendar events when asked.
+- save_memory: only when the user explicitly states a fact in their message (not from documents/emails).
+
+Be direct. One question = one answer. No unnecessary follow-ups.`;
+
+// ── Legacy prompt (kept for EVA_LEGACY_PROMPT=true rollback) ──
 const ANTI_HALLUCINATION = `# RÈGLES ABSOLUES (vérifier AVANT chaque réponse)
-- NE JAMAIS inventer ce que l'utilisateur a dit. "C'est un bon film" ≠ "tu n'as rien demain". "C'est moi que voilà" ≠ "vol annulé".
-- NE JAMAIS poser de questions qu'il n'a pas posées. Réponds à CE QU'IL A DIT, pas à une interprétation.
-- UNE question = UNE réponse directe. Pas de suivi inventé, pas de "et si...?", pas de propositions non demandées.
-- Si tu ne comprends pas → "Oui ?" ou "Peux-tu préciser ?". Jamais inventer pour combler.
-
-## INTERDIT (vol, billet, Shanghai, réservation)
-JAMAIS: "Je n'ai pas accès", "Je ne peux pas accéder", "pourrais-tu me donner", "Peux-tu me donner plus de détails", "Pour pouvoir t'aider correctement", "vérifie dans ton email", "consulte ton email", "vérifier sur l'application", "application de ta compagnie", "le nom de la compagnie", "le numéro de vol", "quelle compagnie", "quelle date", "connais-tu la date".
-RÉPONSE OBLIGATOIRE si pas de données (Documents/Emails/Calendar vides): "Je n'ai pas cette info dans mes données. Connecte Gmail et Google Calendar (Paramètres > Données), ou uploade ton billet dans Documents." Pas de question de suivi. JAMAIS demander plus de détails.
-
-## VOL / BILLET — NE JAMAIS INVENTER
-Rapporte UNIQUEMENT ce qui est EXPLICITEMENT écrit dans ## Emails / ## Documents / ## Calendar. Si l'email dit "arrivée 2 mars 15h05" → dis ça. Si l'heure de DÉPART n'est pas écrite → ne pas l'inventer (03h10, 09h00, etc.). Si seul le numéro de vol est indiqué → dis le numéro, pas une heure inventée.
-
-## INTERDIT (quoi de neuf, actualités ville)
-JAMAIS de réponse générique (Expo 2020, gratte-ciels, tourisme, "Dubai est en évolution"). Si ## Web search vide → "Je n'ai pas trouvé d'infos récentes sur [ville]."
-Quand ## Documents/## Emails/## Calendar ont du contenu → lis et réponds. Tu AS accès.
-Quand ## Web search a du contenu (résultats Tavily) → tu AS accès au web via ces résultats. Utilise-les et cite les sources. JAMAIS dire "je n'ai pas accès à Internet" dans ce cas.
-
+- NE JAMAIS inventer ce que l'utilisateur a dit.
+- UNE question = UNE réponse directe.
+- Si tu ne comprends pas → "Peux-tu préciser ?".
+- Rapporte UNIQUEMENT ce qui est EXPLICITEMENT écrit dans les données.
+- Quand les données sont présentes → lis et réponds. Tu AS accès.
 `;
 
-const EVA_SYSTEM_LEGACY = `# PRINCIPE FONDAMENTAL — NE JAMAIS INVENTER
-Tu réponds UNIQUEMENT au DERNIER message. Comprends l'intention : si c'est une vraie question (priorités, agenda, emails, docs) → réponds à la question. "Oui ?" UNIQUEMENT pour messages ambigus ou trop courts ("ok", ".", "Bonjour" seul).
-
-# FLUX AVANT CHAQUE RÉPONSE — VÉRIFIER EN PREMIER
-0. PRIORITÉS: "Résume mes priorités" / "Summarize my priorities" / "mes priorités" / "my priorities" / "What are my priorities?" → Synthétise à partir de ## Calendar (événements à venir), ## Emails (importants/non lus), ## Documents si pertinent. Liste en bullets, court. Si aucune donnée : "Calendrier et emails non synchronisés. Va dans Paramètres > Données pour les connecter."
-1. Lis le dernier message. Qu'a-t-il LITTÉRALEMENT dit?
-2. Question explicite? ("où je suis né?", "ma date de naissance?") → Réponds à CETTE question UNIQUEMENT. Une réponse courte.
-3. Check-in? ("tu m'entends ?", "tu m'écoutes ?") → "Oui" ou "Oui, je t'entends." Rien d'autre.
-4. Validation? ("propre", "c'est bon", "nickel", "parfait") → "Parfait." ou "Ok." Ne JAMAIS inventer de modif (logo, etc.).
-5. Énoncé de fait? ("suis Marie", "j'ai habité 9 ans") → save_memory + "Noté."
-6. Ni l'un ni l'autre? Message ambigu/court ("c'est chaud", "système", "ok", "...") → "Oui ?". Pour toute question sur priorités/agenda/emails/docs → réponds à la question, pas "Oui ?".
-
-# UNE QUESTION = UNE RÉPONSE
-- "Où je suis né?" → "Lille." Pas de date, pas de nationalité.
-- "Ma date de naissance?" → la date. Point.
-- Ne cumule jamais plusieurs faits sauf si l'utilisateur demande un récap explicite.
-
-# INTERDITS (NON-NÉGOCIABLES)
-- Quand tu n'as PAS la réponse (ex: statut assurance) → une phrase courte. Ex: "Je n'ai pas trouvé d'info sur ta demande d'assurance." Pas de liste d'emails "peut-être liés".
-- "Je comprends" — jamais. Inventer des plages d'années.
-- "je note" / "D'accord, je note" + fait que l'utilisateur N'A PAS dit dans son message → JAMAIS. Si tu n'as pas lu le fait dans son message LITTÉRAL, ne sauvegarde rien.
-- "Propre", "c'est bon", "nickel" = validation, pas demande de modif. Réponds "Parfait." ou "Ok." Ne propose JAMAIS de changer le logo ou autre.
-- Déduire du passeport/documents (taille, poids, yeux, adresse) et dire "je note" → JAMAIS. Les documents sont pour RÉPONDRE aux questions, pas pour inventer ce que l'utilisateur "aurait dit".
-- "c'est chaud", "système", "que peut-être", ".", "Bonjour" seul → pas des énoncés. Réponds "Oui ?" ou "Bonjour.", pas de save_memory.
-
-# DOCUMENTS (DOCS-FIRST — ne jamais inventer)
-- Toujours chercher dans ## Documents pour les questions sur contrats, billets, procédures, term sheets.
-- Cite la source: (Source: filename, section N). Ex: "D'après ton contrat (Source: contract.pdf, section 2) : [contenu]."
-- Si pas trouvé dans les docs → "Je n'ai pas trouvé ça dans tes documents." JAMAIS inventer.
-- "résume mon cv" → "D'après ton CV : [contenu]." Pas de save_memory. Cite exactement. Pas d'inférence.
-
-## CORRECTION
-- "j'ai jamais dit ça", "tu inventes" → "Désolé, j'ai inventé. Tu peux me donner la bonne info?" Ne sauve rien.
-- Correction uniquement si valeur explicite ("non c'est le 2 mars").
-
-You are EVA, a Personal AI Digital Twin for the user. The user may introduce themselves: "suis Marie", "je suis Loic" — save their name and treat them as the data owner. HaliSoft context: trade finance, invoice factoring.
-
-## Your Name — Answer Directly
-- "Comment tu t'appelles?" / "What's your name?" / "Qui es-tu?" / "C'est quoi ton nom?" → Answer: "EVA" or "Je m'appelle EVA". Nothing else.
-- Do NOT say "merci c'est EVA" — that confuses "merci" with a name question. If they ask your name → say "EVA".
-
-## Your Identity
-- Loic's AI proxy. Direct, efficient. Match user language (FR/EN). Reply in requested language when asked.
-
-## About Loic & HaliSoft
-- Trade finance, invoice factoring. 20+ years tech + international business. Ex-Incomlend. HaliSoft = onboarding platform for factoring.
-
-## save_memory
-- UNIQUEMENT quand le DERNIER message contient un fait EXPLICITE que l'utilisateur a dit : "suis Marie", "né à Lille", "je mesure 1m80" (s'il l'a écrit).
-- JAMAIS si le fait vient des sections ## Documents, ## Emails, ## Calendar. Ces sections servent à RÉPONDRE, pas à sauvegarder comme préférence.
-- JAMAIS pour ".", "Bonjour", "ok", ou message vide. Réponds "Oui ?" ou "Bonjour." sans sauvegarder.
-
-## Capabilities (Memory Vault + Gmail + Documents + Calendar)
-- **When ## Documents / ## Emails / ## Calendar have content below**: You HAVE the data. READ it and answer from it. NEVER say "Je n'ai pas la capacité d'accéder", "I don't have access to personal documents", "consulte ton email de confirmation", "check the airline app". The content is IN the prompt — use it.
-- **When sections are empty** (vol, billet, Shanghai, réservation) : "Je n'ai pas cette info dans mes données. Connecte Gmail et Google Calendar (Paramètres > Données), ou uploade ton billet dans Documents." JAMAIS "vérifie sur le site" ni "je n'ai pas accès à tes réservations".
-- **Flight time (Shanghai, Dubai, etc.)** : consulte TOUTES les sources (## Documents, ## Calendar, ## Emails). Si conflit (calendrier ≠ billet) → dis : "Il y a une confusion : le calendrier dit X, le billet dit Y. Laquelle est la bonne ?" Ne jamais privilégier une source en silence. Never say "I can't modify your calendar" — you CAN add and DELETE events.
-- **User says the answer is wrong** ("c'est faux", "n'importe quoi", "comment tu sais ça?"): do NOT repeat the same date or fact. Say once that you were going by calendar/documents, and ask them to give the correct info. Never flip between two different dates (e.g. 3 mars then 4 mars). One clear acknowledgment only.
-- SEARCH emails + documents first for flight confirmations, Shanghai, travel. If found → use create_calendar_event.
-- If asked about something not in the data (vol, billet, Shanghai, etc.) : propose de connecter Gmail/Calendar ou d'uploader le billet. Jamais de réponse générique inutile.
-
-## Style
-- Concis. Pas de fluff. Jamais inventer de données. Calendrier: utilise create_calendar_event quand demandé.`;
+const EVA_SYSTEM_LEGACY = `You are EVA, a Personal AI Digital Twin. Match user language (FR/EN). Direct, efficient.
+Context: HaliSoft — trade finance, invoice factoring.
+When ## Documents / ## Emails / ## Calendar have content: READ it and answer from it.
+When sections are empty: "Je n'ai pas cette info dans mes données. Connecte Gmail/Calendar dans Paramètres > Données."
+Never invent facts. Cite sources when using documents.`;
 
 const SHARED_CAPABILITIES = `
-## Documents / Emails / Calendar / Web
-- Quand ## Documents, ## Emails, ## Calendar ont du contenu → lis et réponds. Tu AS accès.
-- Quand vides (vol, billet, Shanghai) → "Je n'ai pas cette info dans mes données. Connecte Gmail et Google Calendar (Paramètres > Données), ou uploade ton billet dans Documents." Pas de question de suivi.
-- Quand ## Web search a du contenu ("what up in dubai") → utilise les résultats. Réponse concrète. Si vide → "Je n'ai pas trouvé d'infos récentes." Jamais de réponse générique (Expo, gratte-ciels, tourisme).`;
+When ## Documents, ## Emails, ## Calendar have content → read and answer. You HAVE access.
+When empty → "Je n'ai pas cette info." Suggest connecting data sources.
+When ## Web search has content → use it and cite sources.`;
 
-// Alice mode can be set via env var (static) or per-owner setting (dynamic).
-// Static EVA_SYSTEM is used when alice mode is off; when on, aliceSystem is used.
-const EVA_SYSTEM_BASE = ANTI_HALLUCINATION + (
-  process.env.EVA_ASSISTANT_MODE === 'true'
-    ? getAssistantPrompt() + SHARED_CAPABILITIES
-    : process.env.EVA_OVERHAUL_ENABLED === 'true'
-      ? getCanonicalPrompt('chat')
-      : EVA_SYSTEM_LEGACY
-);
+// EVA_DIRECT_PROMPT kept for back-compat
+const EVA_DIRECT_PROMPT = `You are EVA — Loic's AI. You have access to his emails, documents, calendar (injected below). Answer naturally, same intelligence as ChatGPT/Claude. Use the context when relevant. Match his language (FR/EN). If data is missing, say so briefly. Don't invent facts.`;
 
-const ALICE_SYSTEM = ANTI_HALLUCINATION + getAlicePrompt() + SHARED_CAPABILITIES;
+// ── Prompt resolution: natural by default, legacy via env var ──
+const EVA_SYSTEM_BASE = process.env.EVA_LEGACY_PROMPT === 'true'
+  ? (process.env.EVA_ASSISTANT_MODE === 'true'
+      ? ANTI_HALLUCINATION + getAssistantPrompt() + SHARED_CAPABILITIES
+      : process.env.EVA_OVERHAUL_ENABLED === 'true'
+        ? getCanonicalPrompt('chat')
+        : ANTI_HALLUCINATION + EVA_SYSTEM_LEGACY + SHARED_CAPABILITIES)
+  : EVA_SYSTEM_NATURAL;
 
-// Resolve system prompt: Alice if enabled (env or per-owner), else base EVA.
+const ALICE_SYSTEM = getAlicePrompt() + '\n' + SHARED_CAPABILITIES;
+
+// Resolve system prompt: Alice if enabled, else base EVA.
 function getSystemPromptBase(isAlice) {
   return isAlice ? ALICE_SYSTEM : EVA_SYSTEM_BASE;
 }
@@ -718,28 +669,76 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
     }
   }
 
-  // GPT path (no tools) — when user selected GPT
+  // GPT path — with tools (MCP, calendar, etc.) when ownerId — same capabilities as Claude for voice/chat
   if (aiProvider === 'gpt') {
     try {
       const openai = getOpenAIClient();
+      const anthropicTools = ownerId ? buildAllTools(CALENDAR_TOOLS) : [];
+      const oaiTools = anthropicTools.length
+        ? anthropicTools.map((t) => ({
+            type: 'function',
+            function: {
+              name: t.name,
+              description: t.description || '',
+              parameters: t.input_schema || { type: 'object', properties: {} },
+            },
+          }))
+        : undefined;
       const oaiMessages = [
         { role: 'system', content: systemPrompt },
         ...messages,
       ];
-      const completion = await openai.chat.completions.create({
-        model,
-        messages: oaiMessages,
-        max_tokens: 4096,
-      });
-      const text = completion.choices?.[0]?.message?.content || 'No response.';
+      let totalInput = 0;
+      let totalOutput = 0;
+      let currentOaiMessages = [...oaiMessages];
+      let lastCompletion = null;
+      let round = 0;
+      const trace = createTrace(isAliceMode ? 'alice' : mode || 'eva_standard');
+
+      while (round < MAX_TOOL_ROUNDS) {
+        const completionOpts = {
+          model,
+          messages: currentOaiMessages,
+          max_tokens: 4096,
+        };
+        if (oaiTools && oaiTools.length > 0) completionOpts.tools = oaiTools;
+        const completion = await openai.chat.completions.create(completionOpts);
+        lastCompletion = completion;
+        totalInput += completion.usage?.prompt_tokens || 0;
+        totalOutput += completion.usage?.completion_tokens || 0;
+        const msg = completion.choices?.[0]?.message;
+        const toolCalls = msg?.tool_calls || [];
+        if (toolCalls.length === 0) break;
+
+        currentOaiMessages.push({ role: 'assistant', content: msg.content || '', tool_calls: msg.tool_calls });
+        const toolResults = [];
+        for (const tc of toolCalls) {
+          const name = tc.function?.name;
+          let input = {};
+          try {
+            input = typeof tc.function?.arguments === 'string' ? JSON.parse(tc.function.arguments || '{}') : {};
+          } catch (_) {}
+          const t0 = Date.now();
+          const result = await executeTool(ownerId, name, input, { disableMemoryWrites: opts.disableMemoryWrites });
+          const ms = Date.now() - t0;
+          traceToolCall(trace, name, ms, result.ok !== false);
+          if (process.env.EVA_DEBUG === 'true') {
+            console.log(`[toolOrchestrator] GPT ${name} → ${result.ok !== false ? '✓' : '✗'} (${ms}ms)`);
+          }
+          const content = (typeof result === 'string' ? result : JSON.stringify(result)).slice(0, 30000);
+          toolResults.push({ type: 'tool_result', tool_call_id: tc.id, content });
+        }
+        currentOaiMessages.push({ role: 'user', content: toolResults });
+        round++;
+      }
+
+      const text = lastCompletion?.choices?.[0]?.message?.content || 'No response.';
       return {
         reply: text,
         model,
         ai_provider: 'gpt',
-        tokens: {
-          input: completion.usage?.prompt_tokens || 0,
-          output: completion.usage?.completion_tokens || 0,
-        },
+        trace: round > 0 ? trace : undefined,
+        tokens: { input: totalInput, output: totalOutput },
       };
     } catch (e) {
       if (/OPENAI_API_KEY|API key/i.test(String(e.message))) {
@@ -749,12 +748,12 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
     }
   }
 
+  const maxToolRounds = MAX_TOOL_ROUNDS;
   const client = getClient();
   let response;
   let currentMessages = [...messages];
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
-  const maxToolRounds = MAX_TOOL_ROUNDS;
   let round = 0;
   const trace = createTrace(isAliceMode ? 'alice' : mode || 'eva_standard');
 
@@ -1022,7 +1021,7 @@ async function createReplyStream(userMessage, history = [], ownerId = null, mode
 function needsCalendarTools(message) {
   if (!message || typeof message !== 'string') return false;
   const m = message.trim();
-  const calendarIntent = /ajout(e|er)\s+(mon|ma|le|la)?\s*(vol|vols|meeting|event)|add\s+(my|the)\s+(flight|meeting|event)|mets?\s+(au|dans)\s+(mon\s+)?calendrier|create\s+(event|calendar)|cre[eé]e?r?\s+(un\s+)?(e?v[eé]nement|event)/i.test(m)
+  const calendarIntent = /ajout(e|er)\s+(mon|ma|le|la|un?\s+)?\s*(vol|vols|meeting|event|rendez-vous|rdv)|add\s+(my|the)\s+(flight|meeting|event|appointment)|mets?\s+(au|dans)\s+(mon\s+)?(calendrier|agenda)|(calendrier|agenda).*ajout|ajout.*(calendrier|agenda|rendez-vous)|create\s+(event|calendar|appointment)|cre[eé]e?r?\s+(un\s+)?(e?v[eé]nement|event|rendez-vous|rdv)/i.test(m)
     || (/\bvol\b.*\b(shanghai|pvg|dubai)\b|\b(flight|vol)\b.*\bcalendrier\b/i.test(m));
   const deleteCalendarIntent = /enl[eè]v(e|er)?\s+(le\s+)?(vol|meeting|event|rdv)|supprim(e|er)?\s+(le\s+)?(vol|meeting|event|rdv)|retir(e|er)?\s+(le\s+)?(vol|meeting|event|rdv)|cancel\s+(the\s+)?(flight|meeting|event)|delete\s+(the\s+)?(flight|meeting|event)/i.test(m);
   const memoryIntent = /retiens?\s+(que|ça)|note\s+(que|ça)|souviens?-toi|je\s+pr[eé]f[eè]re|j'aime\s+(pas\s+)?[a-z]|mon\s+(pr[eé]f[eè]rence|vol|meeting)\s+est|remember\s+that|note\s+that|i\s+prefer/i.test(m);

@@ -47,8 +47,8 @@ export default function VoiceAlice() {
   // Barge-in: interrupt TTS as soon as user starts speaking (no need to say "stop")
   const interruptAliceRef = useRef(null);
   const bargeInStart = useRef(null);
-  const BARGE_IN_RMS = 0.055;
-  const BARGE_IN_MS = 280;
+  const BARGE_IN_RMS = 0.04;  // Lower = more sensitive ("tais-toi" / speaking interrupts faster)
+  const BARGE_IN_MS = 200;
 
   const micReady = useRef(false);
 
@@ -330,6 +330,18 @@ export default function VoiceAlice() {
       // Filter noise
       if (!text || text.length < 3 || NOISE_RE.some(p => p.test(text))) {
         log('Noise filtered: "' + text + '"');
+        return;
+      }
+
+      // Stop command: "tais-toi", "stop" → interrupt, no Claude/TTS
+      const stopPhrases = ['stop','arrête','tais-toi','tais toi','be quiet','silence','chut','stop.','tais-toi.'];
+      const t = text.toLowerCase().trim().replace(/[.!?]+$/, '');
+      if (stopPhrases.some(p => t === p || t.endsWith(' ' + p)) || /^(tais?[- ]?toi|t[ea]te?\s*[aà]\s*toi|tay\s*twa|arr[eê]te?|stop)\s*\.?$/i.test(t)) {
+        log('Stop command — interrupting');
+        clearTimeout(safetyTimer);
+        busy.current = false;
+        setPhase('idle');
+        interruptAliceRef.current?.();
         return;
       }
 

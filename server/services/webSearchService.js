@@ -69,7 +69,7 @@ function formatForContext(data) {
  * Check if user message suggests need for web search.
  * Includes: news, flights (vols Dubai NY), real-time info, city updates.
  */
-const NEWS_KEYWORDS = /derni[eè]res?\s*infos?|actualit[eé]s?|quoi\s*de\s*neuf|latest\s*news?|recent\s*info|search\s*web|cherche\s*(?:sur\s*)?(?:le\s*)?web|recherche\s*(?:sur\s*)?(?:le\s*)?web|google|trouve\s*(?:moi\s*)?(?:des\s*)?infos?|informations?\s*r[eé]centes?|ce\s*qui\s*se\s*passe|il\s*se\s*passe\s*quoi|quoi\s*[aà]\s+(?:dubai|doubai|duba[iï]|paris|new\s*york|london|shanghai|singapore)|what['']?s\s*happening|current\s*events?|aujourd['']?hui\s*dans|situation\s*actuelle|(?:c['']?est\s+)?quoi\s+la\s+situation|la\s+situation|situation\s+[aà]|what['']?s\s+(?:the\s+)?situation|(?:dubai|doubai|duba[iï]|paris|new\s*york|london).*situation|situation.*(?:dubai|doubai|duba[iï]|paris|new\s*york|london)/i;
+const NEWS_KEYWORDS = /derni[eè]res?\s*infos?|actualit[eé]s?|quoi\s*de\s*neuf|latest\s*news?|recent\s*info|search\s*web|cherche\s*(?:sur\s*)?(?:le\s*)?web|recherche\s*(?:sur\s*)?(?:le\s*)?web|google|trouve\s*(?:moi\s*)?(?:des\s*)?infos?|informations?\s*r[eé]centes?|ce\s*qui\s*se\s*passe|il\s*se\s*passe\s*quoi|quoi\s*[aà]\s+|quoi\s*de\s*neuf\s+[aà]|quoi\s*de\s*neuf\s+sur|what\s*(?:'s|is)\s*(?:new|happening)\s+in|what['']?s\s*happening|current\s*events?|aujourd['']?hui\s*dans|situation\s*actuelle|(?:c['']?est\s+)?quoi\s+la\s+situation|la\s+situation|situation\s+[aà]|what['']?s\s+(?:the\s+)?situation|(?:dubai|doubai|duba[iï]|paris|new\s*york|london).*situation|situation.*(?:dubai|doubai|duba[iï]|paris|new\s*york|london)/i;
 const FLIGHT_KEYWORDS = /(?:donne[rz]?|donnes?)\s*(?:moi\s*)?(?:les\s*)?(?:prochains?\s*)?vols?|prochains?\s*vols?|vols?\s+(?:de\s+|à\s+|pour\s+|entre\s+)?|flights?\s+(?:from\s+|to\s+|between\s+)?|give\s*me\s*(?:the\s*)?(?:next\s*)?flights?|prix\s*(?:des?\s*)?vols?|flight\s*prices?/i;
 const CITY_PAIR = /\b(?:dubai|doubai|duba[iï]|paris|new\s*york|london|shanghai|singapore)\b.*\b(?:dubai|doubai|duba[iï]|paris|new\s*york|london|shanghai|singapore)\b/i;
 const CITIES = /\b(?:dubai|doubai|duba[iï]|paris|new\s*york|london|shanghai|singapore|doha|abu\s*dhabi|mumbai|hong\s*kong)\b/i;
@@ -96,7 +96,10 @@ function isNewsQuery(message) {
   return NEWS_KEYWORDS.test(message.trim());
 }
 
-const CITY_EXTRACT = /\b(dubai|duba[iï]|paris|london|new\s*york|shanghai|singapore|doha|abu\s*dhabi|mumbai|hong\s*kong)\b/i;
+const CITY_EXTRACT = /\b(dubai|duba[iï]|paris|london|new\s*york|shanghai|singapore|doha|abu\s*dhabi|mumbai|hong\s*kong|lyon|marseille|toulouse|nice|nantes|bordeaux|lyon|berlin|madrid|rome|amsterdam|brussels|geneva|zurich|tokyo|singapore|sydney|toronto|miami|chicago|san\s*francisco|los\s*angeles)\b/i;
+// "quoi de neuf sur X" / "à X" — extract X (any city/place)
+const QUOI_DE_NEUF_PLACE = /quoi\s*de\s*neuf\s+(?:sur|à|a|in)\s+([a-zàâäéèêëïîôùûüç\s-]+?)(?:\s+aujourd['']?hui|\s+en\s+ce\s+moment|\.|$)/i;
+const WHATS_NEW_PLACE = /what(?:'s|\s+is)\s+(?:new|happening)\s+in\s+([a-zàâäéèêëïîôùûüç\s-]+?)(?:\s+today|\.|$)/i;
 
 /**
  * Extract search query from user message. For "what up in X" type → "X news today" for better results.
@@ -106,10 +109,18 @@ function extractQuery(message) {
   if (!t) return '';
 
   const cityMatch = t.match(CITY_EXTRACT);
-  const city = cityMatch ? cityMatch[1].replace(/\s+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : '';
+  let city = cityMatch ? cityMatch[1].replace(/\s+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : '';
 
-  // "what up in dubai", "quoi de neuf à Paris" → "Dubai news today"
-  if (city && /what\s*up|whats?\s*up|quoi\s*de\s*neuf|what['']?s\s*(going\s*on|new)/i.test(t)) {
+  // "quoi de neuf sur Lyon", "quoi de neuf à Tokyo" — extract place even if not in CITY_EXTRACT
+  if (!city) {
+    const qdn = t.match(QUOI_DE_NEUF_PLACE) || t.match(WHATS_NEW_PLACE);
+    if (qdn && qdn[1]) {
+      city = qdn[1].trim().replace(/\s+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+  }
+
+  // "what up in dubai", "quoi de neuf à Paris", "quoi de neuf sur Lyon" → "X news today"
+  if (city && /what\s*up|whats?\s*up|quoi\s*de\s*neuf|what['']?s\s*(going\s*on|new|happening)/i.test(t)) {
     return `${city} news today current events`;
   }
   // "il fait quel temps à Shanghai", "weather in Dubai" → "Shanghai weather"

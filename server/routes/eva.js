@@ -44,22 +44,12 @@ function evaDisabled(res) {
 // ════════════════════════════════════════════════════════════════
 // EVA CHAT: Pure ChatGPT-like streaming conversation
 // ════════════════════════════════════════════════════════════════
-const EVA_CHAT_SYSTEM = `Tu es EVA, l'assistante IA exécutive de Halisoft.
-Tu réponds de façon naturelle comme ChatGPT ou Gemini.
-Tu parles en français par défaut (réponds dans la langue de l'utilisateur).
-Tu comprends bien : reformule si besoin pour clarifier, réponds au fond de la question même si la formulation est floue ou orale.
-Tu aides pour les opérations plateforme, l'analyse et le support décisionnel.
-En cas de doute sur la demande, pose une question courte pour préciser.`;
+const EVA_CHAT_SYSTEM = `You are EVA, a smart AI assistant by HaliSoft.
+Talk naturally like ChatGPT. Match the user's language (French by default).
+You have access to the user's emails, documents, and calendar — injected below as ## sections. Use them when relevant.
+If data is missing, say so briefly. Never invent facts. Be concise and helpful.`;
 
-const EVA_CHAT_ANTI_GENERIC = `
-JAMAIS: "Je ne peux pas accéder à vos informations", "consulter votre email", "site de la compagnie aérienne", "application de voyage".
-Quand ## Emails / ## Calendar / ## Documents ont du contenu → lis et réponds. Tu AS accès.
-Quand vides (vol, billet) → "Je n'ai pas cette info dans mes données. Connecte Gmail et Google Calendar (Paramètres > Données), ou uploade ton billet dans Documents."
-Rapporte UNIQUEMENT ce qui est EXPLICITEMENT écrit. Si l'heure de départ n'est pas dans le texte → ne pas l'inventer.
-`;
-
-const EVA_VOICE_EXTRA = `IMPORTANT: Ce message vient de la voix (reconnaissance vocale).
-La transcription peut contenir des erreurs (mots mal entendus, accents). Interprète avec bienveillance et réponds au sens probable.`;
+const EVA_VOICE_EXTRA = `This message comes from voice input (speech recognition). The transcription may have errors — interpret generously and respond to the likely intent.`;
 
 router.post('/eva/chat', async (req, res, next) => {
   try {
@@ -78,9 +68,15 @@ router.post('/eva/chat', async (req, res, next) => {
 
     const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user')?.content || '';
     let systemContent = origin === 'voice' ? `${EVA_CHAT_SYSTEM}\n\n${EVA_VOICE_EXTRA}` : EVA_CHAT_SYSTEM;
-    systemContent += EVA_CHAT_ANTI_GENERIC;
 
-    // Inject personal context (Calendar, Emails, Documents) when ownerId present
+    // Start streaming headers BEFORE context build so the client knows we're alive
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders?.();
+
+    // Inject personal context (Calendar, Emails, Documents) — now parallelized + cached
     if (req.ownerId && lastUserMsg.trim().length >= 6) {
       try {
         const contextBuilder = require('../contextBuilder');
@@ -92,22 +88,16 @@ router.post('/eva/chat', async (req, res, next) => {
       }
     }
 
+    req.on('close', () => {
+      if (!res.writableEnded) console.log('[EVA Chat] client disconnected');
+    });
+
     const OpenAI = require('openai');
     const client = new OpenAI({ apiKey: openaiKey });
     const fullMessages = [
       { role: 'system', content: systemContent },
       ...messages,
     ];
-
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no');
-    res.flushHeaders?.();
-
-    req.on('close', () => {
-      if (!res.writableEnded) console.log('[EVA Chat] client disconnected');
-    });
 
     const stream = await client.chat.completions.create({
       model: process.env.EVA_CHAT_MODEL || 'gpt-4o-mini',
@@ -472,7 +462,7 @@ router.post('/chat', async (req, res, next) => {
     res.json({
       reply: result.reply,
       model: result.model,
-      ai_provider: result.ai_provider || 'claude',
+      ai_provider: result.ai_provider || 'gpt',
       tokens: result.tokens,
       conversation_id: convId,
     });
@@ -708,7 +698,7 @@ router.post('/chat/stream', async (req, res, next) => {
         type: 'done',
         reply: result.reply,
         model: result.model,
-        ai_provider: result.ai_provider || 'claude',
+        ai_provider: result.ai_provider || 'gpt',
         tokens: result.tokens,
         conversation_id: convId,
       })}\n\n`);

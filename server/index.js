@@ -91,6 +91,8 @@ app.use('/api/voice/stt', voiceLimiter);
 app.use('/api/voice/tts', voiceLimiter);
 app.use('/api/realtime', apiStrictLimiter);
 
+// STT needs higher body limit for long recordings (10mb base64 ≈ 7.5min)
+app.use('/api/voice/stt', express.json({ limit: '10mb' }));
 app.use(express.json({ limit: '2mb' }));
 app.use(cookieParser());
 

@@ -267,11 +267,15 @@ export const api = {
     });
     const t = (audioBlob.type || '').toLowerCase();
     const format = /webm/.test(t) ? 'webm' : /mp4|m4a|x-m4a/.test(t) ? 'm4a' : /ogg|oga/.test(t) ? 'ogg' : /mpeg|mp3/.test(t) ? 'mp3' : 'webm';
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 85000); // 85s (server has 90s)
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify({ audio: base64, format, lang: opts.lang || 'fr' }),
+      signal: controller.signal,
     });
+    clearTimeout(timeout);
     if (res.status === 401) { onAuthFailure(); throw new Error('Session expired'); }
     if (!res.ok) {
       const err = new Error('STT failed');

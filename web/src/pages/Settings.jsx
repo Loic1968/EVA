@@ -236,7 +236,7 @@ export default function Settings() {
     }
   };
 
-  const aiProvider = settings.ai_provider?.provider ?? settings.ai_provider ?? 'claude';
+  const aiProvider = settings.ai_provider?.provider ?? settings.ai_provider ?? 'gpt';
 
   const setAIPProviderSave = async (provider) => {
     setSaving(true);

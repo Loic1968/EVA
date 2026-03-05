@@ -76,8 +76,8 @@ async function getEmailImportancePreferences(ownerId) {
 /** @returns {Promise<'claude'|'gpt'>} chat AI provider */
 async function getAIProvider(ownerId) {
   const s = await getSetting(ownerId, 'ai_provider');
-  const v = (s && typeof s === 'object' ? s.provider : s) || 'claude';
-  return v === 'gpt' ? 'gpt' : 'claude';
+  const v = (s && typeof s === 'object' ? s.provider : s) || 'gpt';
+  return v === 'claude' ? 'claude' : 'gpt';
 }
 
 /** @returns {Promise<boolean>} true = Alice persona active */

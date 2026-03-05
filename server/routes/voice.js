@@ -77,7 +77,13 @@ router.post('/settings', async (req, res) => {
 });
 
 // ── Speech-to-text (Whisper) ──
+const STT_TIMEOUT_MS = 90000; // 90s for long audio (Whisper can be slow)
 router.post('/stt', async (req, res, next) => {
+  req.setTimeout(STT_TIMEOUT_MS);
+  res.setTimeout(STT_TIMEOUT_MS);
+  const sendError = (status, msg, code) => {
+    if (!res.headersSent) res.status(status).json({ error: msg, code: code || 'stt_error' });
+  };
   try {
     const OPENAI_KEY = getOpenAIKey();
     if (!OPENAI_KEY) {
@@ -104,7 +110,7 @@ router.post('/stt', async (req, res, next) => {
     }
 
     const { default: OpenAI, toFile } = await import('openai');
-    const openai = new OpenAI({ apiKey: OPENAI_KEY });
+    const openai = new OpenAI({ apiKey: OPENAI_KEY, timeout: 60000 });
 
     const lang = String(langParam).slice(0, 2);
     const ext = ['webm', 'm4a', 'mp3', 'mp4', 'ogg'].includes(String(format).toLowerCase()) ? format.toLowerCase() : 'webm';
@@ -121,10 +127,9 @@ router.post('/stt', async (req, res, next) => {
   } catch (e) {
     const openaiMsg = e.response?.data?.error?.message || e.response?.data?.message;
     console.error('[EVA Voice] STT error:', e.message, e.status, openaiMsg || e.response?.data || '');
-    if (res.headersSent) return;
     const msg = openaiMsg || e.message || 'STT failed';
-    const status = e.status || e.statusCode || 500;
-    res.status(status).json({ error: msg, code: status === 400 ? 'bad_request' : 'stt_error' });
+    const status = Math.min(599, e.status || e.statusCode || 500);
+    sendError(status, msg, status === 400 ? 'bad_request' : 'stt_error');
   }
 });
 

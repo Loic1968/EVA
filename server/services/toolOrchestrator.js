@@ -233,10 +233,12 @@ async function executeMcpTool(toolName, input, ownerId) {
 }
 
 /**
- * Check if MCP is enabled (DB flag > env var > default true).
+ * Check if MCP is enabled (env override > DB flag > default true).
  */
 async function isMcpEnabled() {
-  // Env var override (hard kill)
+  // Env var: explicit enable overrides DB
+  if (process.env.EVA_MCP_ENABLED === 'true') return true;
+  // Env var: hard kill
   if (process.env.EVA_MCP_ENABLED === 'false') return false;
   // DB feature flag (toggle from Settings UI)
   try {

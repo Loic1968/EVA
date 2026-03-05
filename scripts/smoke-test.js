@@ -5,9 +5,12 @@
  */
 const BASE = process.env.EVA_API_BASE || 'http://localhost:5002';
 
+const http = require('http');
+const https = require('https');
+
 function get(path) {
   const url = new URL(path, BASE);
-  const lib = url.protocol === 'https:' ? require('https') : require('http');
+  const lib = url.protocol === 'https:' ? https : http;
   return new Promise((resolve, reject) => {
     lib
       .get(url, (r) => {
@@ -22,6 +25,29 @@ function get(path) {
         });
       })
       .on('error', reject);
+  });
+}
+
+function post(path, body) {
+  const url = new URL(path, BASE);
+  const lib = url.protocol === 'https:' ? https : http;
+  const data = JSON.stringify(body);
+  return new Promise((resolve, reject) => {
+    const req = lib.request(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } }, (r) => {
+      let body = '';
+      r.on('data', (c) => (body += c));
+      r.on('end', () => {
+        try {
+          resolve({ status: r.statusCode, data: body ? JSON.parse(body) : null });
+        } catch (_) {
+          resolve({ status: r.statusCode, data: body });
+        }
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(15000);
+    req.write(data);
+    req.end();
   });
 }
 
@@ -92,6 +118,45 @@ async function run() {
     }
   } catch (e) {
     console.log('  GET /api/settings ERROR', e.message);
+    fail++;
+  }
+
+  // STT endpoint: must respond (no EMPTY_RESPONSE). Short audio → 400, large payload → any JSON
+  try {
+    const stt = await post('/api/voice/stt', { audio: 'A'.repeat(100), format: 'webm', lang: 'fr' });
+    if (stt.status === 400 && stt.data?.code === 'audio_too_short') {
+      console.log('  POST /api/voice/stt OK (400 audio_too_short)');
+      ok++;
+    } else if (stt.status === 401) {
+      console.log('  POST /api/voice/stt OK (401, auth required)');
+      ok++;
+    } else if (stt.status === 503) {
+      console.log('  POST /api/voice/stt OK (503, voice disabled)');
+      ok++;
+    } else {
+      console.log('  POST /api/voice/stt UNEXPECTED', stt.status, stt.data);
+      fail++;
+    }
+  } catch (e) {
+    console.log('  POST /api/voice/stt ERROR', e.message);
+    fail++;
+  }
+
+  // STT with large payload (~130KB base64 like 8s recording): must NOT return EMPTY_RESPONSE
+  try {
+    const large = await post('/api/voice/stt', { audio: 'A'.repeat(175000), format: 'webm', lang: 'fr' });
+    if (large.status >= 400 && large.data && typeof large.data === 'object') {
+      console.log('  POST /api/voice/stt (large) OK (got JSON response, no empty)');
+      ok++;
+    } else if (large.status === 401) {
+      console.log('  POST /api/voice/stt (large) OK (401)');
+      ok++;
+    } else {
+      console.log('  POST /api/voice/stt (large) UNEXPECTED', large.status, typeof large.data);
+      fail++;
+    }
+  } catch (e) {
+    console.log('  POST /api/voice/stt (large) ERROR', e.message);
     fail++;
   }
 

@@ -51,29 +51,30 @@ export default function ChatRealtime() {
   const stopEvaRef = useRef(null);
   const baseInstructionsRef = useRef(null);
   const audioContextRef = useRef(null);
+  const transcriptRef = useRef([]);
+  transcriptRef.current = transcript;
 
   // Load Settings so Realtime uses same AI choice as Alice (Claude → Alice pipeline, GPT → Realtime API)
   useEffect(() => {
     let cancelled = false;
     api.getSettings().then((s) => {
       if (cancelled) return;
-      const p = s?.ai_provider?.provider ?? s?.ai_provider ?? 'claude';
-      setAiProvider(p === 'gpt' ? 'gpt' : 'claude');
-    }).catch(() => { if (!cancelled) setAiProvider('claude'); });
+      const p = s?.ai_provider?.provider ?? s?.ai_provider ?? 'gpt';
+      setAiProvider(p === 'claude' ? 'claude' : 'gpt');
+    }).catch(() => { if (!cancelled) setAiProvider('gpt'); });
     return () => { cancelled = true; };
   }, []);
-
-  // Client-side: cancel immediately if this might need web search — no compromise, never play wrong answer first
-  const MIGHT_NEED_WEB = /\b(?:vols?|flights?|actualit[eé]s?|quoi\s*de\s*neuf|latest\s*news?|donne[s]?\s*moi\s*(?:les\s*)?vols?|prochains?\s*vols?|cherche\s*(?:sur\s*)?(?:le\s*)?web|prix\s*(?:des?\s*)?vols?|situation\s*actuelle|quoi\s+la\s+situation|la\s+situation|situation\s+[aà]|il\s*se\s*passe\s*quoi|quoi\s*à\s+(?:dubai|duba[iï]|paris|new\s*york|london|shanghai))\b|situation.*(?:dubai|duba[iï]|paris|new\s*york|london)|\b(?:dubai|duba[iï]|paris|new\s*york|london|shanghai)\b/i;
 
   const STOP_PHRASES = [
     'stop', 'arrête', 'tais-toi', 'tais toi', 'tais-toi.', 'tais toi.',
     'stop talking', 'stop talking.', 'be quiet', 'silence', 'chut',
-    'arrete', 'arrête de parler', 'stop de parler',
+    'arrete', 'arrête de parler', 'stop de parler', 'tête à toi',
   ];
   const isStopCommand = (text) => {
     const t = (text || '').toLowerCase().trim().replace(/[.!?]+$/, '');
-    return STOP_PHRASES.some((p) => t === p || t.endsWith(' ' + p) || t.startsWith(p + ' '));
+    if (STOP_PHRASES.some((p) => t === p || t.endsWith(' ' + p) || t.startsWith(p + ' '))) return true;
+    // Transcription often mishears "tais-toi" as "tête à toi", "tay twa", etc.
+    return /^(tais?[- ]?toi|t[ea]te?\s*[aà]\s*toi|tay\s*twa|arr[eê]te?|stop)\s*\.?$/i.test(t);
   };
   outputDeviceRef.current = outputDeviceId;
   useEffect(() => {
@@ -221,6 +222,10 @@ export default function ChatRealtime() {
       dc.addEventListener('message', (ev) => {
         try {
           const event = JSON.parse(ev.data);
+          // Barge-in: as soon as user starts speaking, stop EVA (no need to wait for "tais-toi" transcript)
+          if (event.type === 'input_audio_buffer.speech_started') {
+            stopEvaSpeaking();
+          }
           if (event.type === 'input_audio_buffer.speech_stopped') {
             setIsAwaitingEva(true);
           }
@@ -241,30 +246,29 @@ export default function ChatRealtime() {
               stopEvaSpeaking();
             } else {
               setIsAwaitingEva(true);
-            }
-            if (MIGHT_NEED_WEB.test(txt)) {
-              // Tavily voice — no compromise: cancel auto-response immediately, wait for web results, then answer
+              // LLM-based web-assist: call for every non-trivial message (backend decides if search needed)
               const base = baseInstructionsRef.current;
               const dc = dataChannelRef.current;
-              if (base && dc?.readyState === 'open') {
+              if (base && dc?.readyState === 'open' && txt.length >= 4) {
                 stopEvaSpeaking();
                 (async () => {
                   try {
                     const token = localStorage.getItem('eva_token') || sessionStorage.getItem('eva_token');
+                    const hist = (transcriptRef.current || []).map((m) => ({ role: m.role, content: m.text || m.content }));
                     const r = await fetch(`${API_BASE}/realtime/web-assist`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-                      body: JSON.stringify({ transcript: txt }),
+                      body: JSON.stringify({ transcript: txt, history: hist }),
                     });
                     const { webContext } = await r.json().catch(() => ({}));
                     const d = dataChannelRef.current;
                     if (d?.readyState !== 'open') return;
                     const instructions = webContext ? base + webContext : base;
-                    d.send(JSON.stringify({ type: 'response.create', instructions }));
+                    d.send(JSON.stringify({ type: 'response.create', response: { instructions } }));
                   } catch (_) {
                     const d = dataChannelRef.current;
                     if (d?.readyState === 'open' && base) {
-                      d.send(JSON.stringify({ type: 'response.create', instructions: base }));
+                      d.send(JSON.stringify({ type: 'response.create', response: { instructions: base } }));
                     }
                   }
                 })();

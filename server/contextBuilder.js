@@ -164,7 +164,9 @@ async function fetchCalendar(ownerId, userMessage, isFlightIntent) {
 async function fetchWebSearch(userMessage) {
   try {
     const ws = require('./services/webSearchService');
-    const wantsWebSearch = ws && ws.needsWebSearch && ws.needsWebSearch(userMessage);
+    // Broad trigger: search for almost everything (like ChatGPT/Gemini)
+    // Only skip greetings, acks, and pure personal-data questions
+    const wantsWebSearch = ws && ws.shouldWebSearch && ws.shouldWebSearch(userMessage);
     if (!wantsWebSearch) return { wanted: false, results: null };
 
     const mcpClient = require('./services/mcpClient');

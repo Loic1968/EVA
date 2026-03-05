@@ -79,26 +79,17 @@ const EVA_SYSTEM_NATURAL = `You are EVA, a helpful AI assistant made by HaliSoft
 
 Match the user's language (French by default). Be concise and natural.
 
-## MANDATORY RULE: ALWAYS USE web_search FOR CURRENT INFO
-**You MUST call web_search BEFORE answering** any question about:
-- News, actualités, "quoi de neuf", "what's happening", current events
-- Weather, météo, temperatures
-- Prices, flights, stocks, sports scores
-- Any factual question about the real world (politics, economy, people, places)
-- Anything where today's date matters
+## WEB SEARCH RESULTS
+If a "## Web search" section appears below, use those results to answer. Synthesize a clear, detailed response (like ChatGPT). Cite sources: "D'après [Source], ...". Don't just list links — give a real answer with key facts and numbers.
 
-**NEVER answer these from your training data.** Your knowledge is outdated. Call web_search FIRST, then synthesize the results into a clear answer with sources.
-
-The ONLY questions you answer WITHOUT web_search: greetings, personal questions about the user (use their data below), math, coding, general knowledge that doesn't change.
+If web results are present but don't fully answer the question, say what you found and note what's missing.
 
 ## OTHER TOOLS
+- **web_search**: Search the web for real-time info. Use when the user asks something not covered by the web results below, or when you need more specific data.
 - **gmail_search**: Search user's emails when asked about messages, contacts, confirmations.
 - **calendar_search**: Search calendar for meetings, events, schedule.
 - **doc_search**: Search uploaded documents for contracts, tickets, personal info.
 - **save_memory**: Save facts the user shares about themselves.
-
-## ANSWERING WITH WEB RESULTS
-Synthesize a clear, informative answer (like ChatGPT). Cite sources: "D'après [Source], ...". Don't just list links — give a real, detailed answer with key facts.
 
 The user's personal data (emails, documents, calendar) may appear below as ## sections — use them. Never invent facts.`;
 
@@ -675,26 +666,15 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
     messages,
     tools: ownerId ? filterToolsBySettings(buildAllTools(CALENDAR_TOOLS), { isAssistantMode, isMemoryLearning, isVoiceSafeMode, isVoiceMemoryWrite, isVoice }) : [],
   };
-  console.log(`[EVA Chat] Tools sent: ${createOptions.tools.length} (${createOptions.tools.map(t => t.name).join(', ')})`);
-
-  // Force web_search tool call for current-info questions (Claude with thinking tends to skip tools)
-  const hasWebTool = createOptions.tools.some(t => t.name === 'web_search');
-  const ws = getWebSearchService();
-  const forceWebSearch = hasWebTool && ws && ws.needsWebSearch(userMessage);
-  if (forceWebSearch) {
-    console.log('[EVA Chat] Forcing web_search tool call (detected current-info question)');
+  if (process.env.EVA_DEBUG === 'true') {
+    console.log(`[EVA Chat] Tools sent: ${createOptions.tools.length} (${createOptions.tools.map(t => t.name).join(', ')})`);
   }
 
+  // Web search is now handled by contextBuilder pre-injection (shouldWebSearch).
+  // No need to force tool_choice — results are already in the system prompt.
   if (useThinking) {
-    // tool_choice is not compatible with thinking — disable thinking when forcing tool
-    if (forceWebSearch) {
-      createOptions.tool_choice = { type: 'tool', name: 'web_search' };
-      // No thinking when forcing tool — thinking makes Claude skip tools
-      createOptions.temperature = 0.3;
-    } else {
-      createOptions.thinking = { type: 'enabled', budget_tokens: 2048 };
-      createOptions.temperature = 1; // Required when thinking is enabled (Anthropic API)
-    }
+    createOptions.thinking = { type: 'enabled', budget_tokens: 2048 };
+    createOptions.temperature = 1; // Required when thinking is enabled (Anthropic API)
   } else {
     const tempRaw = process.env.EVA_TEMP;
     const temp = Number(tempRaw);
@@ -740,10 +720,6 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
           max_tokens: 4096,
         };
         if (oaiTools && oaiTools.length > 0) completionOpts.tools = oaiTools;
-        // Force web_search on first round for current-info questions
-        if (round === 0 && hasWebTool && ws && ws.needsWebSearch(userMessage)) {
-          completionOpts.tool_choice = { type: 'function', function: { name: 'web_search' } };
-        }
         const completion = await openai.chat.completions.create(completionOpts);
         lastCompletion = completion;
         totalInput += completion.usage?.prompt_tokens || 0;

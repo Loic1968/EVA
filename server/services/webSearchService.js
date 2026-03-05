@@ -102,7 +102,8 @@ const QUOI_DE_NEUF_PLACE = /quoi\s*de\s*neuf\s+(?:sur|à|a|in)\s+([a-zàâäéè
 const WHATS_NEW_PLACE = /what(?:'s|\s+is)\s+(?:new|happening)\s+in\s+([a-zàâäéèêëïîôùûüç\s-]+?)(?:\s+today|\.|$)/i;
 
 /**
- * Extract search query from user message. For "what up in X" type → "X news today" for better results.
+ * Extract search query from user message.
+ * Optimizes queries: strips filler, adds context for city/weather/airport patterns.
  */
 function extractQuery(message) {
   const t = (message || '').trim();
@@ -119,30 +120,54 @@ function extractQuery(message) {
     }
   }
 
-  // "what up in dubai", "quoi de neuf à Paris", "quoi de neuf sur Lyon" → "X news today"
+  // Optimized queries for known patterns
   if (city && /what\s*up|whats?\s*up|quoi\s*de\s*neuf|what['']?s\s*(going\s*on|new|happening)/i.test(t)) {
     return `${city} news today current events`;
   }
-  // "il fait quel temps à Shanghai", "weather in Dubai" → "Shanghai weather"
   if (city && WEATHER_KEYWORDS.test(t)) {
     return `${city} weather forecast today`;
   }
-  // "wt dubai airport", "statut aéroport Dubai" → "Dubai airport status"
   if (city && AIRPORT_KEYWORDS.test(t)) {
     return `${city} airport status today`;
   }
 
-  const cleaned = t
-    .replace(/^(dis?-?moi|tell\s*me|cherche|search|find|donne[rz]?\s*moi|donnes?\s*moi|give\s*me)\s+/i, '')
-    .replace(/\s+(s['']?il\s*te\s*pla[iî]t|please|stp)\s*$/i, '')
+  // Generic cleanup: strip filler words, keep the meaningful query
+  let cleaned = t
+    .replace(/^(?:dis?-?moi|tell\s*me|cherche|search|find|donne[rz]?\s*moi|donnes?\s*moi|give\s*me|c['']?est\s*quoi|qu['']?est[- ]ce\s*que?|what\s*(?:is|are)|quel(?:le)?s?\s*(?:est|sont)|combien|how\s*(?:much|many))\s+/i, '')
+    .replace(/\s+(?:s['']?il\s*te\s*pla[iî]t|please|stp|svp)\s*$/i, '')
+    .replace(/^\s*(?:je\s*(?:veux|voudrais|voulais)\s*(?:savoir|conna[iî]tre)|i\s*(?:want|need)\s*(?:to\s*know)?)\s*/i, '')
     .trim();
+
+  // For questions, append "2026" to get recent results
+  if (/\?$/.test(cleaned) || /combien|prix|price|score|r[eé]sultat|result|classement|ranking/i.test(cleaned)) {
+    cleaned = cleaned.replace(/\?$/, '').trim();
+  }
+
   return cleaned || t;
+}
+
+/**
+ * Broad web search trigger — like ChatGPT/Gemini.
+ * Searches for EVERYTHING except: greetings, acks, personal-data-only questions.
+ * Used by contextBuilder for pre-injection.
+ */
+const SKIP_WEB_SEARCH = /^(?:bonjour|bonsoir|salut|hello|hi|hey|coucou|yo|merci|thanks|thank you|ok|oui|non|yes|no|d['']accord|cool|super|parfait|bien|genial|g[eé]nial|nice|got it|compris|understood|au revoir|bye|bonne nuit|good night|a\+|à\+|a demain|à demain|comment tu t['']appelles|how are you|[cç]a va|ça roule|tu vas bien|je vais bien|je m['']appelle|my name is|rappelle[- ]?(?:toi|moi)|remember|souviens[- ]?toi|note que|save|sauvegarde|enregistre|retiens)[\s!?.]*$/i;
+const PERSONAL_DATA_ONLY = /^(?:(?:montre|show|affiche|donne|lis|read|check|consulte|ouvre|open|regarde|look)\s+)?(?:mes?\s+|my\s+)(?:emails?|mails?|messages?|agenda|calendrier|calendar|rendez[- ]?vous|meetings?|events?|documents?|fichiers?|files?|m[eé]moire|memory|donn[eé]es?|data|param[eè]tres?|settings?)[\s!?.]*$/i;
+
+function shouldWebSearch(message) {
+  if (!message || typeof message !== 'string') return false;
+  const t = message.trim();
+  if (t.length < 8) return false; // too short
+  if (SKIP_WEB_SEARCH.test(t)) return false;
+  if (PERSONAL_DATA_ONLY.test(t)) return false;
+  return true;
 }
 
 module.exports = {
   search,
   formatForContext,
   needsWebSearch,
+  shouldWebSearch,
   extractQuery,
   isNewsQuery,
   isAvailable: () => !!(process.env.TAVILY_API_KEY || '').trim(),

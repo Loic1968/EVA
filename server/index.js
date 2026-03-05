@@ -205,11 +205,13 @@ console.log(`[EVA] listening on ${HOST}:${PORT}${voice}${distOk ? ` (frontend: $
   }
 
   // MCP Hub — connect to platform MCP server for extended tools
+  // Always connect at boot unless explicitly disabled via env var.
+  // The DB feature flag is for runtime toggling only, not for blocking boot connection.
   if (process.env.EVA_MCP_ENABLED !== 'false') {
     try {
-      const { initMcp } = require('./services/toolOrchestrator');
       const mcpClient = require('./services/mcpClient');
-      initMcp().then(ok => {
+      // Direct connect (bypass DB flag — boot should always try to connect)
+      mcpClient.connect().then(ok => {
         if (ok) {
           const status = mcpClient.getStatus();
           console.log(`[EVA] ✅ MCP Hub connected — ${status.tools_count} tools available`);

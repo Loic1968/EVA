@@ -1016,21 +1016,27 @@ router.get('/mcp/status', async (req, res) => {
   }
 });
 
-// Trigger MCP connection (call initMcp). Use when "MCP Hub" flag is ON but not connected.
+// Trigger MCP connection — bypasses feature flag check (explicit user action).
 router.post('/mcp/connect', async (req, res) => {
   try {
-    const { initMcp } = require('../services/toolOrchestrator');
-    const ok = await initMcp();
     const mcpClient = require('../services/mcpClient');
+    // Direct connect (bypass initMcp flag check — user explicitly requested connection)
+    const ok = await mcpClient.connect();
     const status = mcpClient.getStatus();
     const tools = status.connected ? mcpClient.listTools() : [];
+    // Also enable the flag so it stays connected on next restart
+    try {
+      const featureFlagService = require('../services/featureFlagService');
+      await featureFlagService.setFlag('mcp_enabled', true);
+      featureFlagService.invalidateCache();
+    } catch (_) {}
     res.json({
       connected: status.connected,
       triggered: true,
       error: status.error || null,
       tools_count: tools.length,
       tools: tools.map(t => ({ name: t.name, description: t.description })),
-      message: ok ? 'MCP Hub connected' : 'MCP Hub not available (check mcp-hub and feature flag)',
+      message: ok ? 'MCP Hub connected' : 'MCP Hub not available (check server logs)',
     });
   } catch (e) {
     res.json({

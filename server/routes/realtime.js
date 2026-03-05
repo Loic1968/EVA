@@ -78,12 +78,14 @@ Speech recognition often mishears similar-sounding words. When a sentence is gra
 - NEVER say nonsensical phrases ("Elle nous baille", fragments). If unsure → "Peux-tu répéter ?"
 - "C'est quoi le problème?", "ça marche pas", "marche pas" → Réponds: "Désolée, j'ai peut-être mal compris. Dis-moi ce que tu cherches — actualités, Dubaï, vols — ou essaie en chat."
 
-## How to Answer
-1. Parse: What is the user asking? (person, topic, date, action)
-2. Search: Emails, documents, calendar below. Match names, subjects, dates.
-3. Found → Give the specific answer. Be concrete.
-4. Not found (vol, billet, Shanghai, réservation) → "Je n'ai pas cette info dans mes données. Connecte Gmail et Google Calendar (Paramètres > Données), ou uploade ton billet dans Documents." Jamais "vérifie sur le site de la compagnie". Propose l'action concrète.
-5. Never vague. Never "I understand" as opener — go straight to the answer.
+## How to Answer — CRITICAL: READ YOUR DATA
+**You HAVE data about the user injected below** (## USER PROFILE, ## MEMORIES, ## EMAILS, ## DOCUMENTS, ## CALENDAR). When the user asks a personal question:
+1. **ALWAYS check ALL data sections below FIRST** — name, address, meetings, emails, documents.
+2. Found → Give the specific answer. Be concrete. Quote the source.
+3. Not found after checking ALL sections → "Je n'ai pas trouvé cette info dans mes données actuelles."
+4. **NEVER say "je n'ai pas accès"** — you DO have access, the data is RIGHT HERE in your instructions.
+5. **NEVER say "je ne peux pas deviner"** — the data is in your context, READ IT.
+6. Never vague. Go straight to the answer.
 
 ## YOUR DATA SOURCES — use ALL of them when relevant
 You have access to 4 data sources injected below. USE THEM proactively:
@@ -152,7 +154,7 @@ async function buildInstructionsWithContext(ownerId) {
 
   try {
     const owner = ownerId
-      ? (await db.query('SELECT id FROM eva.owners WHERE id = $1', [ownerId])).rows[0]
+      ? (await db.query('SELECT id, email, display_name FROM eva.owners WHERE id = $1', [ownerId])).rows[0]
       : await db.getOrCreateOwner(DEFAULT_OWNER_EMAIL, 'Loic Hennocq');
     if (!owner) return { instructions, transcriptionLang, turnEagerness };
 
@@ -171,7 +173,15 @@ async function buildInstructionsWithContext(ownerId) {
 
     const now = new Date();
     const dateTimeStr = now.toLocaleString(chatLang === 'en' ? 'en-GB' : 'fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-    instructions += `\n---\n## DATE ET HEURE ACTUELLES / CURRENT DATE & TIME\nMaintenant: ${dateTimeStr}. Réponds avec cette info pour "Quelle heure est-il?", "On est quel jour?", "What time is it?", "What's the date?".\n`;
+    instructions += `\n---\n## DATE ET HEURE ACTUELLES / CURRENT DATE & TIME\nMaintenant: ${dateTimeStr}.\n`;
+
+    // ── USER PROFILE — inject name/email so EVA knows who the user is ──
+    if (owner.display_name || owner.email) {
+      instructions += `\n---\n## USER PROFILE\n`;
+      if (owner.display_name) instructions += `Prénom / Name: ${owner.display_name}\n`;
+      if (owner.email) instructions += `Email: ${owner.email}\n`;
+      instructions += `"Comment tu t'appelles?" / "Je m'appelle comment?" / "C'est quoi mon nom?" → Réponds avec le nom ci-dessus.\n`;
+    }
 
     // Memories — memory_items + feedback + legacy (Voice can read, cannot save — use Chat to add)
     try {
@@ -247,7 +257,7 @@ async function buildInstructionsWithContext(ownerId) {
       }
       if (docs.length > 0) {
         console.log(`[EVA Realtime] Injected ${docs.length} documents`);
-        instructions += '\n---\n## DOCUMENTS — TU AS ACCÈS : lis et réponds à partir du contenu ci-dessous (flights, tickets, Shanghai)\n\n';
+        instructions += '\n---\n## DOCUMENTS — CONTENU DES FICHIERS DE L\'UTILISATEUR (adresse, contrats, billets, etc.)\nCES DOCUMENTS CONTIENNENT DES INFOS PERSONNELLES. Utilise-les pour répondre aux questions: "mon adresse?", "j\'habite où?", "mon contrat?", etc.\n\n';
         docs.forEach((d, i) => {
           const text = (d.content_text || d.content || '').slice(0, 2500);
           instructions += `[Doc ${i + 1}] ${d.filename}:\n${text}\n\n`;
@@ -319,6 +329,12 @@ async function buildInstructionsWithContext(ownerId) {
   } catch (err) {
     console.warn('[EVA Realtime] Context injection failed:', err.message);
   }
+
+  // Debug: log prompt size so we can monitor if it's too large for Realtime
+  const charCount = instructions.length;
+  const approxTokens = Math.round(charCount / 3.5);
+  console.log(`[EVA Realtime] Prompt size: ${charCount} chars (~${approxTokens} tokens)`);
+
   return { instructions, transcriptionLang, turnEagerness };
 }
 

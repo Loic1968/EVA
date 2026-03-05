@@ -676,9 +676,25 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
     tools: ownerId ? filterToolsBySettings(buildAllTools(CALENDAR_TOOLS), { isAssistantMode, isMemoryLearning, isVoiceSafeMode, isVoiceMemoryWrite, isVoice }) : [],
   };
   console.log(`[EVA Chat] Tools sent: ${createOptions.tools.length} (${createOptions.tools.map(t => t.name).join(', ')})`);
+
+  // Force web_search tool call for current-info questions (Claude with thinking tends to skip tools)
+  const hasWebTool = createOptions.tools.some(t => t.name === 'web_search');
+  const ws = getWebSearchService();
+  const forceWebSearch = hasWebTool && ws && ws.needsWebSearch(userMessage);
+  if (forceWebSearch) {
+    console.log('[EVA Chat] Forcing web_search tool call (detected current-info question)');
+  }
+
   if (useThinking) {
-    createOptions.thinking = { type: 'enabled', budget_tokens: 2048 };
-    createOptions.temperature = 1; // Required when thinking is enabled (Anthropic API)
+    // tool_choice is not compatible with thinking — disable thinking when forcing tool
+    if (forceWebSearch) {
+      createOptions.tool_choice = { type: 'tool', name: 'web_search' };
+      // No thinking when forcing tool — thinking makes Claude skip tools
+      createOptions.temperature = 0.3;
+    } else {
+      createOptions.thinking = { type: 'enabled', budget_tokens: 2048 };
+      createOptions.temperature = 1; // Required when thinking is enabled (Anthropic API)
+    }
   } else {
     const tempRaw = process.env.EVA_TEMP;
     const temp = Number(tempRaw);
@@ -724,6 +740,10 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
           max_tokens: 4096,
         };
         if (oaiTools && oaiTools.length > 0) completionOpts.tools = oaiTools;
+        // Force web_search on first round for current-info questions
+        if (round === 0 && hasWebTool && ws && ws.needsWebSearch(userMessage)) {
+          completionOpts.tool_choice = { type: 'function', function: { name: 'web_search' } };
+        }
         const completion = await openai.chat.completions.create(completionOpts);
         lastCompletion = completion;
         totalInput += completion.usage?.prompt_tokens || 0;

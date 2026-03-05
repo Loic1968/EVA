@@ -79,9 +79,18 @@ const EVA_SYSTEM_NATURAL = `You are EVA, a helpful AI assistant made by HaliSoft
 
 Match the user's language (French by default). Be concise and natural.
 
-The user's personal data (emails, documents, calendar, web search results) may appear below as ## sections — use them to answer. Never invent facts. If data is missing, say so briefly.
+## TOOLS — USE THEM PROACTIVELY
+You have tools: web_search, gmail_search, calendar_search, doc_search, save_memory, create_calendar_event, create_draft.
+- **web_search**: Use IMMEDIATELY when the user asks ANYTHING requiring current/real-time info: news, weather, prices, flights, "quoi de neuf", sports, stocks, events, or ANY factual question where your knowledge might be outdated. Do NOT say "je n'ai pas accès à internet" — you DO have web_search. ALWAYS search first, then answer with sources.
+- **gmail_search**: Search user's emails when asked about messages, contacts, confirmations.
+- **calendar_search**: Search calendar for meetings, events, schedule.
+- **doc_search**: Search uploaded documents for contracts, tickets, personal info.
+- **save_memory**: Save facts the user shares about themselves.
 
-You can save facts (save_memory) when the user tells you something about themselves, and create calendar events when asked.`;
+## ANSWERING WITH WEB RESULTS
+When you get web_search results: synthesize a clear, informative answer (like ChatGPT would). Cite sources naturally: "D'après [Source], ...". Don't just list links — give a real answer.
+
+The user's personal data (emails, documents, calendar) may appear below as ## sections — use them to answer. Never invent facts.`;
 
 // ── Legacy prompt (kept for EVA_LEGACY_PROMPT=true rollback) ──
 const ANTI_HALLUCINATION = `# RÈGLES ABSOLUES (vérifier AVANT chaque réponse)
@@ -613,30 +622,9 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
     }
   }
 
-  // Web search (Tavily) — when user asks for latest news, current info, etc.
+  // Web search now handled by web_search tool (Claude decides when to search, like ChatGPT)
+  // No more regex-based pre-injection — the model calls web_search proactively.
   let webContext = '';
-  if (isSmartContext && !isMinimalMessage(userMessage)) {
-    let ws;
-    try {
-      ws = getWebSearchService();
-      if (ws && ws.isAvailable() && ws.needsWebSearch(userMessage)) {
-        const query = ws.extractQuery(userMessage) || userMessage;
-        const topic = (ws.isNewsQuery && ws.isNewsQuery(userMessage)) ? 'news' : 'general';
-        if (process.env.EVA_DEBUG === 'true') console.log('[EVA Chat] Web search query:', query, 'topic:', topic);
-        const data = await ws.search(query, { maxResults: 5, topic });
-        const formatted = ws.formatForContext(data);
-        if (formatted) webContext = '\n\n' + formatted;
-      } else if (ws && ws.needsWebSearch(userMessage) && !ws.isAvailable()) {
-        webContext = '\n\n## Web search\nTAVILY_API_KEY non configurée. Dis: "La recherche web n\'est pas configurée (clé Tavily manquante). Ajoute TAVILY_API_KEY dans eva/.env."';
-      }
-    } catch (err) {
-      console.warn('[EVA Chat] Web search failed:', err.message, err.response?.status, err.response?.data || '');
-      const w = getWebSearchService();
-      if (w && w.needsWebSearch(userMessage)) {
-        webContext = '\n\n## Web search (erreur)\nLa recherche Tavily a échoué. Réponds: "La recherche web a rencontré un problème (réessaie dans un moment)." Ne dis pas "je n\'ai pas accès au Web".';
-      }
-    }
-  }
 
   const now = new Date();
   const dateTimeStr = now.toLocaleString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });

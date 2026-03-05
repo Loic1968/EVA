@@ -19,7 +19,24 @@ const TOOL_TIMEOUT_MS = Number(process.env.EVA_TOOL_TIMEOUT_MS) || 15000;
 // ---------------------------------------------------------------------------
 
 const ORCHESTRATOR_TOOLS = [
-  // web_search removed — now handled by MCP Hub (mcp_web_search / mcp_web_search_news)
+  {
+    name: 'web_search',
+    description:
+      'Search the web for real-time information. Use this tool PROACTIVELY whenever the user asks about: ' +
+      'current events, news, weather, prices, flights, sports scores, stock prices, ' +
+      '"quoi de neuf", "what\'s happening", any question requiring up-to-date info, ' +
+      'or ANY topic where your training data might be outdated. ' +
+      'Also use when user says "cherche sur internet", "google ça", "regarde en ligne". ' +
+      'Returns web results with titles, URLs, and content snippets. ALWAYS cite sources.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Search query in the best language for results (usually English for global topics). E.g. "Shanghai news today", "Dubai weather", "flights Paris Tokyo March 2026"' },
+        topic: { type: 'string', description: 'news (for current events/actualités) or general (weather, prices, flights, etc.). Default: general' },
+      },
+      required: ['query'],
+    },
+  },
   {
     name: 'gmail_search',
     description:
@@ -101,6 +118,8 @@ async function _dispatchTool(toolName, input, ownerId) {
     if (mcpResult) return mcpResult;
   }
   switch (toolName) {
+    case 'web_search':
+      return _execWebSearch(input);
     case 'gmail_search':
       return _execGmailSearch(input, ownerId);
     case 'calendar_search':
@@ -116,6 +135,36 @@ async function _dispatchTool(toolName, input, ownerId) {
 async function _dispatchViaMcp(toolName, input, ownerId) {
   try {
     switch (toolName) {
+      case 'web_search': {
+        const topic = input.topic || 'general';
+        const mcpTool = topic === 'news' ? 'web.search_news' : 'web.search';
+        const result = await mcpClient.callTool(mcpTool, {
+          query: input.query, max_results: 5, topic,
+          time_range: topic === 'news' ? 'day' : undefined,
+        });
+        if (!result.ok) return null;
+        let results = result.data?.results || [];
+        // Fallback: if news results are irrelevant (global news for a local query), retry with general
+        if (topic === 'news' && results.length > 0) {
+          const qLower = (input.query || '').toLowerCase();
+          const relevant = results.some(r => {
+            const text = ((r.title || '') + ' ' + (r.content || '')).toLowerCase();
+            return qLower.split(/\s+/).filter(w => w.length > 3).some(w => text.includes(w));
+          });
+          if (!relevant) {
+            const r2 = await mcpClient.callTool('web.search', { query: input.query, max_results: 5 });
+            if (r2.ok && r2.data?.results?.length > 0) results = r2.data.results;
+          }
+        }
+        return {
+          ok: true,
+          data: results.map(r => ({
+            title: r.title || '', url: r.url || '',
+            content: (r.content || '').slice(0, 2000),
+          })),
+          source: 'web_search (mcp)',
+        };
+      }
       case 'gmail_search': {
         const result = await mcpClient.callTool('gmail.search', {
           owner_id: ownerId, query: input.query, limit: input.limit || 8, folder: input.folder || 'all',
@@ -163,6 +212,46 @@ function _timeout(ms, toolName) {
   return new Promise((_, reject) =>
     setTimeout(() => reject(new Error(`${toolName} timed out after ${ms}ms`)), ms)
   );
+}
+
+// -- Web search (direct Tavily/DuckDuckGo fallback when MCP not connected) --
+async function _execWebSearch(input) {
+  try {
+    const ws = require('./webSearchService');
+    if (!ws.isAvailable()) {
+      // Try DuckDuckGo via MCP hub tools (they have DDG fallback built-in)
+      return { ok: false, error: 'Web search not available (no TAVILY_API_KEY). Configure it in Settings.', source: 'web_search' };
+    }
+    const topic = input.topic || 'general';
+    const data = await ws.search(input.query, {
+      maxResults: 5,
+      topic,
+      timeRange: topic === 'news' ? 'day' : null,
+    });
+    let results = data?.results || [];
+    // Same news→general fallback as MCP path
+    if (topic === 'news' && results.length > 0) {
+      const qLower = (input.query || '').toLowerCase();
+      const relevant = results.some(r => {
+        const text = ((r.title || '') + ' ' + (r.content || '')).toLowerCase();
+        return qLower.split(/\s+/).filter(w => w.length > 3).some(w => text.includes(w));
+      });
+      if (!relevant) {
+        const data2 = await ws.search(input.query, { maxResults: 5, topic: 'general' });
+        if (data2?.results?.length > 0) results = data2.results;
+      }
+    }
+    return {
+      ok: true,
+      data: results.map(r => ({
+        title: r.title || '', url: r.url || '',
+        content: (r.content || '').slice(0, 2000),
+      })),
+      source: 'web_search (tavily)',
+    };
+  } catch (err) {
+    return { ok: false, error: `Web search failed: ${err.message}`, source: 'web_search' };
+  }
 }
 
 // -- Gmail search --

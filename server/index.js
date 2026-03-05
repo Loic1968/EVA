@@ -106,7 +106,12 @@ app.get('/health', async (req, res) => {
     } catch (_) {}
     const tavily = !!(ws && ws.isAvailable());
     const anthropic = !!((process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY) || '').trim();
-    res.json({ status: 'ok', app: 'eva', db: 'ok', tavily, anthropic, timestamp: new Date().toISOString() });
+    let mcp = { connected: false };
+    try {
+      const mcpClient = require('./services/mcpClient');
+      mcp = mcpClient.getStatus();
+    } catch (_) {}
+    res.json({ status: 'ok', app: 'eva', db: 'ok', tavily, anthropic, mcp, timestamp: new Date().toISOString() });
   } catch (e) {
     console.error('[EVA] health check failed:', e.message);
     res.status(503).json({ status: 'error', app: 'eva', db: 'fail', error: e.message });

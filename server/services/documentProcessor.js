@@ -111,7 +111,8 @@ async function extractViaClaude(buffer, filename = '', docType, mediaType) {
       : { type: 'image', source: { type: 'base64', media_type: mediaType || 'image/jpeg', data: base64 } };
     const response = await client.messages.create(
       {
-        model: process.env.EVA_DOCUMENT_MODEL || process.env.EVA_CHAT_MODEL || 'claude-sonnet-4-20250514',
+        model: process.env.EVA_DOCUMENT_MODEL || 'claude-sonnet-4-20250514',
+        // Note: EVA_CHAT_MODEL is intentionally NOT used here — it may be an OpenAI model (gpt-4o-mini)
         max_tokens: 16000,
         messages: [{ role: 'user', content: [contentType, { type: 'text', text: prompt }] }],
       },
@@ -122,9 +123,11 @@ async function extractViaClaude(buffer, filename = '', docType, mediaType) {
     if (!text) throw new Error('Claude returned empty response');
     return text;
   } catch (e) {
-    console.warn('[DocumentProcessor] Claude extraction failed:', e.message);
+    const errBody = e.error?.error?.message || e.message || ‘Extraction failed’;
+    const status = e.status || e.statusCode || ‘?’;
+    console.warn(`[DocumentProcessor] Claude extraction failed (${status}):`, errBody);
     // Propagate API/configuration errors so they’re stored in document metadata for the UI
-    throw new Error(`Claude: ${(e.message || 'Extraction failed').toString()}`);
+    throw new Error(`Claude ${status}: ${errBody}`);
   }
 }
 

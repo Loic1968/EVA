@@ -1,0 +1,7 @@
+{
+  "name": "halisoft-mcp-hub",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Halisoft MCP Hub — stdio JSON-RPC 2.0 server for platform tools"
+}

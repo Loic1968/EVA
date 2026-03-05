@@ -21,10 +21,10 @@ const readline = require('readline');
 // ---------------------------------------------------------------------------
 
 const MCP_SERVER_PATH = process.env.MCP_SERVER_PATH ||
-  path.resolve(__dirname, '../../../mcp-hub/dist/core/server.js');
+  path.resolve(__dirname, '../mcp-hub/core/server.js');
 
 const MCP_PROJECT_ROOT = process.env.MCP_PROJECT_ROOT ||
-  path.resolve(__dirname, '../../../');
+  path.resolve(__dirname, '../../');
 
 const CONNECT_TIMEOUT_MS = Number(process.env.MCP_CONNECT_TIMEOUT_MS) || 10000;
 const CALL_TIMEOUT_MS    = Number(process.env.MCP_CALL_TIMEOUT_MS) || 20000;

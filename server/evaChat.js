@@ -749,9 +749,9 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
             console.log(`[toolOrchestrator] GPT ${name} → ${result.ok !== false ? '✓' : '✗'} (${ms}ms)`);
           }
           const content = (typeof result === 'string' ? result : JSON.stringify(result)).slice(0, 30000);
-          toolResults.push({ type: 'tool_result', tool_call_id: tc.id, content });
+          toolResults.push({ role: 'tool', tool_call_id: tc.id, content });
         }
-        currentOaiMessages.push({ role: 'user', content: toolResults });
+        currentOaiMessages.push(...toolResults);
         round++;
       }
 

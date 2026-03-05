@@ -482,6 +482,23 @@ router.post('/web-assist', async (req, res) => {
       if (result.ok && Array.isArray(result.data?.results) && result.data.results.length > 0) {
         results = result.data.results;
         source = 'mcp';
+        // If news results don't match query, retry with general search via MCP
+        if (topic === 'news') {
+          const queryLower = routedQuery.toLowerCase();
+          const anyRelevant = results.some(r => {
+            const text = ((r.title || '') + ' ' + (r.content || '')).toLowerCase();
+            return queryLower.split(/\s+/).filter(w => w.length > 3).some(w => text.includes(w));
+          });
+          if (!anyRelevant) {
+            console.log('[EVA Realtime] web-assist: MCP news results irrelevant, retrying with general');
+            const r2 = await mcpClient.callTool('web.search', { query: routedQuery, max_results: 5 }, {
+              actor_id: req.ownerId || 'eva-assistant', actor_role: 'platform_admin', tenant_id: null,
+            });
+            if (r2.ok && Array.isArray(r2.data?.results) && r2.data.results.length > 0) {
+              results = r2.data.results;
+            }
+          }
+        }
       }
     }
 
@@ -489,12 +506,28 @@ router.post('/web-assist', async (req, res) => {
       const ws = require('../services/webSearchService');
       if (ws?.isAvailable && ws.isAvailable()) {
         try {
+          // Try news first for news queries, but fallback to general if results look irrelevant
+          // (Tavily "news" topic returns global news even for location-specific queries like "Shanghai news")
           const data = await ws.search(routedQuery, {
             maxResults: 5,
             topic: topic === 'news' ? 'news' : 'general',
             timeRange: topic === 'news' ? 'day' : null,
           });
           results = data?.results || [];
+          // If news results don't match the query (location-specific), retry with "general"
+          if (topic === 'news' && results.length > 0) {
+            const queryLower = routedQuery.toLowerCase();
+            const anyRelevant = results.some(r => {
+              const text = ((r.title || '') + ' ' + (r.content || '')).toLowerCase();
+              // Check if any key word from the query appears in results
+              return queryLower.split(/\s+/).filter(w => w.length > 3).some(w => text.includes(w));
+            });
+            if (!anyRelevant) {
+              console.log('[EVA Realtime] web-assist: news results irrelevant, retrying with general');
+              const data2 = await ws.search(routedQuery, { maxResults: 5, topic: 'general' });
+              if (data2?.results?.length > 0) results = data2.results;
+            }
+          }
           source = 'tavily';
         } catch (e) {
           console.warn('[EVA Realtime] web-assist Tavily fallback failed:', e.message);

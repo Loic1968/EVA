@@ -13,9 +13,9 @@ function getOpenAIKey() {
 // ── Voice settings (per-user, from DB) ──
 const VOICE_DEFAULTS = {
   tts_model: 'tts-1-hd',    // HD for quality (was tts-1)
-  tts_voice_fr: 'nova',      // Best French female voice
-  tts_voice_en: 'shimmer',   // Warm English female voice
-  tts_speed: 1.05,           // Slightly faster = more natural conversational pace
+  tts_voice_fr: 'coral',     // Natural conversational voice (was nova — too robotic)
+  tts_voice_en: 'coral',     // Same warm voice for English (was shimmer)
+  tts_speed: 1.08,           // Slightly faster = more natural conversational pace
 };
 
 const ALLOWED_VOICES = ['alloy', 'ash', 'ballad', 'coral', 'echo', 'fable', 'nova', 'onyx', 'sage', 'shimmer', 'verse'];

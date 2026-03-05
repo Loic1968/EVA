@@ -169,80 +169,128 @@ async function buildInstructionsWithContext(ownerId) {
       }
     } catch (_) {}
 
-    // Emails — recent, structured for quick scanning
-    let gmailSync = null;
+    // ── MCP-first data injection (emails, docs, calendar, web) ──
+    const mcpClient = require('../services/mcpClient');
+    const useMcp = mcpClient.isConnected();
+
+    // Emails — MCP-first, fallback to direct service
     try {
-      gmailSync = require('../services/gmailSync');
-    } catch (_) {}
-    if (gmailSync?.getRecentEmails) {
-      const recent = await gmailSync.getRecentEmails(owner.id, 10);
-      if (recent.length > 0) {
-        console.log(`[EVA Realtime] Injected ${recent.length} emails`);
+      let emails = [];
+      if (useMcp) {
+        const result = await mcpClient.callTool('gmail.recent', { owner_id: owner.id, limit: 10, preview_chars: 5000 });
+        emails = result.ok ? (result.data?.emails || []) : [];
+        if (emails.length > 0) console.log(`[EVA Realtime] MCP: ${emails.length} emails`);
+      }
+      if (emails.length === 0) {
+        // Fallback: direct service call
+        try {
+          const gmailSync = require('../services/gmailSync');
+          if (gmailSync?.getRecentEmails) {
+            emails = await gmailSync.getRecentEmails(owner.id, 10, 5000);
+          }
+        } catch (_) {}
+      }
+      if (emails.length > 0) {
+        console.log(`[EVA Realtime] Injected ${emails.length} emails`);
         instructions += '\n\n---\n## EMAILS (use to answer questions about messages, people, dates)\n\n';
-        recent.forEach((e, i) => {
-          const date = new Date(e.received_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+        emails.forEach((e, i) => {
+          const date = e.received_at ? new Date(e.received_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
           const isSent = Array.isArray(e.labels) ? e.labels.includes('SENT') : (e.labels && /"SENT"|'SENT'/.test(String(e.labels)));
           const who = isSent ? `TO: ${Array.isArray(e.to_emails) ? e.to_emails.join(', ') : e.to_emails || '—'}` : `FROM: ${e.from_name || e.from_email}`;
           const body = ((e.body_preview || e.snippet || '').replace(/\s+/g, ' ').trim()).slice(0, 280);
           instructions += `[Email ${i + 1}] ${who} | ${(e.subject || '').slice(0, 50)} | ${date}\n${body}\n\n`;
         });
       }
+    } catch (e) {
+      console.warn('[EVA Realtime] Email injection failed:', e.message);
     }
 
-    // Documents — indexed content (flights, tickets, travel)
-    let docProcessor = null;
+    // Documents — MCP-first, fallback to direct service
     try {
-      docProcessor = require('../services/documentProcessor');
-    } catch (_) {}
-    if (docProcessor?.getRecentDocuments) {
-      const docs = await docProcessor.getRecentDocuments(owner.id, 4);
+      let docs = [];
+      if (useMcp) {
+        const result = await mcpClient.callTool('docs.list', { owner_id: owner.id, limit: 5 });
+        docs = result.ok ? (result.data?.documents || []) : [];
+        if (docs.length > 0) console.log(`[EVA Realtime] MCP: ${docs.length} documents`);
+      }
+      if (docs.length === 0) {
+        try {
+          const docProcessor = require('../services/documentProcessor');
+          if (docProcessor?.getRecentDocuments) {
+            docs = await docProcessor.getRecentDocuments(owner.id, 4);
+          }
+        } catch (_) {}
+      }
       if (docs.length > 0) {
         console.log(`[EVA Realtime] Injected ${docs.length} documents`);
         instructions += '\n---\n## DOCUMENTS — TU AS ACCÈS : lis et réponds à partir du contenu ci-dessous (flights, tickets, Shanghai)\n\n';
         docs.forEach((d, i) => {
-          instructions += `[Doc ${i + 1}] ${d.filename}:\n${(d.content_text || '').slice(0, 2500)}\n\n`;
+          const text = (d.content_text || d.content || '').slice(0, 2500);
+          instructions += `[Doc ${i + 1}] ${d.filename}:\n${text}\n\n`;
         });
       }
+    } catch (e) {
+      console.warn('[EVA Realtime] Document injection failed:', e.message);
     }
 
-    // Calendar — upcoming events
-    let calendarSync = null;
+    // Calendar — MCP-first, fallback to direct service
     try {
-      calendarSync = require('../services/calendarSync');
-    } catch (_) {}
-    if (calendarSync?.getUpcomingEvents) {
-      const events = await calendarSync.getUpcomingEvents(owner.id, 6, 7);
+      let events = [];
+      if (useMcp) {
+        const result = await mcpClient.callTool('calendar.events', { owner_id: owner.id, days: 14, limit: 10 });
+        events = result.ok ? (result.data?.events || []) : [];
+        if (events.length > 0) console.log(`[EVA Realtime] MCP: ${events.length} calendar events`);
+      }
+      if (events.length === 0) {
+        try {
+          const calendarSync = require('../services/calendarSync');
+          if (calendarSync?.getUpcomingEvents) {
+            events = await calendarSync.getUpcomingEvents(owner.id, 6, 7);
+          }
+        } catch (_) {}
+      }
       if (events.length > 0) {
         console.log(`[EVA Realtime] Injected ${events.length} calendar events`);
         instructions += '\n---\n## CALENDAR (upcoming meetings, schedule)\n\n';
         events.forEach((ev, i) => {
-          const start = new Date(ev.start_at);
-          const fmt = ev.is_all_day
+          const start = ev.start_at ? new Date(ev.start_at) : null;
+          const fmt = start && ev.is_all_day
             ? start.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })
-            : start.toLocaleString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+            : start ? start.toLocaleString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
           instructions += `[Event ${i + 1}] ${ev.title || '(no title)'} | ${fmt}${ev.location ? ` @ ${ev.location}` : ''}${ev.gmail_address ? ` [${ev.gmail_address}]` : ''}\n`;
         });
       }
+    } catch (e) {
+      console.warn('[EVA Realtime] Calendar injection failed:', e.message);
     }
 
-    // Web search (Tavily) — same as Alice: inject latest news at connection time so voice can answer "actualités", "quoi de neuf"
-    let ws = null;
+    // Web search — MCP-first, fallback to Tavily direct
     try {
-      ws = require('../services/webSearchService');
-    } catch (_) {}
-    if (ws?.isAvailable?.()) {
-      try {
-        const lang = chatLang === 'en' ? 'en' : 'fr';
-        const query = lang === 'fr' ? 'actualités principales aujourd\'hui' : 'latest world news today';
-        const data = await ws.search(query, { maxResults: 4, topic: 'news' });
-        const formatted = ws.formatForContext?.(data);
-        if (formatted) {
-          instructions += '\n---\n' + formatted.trim() + '\n';
-          console.log('[EVA Realtime] Injected web search (same as Alice)');
+      const lang = chatLang === 'en' ? 'en' : 'fr';
+      const searchQuery = lang === 'fr' ? 'actualités principales aujourd\'hui' : 'latest world news today';
+      let formatted = null;
+
+      if (useMcp) {
+        const result = await mcpClient.callTool('web.search_news', { query: searchQuery, max_results: 4 });
+        if (result.ok && result.data?.results?.length > 0) {
+          formatted = result.data.results.map(r => `- **${r.title}** (${r.url})\n  ${(r.content || '').slice(0, 300)}`).join('\n');
         }
-      } catch (e) {
-        console.warn('[EVA Realtime] Web search inject failed:', e.message);
       }
+      if (!formatted) {
+        try {
+          const ws = require('../services/webSearchService');
+          if (ws?.isAvailable?.()) {
+            const data = await ws.search(searchQuery, { maxResults: 4, topic: 'news' });
+            formatted = ws.formatForContext?.(data) || null;
+          }
+        } catch (_) {}
+      }
+      if (formatted) {
+        instructions += '\n---\n## Web search (infos à jour)\n' + formatted.trim() + '\n';
+        console.log('[EVA Realtime] Injected web search');
+      }
+    } catch (e) {
+      console.warn('[EVA Realtime] Web search inject failed:', e.message);
     }
   } catch (err) {
     console.warn('[EVA Realtime] Context injection failed:', err.message);

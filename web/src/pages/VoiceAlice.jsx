@@ -561,9 +561,18 @@ export default function VoiceAlice() {
       {/* Transcript */}
       <div className="flex-1 w-full max-w-lg mx-auto px-4 py-2 overflow-y-auto" style={{maxHeight:'38vh'}}>
         {msgs.length===0 && (
-          <p className="text-gray-400 dark:text-gray-600 text-sm text-center mt-8">
-            {mode==='ptt' ? <>Maintiens <kbd className="px-1 py-0.5 bg-gray-200 dark:bg-gray-800 rounded text-xs text-gray-500 dark:text-gray-400">Espace</kbd> ou le cercle pour parler</> : listeningStarted ? 'Parle, Alice écoute...' : 'Clique sur le cercle pour qu\'Alice t\'écoute'}
-          </p>
+          <div className="text-gray-400 dark:text-gray-600 text-sm text-center mt-8 space-y-2">
+            {mode==='ptt' ? (
+              <p>Maintiens <kbd className="px-1 py-0.5 bg-gray-200 dark:bg-gray-800 rounded text-xs text-gray-500 dark:text-gray-400">Espace</kbd> ou le cercle pour parler</p>
+            ) : listeningStarted ? (
+              <p>Parle naturellement, Alice écoute et répond automatiquement</p>
+            ) : (
+              <>
+                <p>Clique sur le cercle pour activer</p>
+                <p className="text-xs text-gray-400/60 dark:text-gray-700">Alice écoute et répond automatiquement (mains libres)</p>
+              </>
+            )}
+          </div>
         )}
         {msgs.map((m,i) => (
           <div key={i} className={`mb-2 ${m.role==='user'?'text-right':'text-left'}`}>
@@ -607,7 +616,7 @@ export default function VoiceAlice() {
         </div>
 
         <p className={`text-xs mb-3 h-5 ${isRec?'text-red-500 dark:text-red-300':isProc?'text-amber-500 dark:text-amber-300 animate-pulse':isSpk?'text-violet-500 dark:text-violet-300':'text-gray-400 dark:text-gray-600'}`}>
-          {isRec?'Enregistrement...':isProc?'Alice réfléchit...':isSpk?'Alice parle...':mode==='ptt'?'Prête.':listeningStarted?'Écoute...':'Clique pour démarrer'}
+          {isRec?'Je t\'écoute...':isProc?'Alice réfléchit...':isSpk?'Alice parle — parle pour interrompre':mode==='ptt'?'Prête.':listeningStarted?'Prête — parle quand tu veux':'Tap le cercle pour commencer'}
         </p>
 
         {/* Orb — use pointer events (works mouse + touch). VAD: first click = start listening (unlocks mic). */}
@@ -657,7 +666,7 @@ export default function VoiceAlice() {
         </div>
 
         <p className="text-[10px] text-gray-400 dark:text-gray-700 mt-3">
-          {mode==='ptt'?(isRec?'Relâche pour envoyer':'Maintiens Espace ou le cercle'):(isSpk?'Tap pour couper':isRec?'Tap pour envoyer tout de suite':listeningStarted?'Parle puis silence, ou tap pour envoyer':'Clique le cercle pour activer le micro')}
+          {mode==='ptt'?(isRec?'Relâche pour envoyer':'Maintiens pour parler'):(isSpk?'Tap pour interrompre':isRec?'Silence = envoie auto':listeningStarted?'Mains libres — parle quand tu veux':'Tap pour activer')}
         </p>
       </div>
     </div>

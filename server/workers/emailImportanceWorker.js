@@ -51,10 +51,11 @@ async function classifyEmailImportance(subject, snippet) {
   if (!key) return false;
   try {
     const Anthropic = require('@anthropic-ai/sdk');
+    const { resolveClaudeModel } = require('../config/modelConfig');
     const client = new Anthropic({ apiKey: key.trim() });
     const text = `Subject: ${(subject || '').slice(0, 200)}\nSnippet: ${(snippet || '').slice(0, 500)}`;
     const res = await client.messages.create({
-      model: process.env.EVA_CHAT_MODEL || 'claude-sonnet-4-20250514',
+      model: resolveClaudeModel(process.env.EVA_CHAT_MODEL),
       max_tokens: 20,
       messages: [{ role: 'user', content: `Is this email important or urgent? Reply only YES or NO.\n\n${text}` }],
     });

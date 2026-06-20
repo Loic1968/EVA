@@ -4,6 +4,7 @@
  */
 const Anthropic = require('@anthropic-ai/sdk');
 const OpenAI = require('openai');
+const { resolveClaudeModel } = require('./config/modelConfig');
 
 // Lazy-load gmailSync and calendarSync to avoid circular dependency issues at startup
 let gmailSync = null;
@@ -369,7 +370,7 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
   const aiProvider = opts.aiProvider === 'gpt' ? 'gpt' : 'claude';
   const model = aiProvider === 'gpt'
     ? (process.env.EVA_GPT_MODEL || 'gpt-4o')
-    : (process.env.EVA_CHAT_MODEL || 'claude-sonnet-4-20250514');
+    : resolveClaudeModel(process.env.EVA_CHAT_MODEL);
 
   let systemPrompt;
   let authErrorBlock = '';
@@ -658,7 +659,11 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
     { role: 'user', content: userMessage },
   ];
 
-  const useThinking = process.env.EVA_USE_THINKING !== 'false';
+  // Extended thinking is OFF by default: the pinned @anthropic-ai/sdk (0.32.x) predates
+  // extended thinking and cannot parse the thinking response stream from current models
+  // (claude-sonnet-4-x) — it aborts with "Premature close", breaking every Claude reply.
+  // Re-enable with EVA_USE_THINKING=true only after upgrading the SDK.
+  const useThinking = process.env.EVA_USE_THINKING === 'true';
   const createOptions = {
     model,
     max_tokens: 4096, // Must be > thinking.budget_tokens when thinking enabled
@@ -832,7 +837,7 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
  */
 async function createReplyStream(userMessage, history = [], ownerId = null, mode = null) {
   const client = getClient();
-  const model = process.env.EVA_CHAT_MODEL || 'claude-sonnet-4-20250514';
+  const model = resolveClaudeModel(process.env.EVA_CHAT_MODEL);
 
   // ── Read settings toggles for stream ──
   const settings = require('./services/settingsService');

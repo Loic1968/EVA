@@ -4,7 +4,7 @@
  */
 const Anthropic = require('@anthropic-ai/sdk');
 const OpenAI = require('openai');
-const { resolveClaudeModel } = require('./config/modelConfig');
+const { resolveClaudeModel, MODELS } = require('./config/modelConfig');
 
 // Lazy-load gmailSync and calendarSync to avoid circular dependency issues at startup
 let gmailSync = null;
@@ -369,7 +369,7 @@ function filterToolsBySettings(tools, { isAssistantMode, isMemoryLearning, isVoi
 async function reply(userMessage, history = [], ownerId = null, mode = null, opts = {}) {
   const aiProvider = opts.aiProvider === 'gpt' ? 'gpt' : 'claude';
   const model = aiProvider === 'gpt'
-    ? (process.env.EVA_GPT_MODEL || 'gpt-4o')
+    ? (process.env.EVA_GPT_MODEL || MODELS.GPT_CHAT)
     : resolveClaudeModel(process.env.EVA_CHAT_MODEL);
 
   let systemPrompt;

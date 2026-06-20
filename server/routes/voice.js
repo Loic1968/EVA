@@ -4,6 +4,7 @@
  */
 const express = require('express');
 const router = express.Router();
+const { MODELS } = require('../config/modelConfig');
 
 function getOpenAIKey() {
   const k = (process.env.OPENAI_API_KEY || '').trim();
@@ -12,14 +13,14 @@ function getOpenAIKey() {
 
 // ── Voice settings (per-user, from DB) ──
 const VOICE_DEFAULTS = {
-  tts_model: 'tts-1-hd',    // HD for quality (was tts-1)
+  tts_model: MODELS.TTS_HD,  // HD for quality (was tts-1)
   tts_voice_fr: 'coral',     // Natural conversational voice (was nova — too robotic)
   tts_voice_en: 'coral',     // Same warm voice for English (was shimmer)
   tts_speed: 1.08,           // Slightly faster = more natural conversational pace
 };
 
 const ALLOWED_VOICES = ['alloy', 'ash', 'ballad', 'coral', 'echo', 'fable', 'nova', 'onyx', 'sage', 'shimmer', 'verse'];
-const ALLOWED_MODELS = ['tts-1', 'tts-1-hd'];
+const ALLOWED_MODELS = [MODELS.TTS, MODELS.TTS_HD];
 
 async function getVoiceSettings(ownerId) {
   const settings = { ...VOICE_DEFAULTS };
@@ -117,7 +118,7 @@ router.post('/stt', async (req, res, next) => {
     const file = await toFile(buffer, `audio.${ext}`, { type: `audio/${ext === 'webm' ? 'webm' : ext}` });
     const transcription = await openai.audio.transcriptions.create({
       file,
-      model: 'whisper-1',
+      model: MODELS.STT_FALLBACK,
       response_format: 'json',
       language: lang || undefined,
     });

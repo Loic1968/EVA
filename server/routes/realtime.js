@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { getKillSwitch } = require('../services/settingsService');
+const { MODELS } = require('../config/modelConfig');
 
 const OPENAI_KEY = (process.env.OPENAI_API_KEY || '').trim();
 const REALTIME_ENABLED = !!OPENAI_KEY;
@@ -360,7 +361,7 @@ router.get('/token', async (req, res) => {
       turnEagerness = 'low';
     }
 
-    const model = process.env.EVA_REALTIME_MODEL || 'gpt-realtime';
+    const model = process.env.EVA_REALTIME_MODEL || MODELS.REALTIME;
 
     const sessionConfig = {
       session: {
@@ -371,7 +372,7 @@ router.get('/token', async (req, res) => {
         audio: {
           input: {
             transcription: transcriptionLang ? {
-              model: 'gpt-4o-transcribe',
+              model: MODELS.STT,
               language: transcriptionLang,
             } : undefined,
             noise_reduction: { type: 'near_field' },
@@ -423,7 +424,7 @@ router.get('/token', async (req, res) => {
     }
     res.json({
       value: ephemeralKey,
-      model: process.env.EVA_REALTIME_MODEL || 'gpt-realtime',
+      model: process.env.EVA_REALTIME_MODEL || MODELS.REALTIME,
       instructions, // client uses for session.update when injecting web search
     });
   } catch (e) {

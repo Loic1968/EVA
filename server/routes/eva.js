@@ -11,6 +11,7 @@ const fs = require('fs');
 const googleOAuth = require('../services/googleOAuth');
 const gmailSync = require('../services/gmailSync');
 const calendarSync = require('../services/calendarSync');
+const { MODELS } = require('../config/modelConfig');
 const { getKillSwitch, getShadowMode, getAutonomousMode, getStyleProfile, getAIProvider, getAssistantMode, getSmartContext, getConversationLearning } = require('../services/settingsService');
 const gmailSend = require('../services/gmailSend');
 
@@ -113,7 +114,8 @@ router.post('/eva/chat', async (req, res, next) => {
     ];
 
     const stream = await client.chat.completions.create({
-      model: process.env.EVA_CHAT_MODEL || 'gpt-4o-mini',
+      // OpenAI call — must NOT use EVA_CHAT_MODEL (a Claude id in prod would 404 here).
+      model: process.env.EVA_EVA_CHAT_GPT_MODEL || MODELS.GPT_MINI,
       messages: fullMessages,
       stream: true,
     });

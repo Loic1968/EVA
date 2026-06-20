@@ -52,10 +52,11 @@ async function routeWithLLM(message, history = []) {
   try {
     if (ANTHROPIC_KEY) {
       const Anthropic = require('@anthropic-ai/sdk');
-      const { resolveClaudeModel } = require('../config/modelConfig');
+      const { resolveClaudeModel, MODELS } = require('../config/modelConfig');
       const client = new Anthropic();
       const r = await client.messages.create({
-        model: resolveClaudeModel(process.env.EVA_WEB_ROUTER_MODEL),
+        // Routing decision -> Haiku tier (overridable via EVA_WEB_ROUTER_MODEL).
+        model: resolveClaudeModel(process.env.EVA_WEB_ROUTER_MODEL || MODELS.FAST),
         max_tokens: 80,
         system: PROMPT,
         messages: [{ role: 'user', content: ctx }],
@@ -63,9 +64,10 @@ async function routeWithLLM(message, history = []) {
       response = r.content?.[0]?.text || '';
     } else if (OPENAI_KEY) {
       const OpenAI = require('openai');
+      const { MODELS } = require('../config/modelConfig');
       const client = new OpenAI({ apiKey: OPENAI_KEY });
       const r = await client.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: MODELS.GPT_MINI,
         max_tokens: 80,
         messages: [
           { role: 'system', content: PROMPT },

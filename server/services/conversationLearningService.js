@@ -109,9 +109,10 @@ async function learnFromConversation(ownerId, historyWithNewTurn) {
     if (isTrivialUserMessage(turn.user)) return;
 
     const Anthropic = require('@anthropic-ai/sdk');
-    const { resolveClaudeModel } = require('../config/modelConfig');
+    const { resolveClaudeModel, MODELS } = require('../config/modelConfig');
     const client = new Anthropic({ apiKey: key.trim() });
-    const model = resolveClaudeModel(process.env.EVA_FACTS_MODEL || process.env.EVA_CHAT_MODEL);
+    // Cheap structured extraction -> Haiku tier (overridable via EVA_FACTS_MODEL).
+    const model = resolveClaudeModel(process.env.EVA_FACTS_MODEL || MODELS.FAST);
 
     const res = await client.messages.create({
       model,

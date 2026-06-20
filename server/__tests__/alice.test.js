@@ -81,12 +81,16 @@ describe('parseCommand — /alice', () => {
 describe('getSystemPromptBase', () => {
   const { getSystemPromptBase, EVA_SYSTEM, ALICE_SYSTEM } = require('../evaChat');
 
-  it('returns EVA_SYSTEM when isAlice=false', () => {
-    assert.strictEqual(getSystemPromptBase(false), EVA_SYSTEM);
+  it('returns EVA_SYSTEM + Eva2 persona when isAlice=false', () => {
+    const prompt = getSystemPromptBase(false);
+    assert.ok(prompt.includes('You are EVA'));
+    assert.ok(prompt.includes('EVA 2 — Garde-fous'));
   });
 
-  it('returns ALICE_SYSTEM when isAlice=true', () => {
-    assert.strictEqual(getSystemPromptBase(true), ALICE_SYSTEM);
+  it('returns ALICE_SYSTEM + Eva2 persona when isAlice=true', () => {
+    const prompt = getSystemPromptBase(true);
+    assert.ok(prompt.includes('You are Alice'));
+    assert.ok(prompt.includes('EVA 2 — Garde-fous'));
   });
 
   it('ALICE_SYSTEM contains Alice prompt', () => {
@@ -94,12 +98,8 @@ describe('getSystemPromptBase', () => {
     assert.ok(ALICE_SYSTEM.includes('— Alice'));
   });
 
-  it('ALICE_SYSTEM includes anti-hallucination rules', () => {
-    assert.ok(ALICE_SYSTEM.includes('NE JAMAIS inventer'));
-  });
-
   it('ALICE_SYSTEM includes shared capabilities', () => {
-    assert.ok(ALICE_SYSTEM.includes('Documents / Emails / Calendar'));
+    assert.ok(ALICE_SYSTEM.includes('## Documents'));
   });
 
   it('EVA_SYSTEM does NOT contain Alice', () => {

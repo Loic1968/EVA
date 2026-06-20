@@ -146,9 +146,17 @@ app.use('/api/voice', verifyAuth, apiKeyOrSameOrigin, voiceRoutes);
 // Public status (openai_available for Settings Chat AI) — no auth so frontend always gets it
 app.get('/api/status', (req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  let brain;
+  try {
+    brain = require('./services/brainRouter').getBrainStatus();
+  } catch (_) {
+    brain = { enabled: false };
+  }
   res.json({
     eva_enabled: !!((process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY) || '').trim(),
     openai_available: !!(process.env.OPENAI_API_KEY || '').trim(),
+    eva2_persona: process.env.EVA2_PERSONA !== 'false',
+    brain,
   });
 });
 

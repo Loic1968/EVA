@@ -66,12 +66,14 @@ function parseCommand(text) {
   const forgetMatch = t.match(/^\/forget\s+(.+)$/is);
   if (forgetMatch) return { command: 'forget', key: forgetMatch[1].trim(), message: '' };
   if (/^\/memory\s*$/i.test(t)) return { command: 'memory', message: '' };
+  if (/^\/local\b/i.test(t)) return { command: 'local', message: t.replace(/^\/local\s*/i, '').trim(), mode: null };
   return { command: null, message: t, mode: null };
 }
 
 const { getCanonicalPrompt } = require('./prompts/canonicalPrompt');
 const { getAssistantPrompt } = require('./systemPrompt');
 const { getAlicePrompt } = require('./prompts/alicePrompt');
+const { getEva2PromptBlock } = require('./prompts/eva2Persona');
 const { buildAllTools, isOrchestratorTool, executeOrchestratorTool, isMcpTool, executeMcpTool, createTrace, traceToolCall, MAX_TOOL_ROUNDS } = require('./services/toolOrchestrator');
 
 // ── NEW: Clean, natural system prompt (ChatGPT-like fluidity) ──
@@ -129,7 +131,9 @@ const ALICE_SYSTEM = getAlicePrompt() + '\n' + SHARED_CAPABILITIES;
 
 // Resolve system prompt: Alice if enabled, else base EVA.
 function getSystemPromptBase(isAlice) {
-  return isAlice ? ALICE_SYSTEM : EVA_SYSTEM_BASE;
+  const base = isAlice ? ALICE_SYSTEM : EVA_SYSTEM_BASE;
+  if (process.env.EVA2_PERSONA === 'false') return base;
+  return `${base}\n\n${getEva2PromptBlock()}`;
 }
 
 // Back-compat alias
@@ -369,7 +373,7 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
   const aiProvider = opts.aiProvider === 'gpt' ? 'gpt' : 'claude';
   const model = aiProvider === 'gpt'
     ? (process.env.EVA_GPT_MODEL || 'gpt-4o')
-    : (process.env.EVA_CHAT_MODEL || 'claude-sonnet-4-20250514');
+    : (process.env.EVA_CHAT_MODEL || 'claude-sonnet-4-6');
 
   let systemPrompt;
   let authErrorBlock = '';
@@ -687,6 +691,32 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
     }
   }
 
+  // Eva 2 hybrid brain — simple chat & sourcing 中文 → DeepSeek ; /local → Ollama
+  const forceToolPath =
+    mode === 'EXECUTE_GUARDED' ||
+    mode === 'DRAFT_REVIEW' ||
+    needsCalendarTools(userMessage);
+
+  if (!forceToolPath) {
+    try {
+      const { tryHybridReply } = require('./services/brainRouter');
+      const hybridResult = await tryHybridReply({
+        systemPrompt,
+        messages,
+        userMessage,
+        ownerId,
+        conversationId: opts.conversationId,
+        isVoice,
+        attachedDocuments: opts.attachedDocuments,
+        forceToolPath,
+        forceLocal: opts.forceLocal === true,
+      });
+      if (hybridResult) return hybridResult;
+    } catch (err) {
+      console.warn('[EVA Brain] hybrid error:', err.message);
+    }
+  }
+
   // GPT path — with tools (MCP, calendar, etc.) when ownerId — same capabilities as Claude for voice/chat
   if (aiProvider === 'gpt') {
     try {
@@ -832,7 +862,7 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
  */
 async function createReplyStream(userMessage, history = [], ownerId = null, mode = null) {
   const client = getClient();
-  const model = process.env.EVA_CHAT_MODEL || 'claude-sonnet-4-20250514';
+  const model = process.env.EVA_CHAT_MODEL || 'claude-sonnet-4-6';
 
   // ── Read settings toggles for stream ──
   const settings = require('./services/settingsService');

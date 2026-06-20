@@ -379,6 +379,13 @@ router.post('/chat', async (req, res, next) => {
 
     const msgToSend = (parsedMsg || message.trim()).slice(0, 50000);
     if (!msgToSend) {
+      if (command === 'local') {
+        return res.json({
+          reply: 'Mode local (Ollama). Pose ta question sensible — rien ne part dans le cloud.\n\nExemple : `/local Quelle marge sur le client GTLL ?`',
+          model: 'eva-local-hint',
+          tokens: { input: 0, output: 0 },
+        });
+      }
       return res.status(400).json({ error: 'message required after command' });
     }
 
@@ -427,6 +434,8 @@ router.post('/chat', async (req, res, next) => {
         attachedDocuments,
         aiProvider,
         disableMemoryWrites: req.disableMemoryWrites,
+        forceLocal: command === 'local',
+        conversationId: convId,
       });
     }
 
@@ -620,6 +629,13 @@ router.post('/chat/stream', async (req, res, next) => {
 
     const msgToSend = (parsedMsg || message.trim()).slice(0, 50000);
     if (!msgToSend) {
+      if (command === 'local') {
+        return res.json({
+          reply: 'Mode local (Ollama). Pose ta question sensible — rien ne part dans le cloud.\n\nExemple : `/local Quelle marge sur le client GTLL ?`',
+          model: 'eva-local-hint',
+          tokens: { input: 0, output: 0 },
+        });
+      }
       return res.status(400).json({ error: 'message required after command' });
     }
 
@@ -664,6 +680,8 @@ router.post('/chat/stream', async (req, res, next) => {
           attachedDocuments: attachedDocumentsStream,
           aiProvider,
           disableMemoryWrites: req.disableMemoryWrites,
+          forceLocal: command === 'local',
+          conversationId: convId,
         });
       }
       res.setHeader('Content-Type', 'text/event-stream');

@@ -109,8 +109,9 @@ async function learnFromConversation(ownerId, historyWithNewTurn) {
     if (isTrivialUserMessage(turn.user)) return;
 
     const Anthropic = require('@anthropic-ai/sdk');
+    const { resolveClaudeModel } = require('../config/modelConfig');
     const client = new Anthropic({ apiKey: key.trim() });
-    const model = process.env.EVA_FACTS_MODEL || process.env.EVA_CHAT_MODEL || 'claude-sonnet-4-20250514';
+    const model = resolveClaudeModel(process.env.EVA_FACTS_MODEL || process.env.EVA_CHAT_MODEL);
 
     const res = await client.messages.create({
       model,

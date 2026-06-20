@@ -104,6 +104,7 @@ async function extractViaClaude(buffer, filename = '', docType, mediaType) {
     : DEFAULT_EXTRACT_PROMPT;
   try {
     const Anthropic = require('@anthropic-ai/sdk');
+    const { resolveClaudeModel } = require('../config/modelConfig');
     const client = new Anthropic({ apiKey: key.trim() });
     const base64 = buffer.toString('base64');
     const contentType = isPdf
@@ -111,7 +112,7 @@ async function extractViaClaude(buffer, filename = '', docType, mediaType) {
       : { type: 'image', source: { type: 'base64', media_type: mediaType || 'image/jpeg', data: base64 } };
     const response = await client.messages.create(
       {
-        model: process.env.EVA_DOCUMENT_MODEL || 'claude-sonnet-4-20250514',
+        model: resolveClaudeModel(process.env.EVA_DOCUMENT_MODEL),
         // Note: EVA_CHAT_MODEL is intentionally NOT used here — it may be an OpenAI model (gpt-4o-mini)
         max_tokens: 16000,
         messages: [{ role: 'user', content: [contentType, { type: 'text', text: prompt }] }],

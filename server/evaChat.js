@@ -659,11 +659,10 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
     { role: 'user', content: userMessage },
   ];
 
-  // Extended thinking is OFF by default: the pinned @anthropic-ai/sdk (0.32.x) predates
-  // extended thinking and cannot parse the thinking response stream from current models
-  // (claude-sonnet-4-x) — it aborts with "Premature close", breaking every Claude reply.
-  // Re-enable with EVA_USE_THINKING=true only after upgrading the SDK.
-  const useThinking = process.env.EVA_USE_THINKING === 'true';
+  // Extended thinking is ON by default now that @anthropic-ai/sdk is on 0.105.x,
+  // which parses the thinking response stream correctly for current models
+  // (claude-sonnet-4-x). Set EVA_USE_THINKING=false to disable if needed.
+  const useThinking = process.env.EVA_USE_THINKING !== 'false';
   const createOptions = {
     model,
     max_tokens: 4096, // Must be > thinking.budget_tokens when thinking enabled

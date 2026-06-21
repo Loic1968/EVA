@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../api';
+import { refreshLocationForChat } from '../utils/geolocation';
 
 const lang = navigator.language?.startsWith('fr') ? 'fr' : 'en';
 
@@ -19,7 +20,10 @@ const copy = {
     chTelegram: 'Telegram @Halisoft2bot — 24/7',
     chWechat: 'WeChat — Mac mini Dubai (gateway local)',
     chMac: 'Claude Code / browser — Mac mini',
-    note: 'Tu es connecté à EVA 1 — Eva 2 (VPS) s’ouvre dans un nouvel onglet.',
+    note: 'Tu es connecté à EVA 1 — Eva 2 s’ouvre dans un nouvel onglet (GPS synchronisé automatiquement).',
+    gps: 'Position GPS',
+    gpsPending: 'Autorise la géolocalisation dans le navigateur pour qu’Eva sache où tu es.',
+    gpsRefresh: 'Actualiser GPS',
     fromLogin: 'Eva 2 (VPS) ouverte dans un nouvel onglet. Si rien ne s’affiche, clique ci-dessous.',
     ssoOff: 'SSO manquant sur Render. Ajoute EVA2_SSO_SECRET puis redéploie — le bouton sera actif ensuite.',
     ssoSteps: 'Render → service EVA → Environment → EVA2_PUBLIC_URL=https://eva-vps.halisoft.biz + EVA2_SSO_SECRET (voir VPS /opt/eva2/.env)',
@@ -40,7 +44,10 @@ const copy = {
     chTelegram: 'Telegram @Halisoft2bot — 24/7',
     chWechat: 'WeChat — Dubai Mac mini (local gateway)',
     chMac: 'Claude Code / browser — Mac mini',
-    note: 'You are signed in to EVA 1 — Eva 2 (VPS) opens in a new tab.',
+    note: 'You are signed in to EVA 1 — Eva 2 opens in a new tab (GPS synced automatically).',
+    gps: 'GPS location',
+    gpsPending: 'Allow browser geolocation so Eva knows where you are.',
+    gpsRefresh: 'Refresh GPS',
     fromLogin: 'Eva 2 (VPS) opened in a new tab. If nothing appeared, click below.',
     ssoOff: 'SSO missing on Render. Add EVA2_SSO_SECRET and redeploy — then the button will work.',
     ssoSteps: 'Render → EVA service → Environment → EVA2_PUBLIC_URL=https://eva-vps.halisoft.biz + EVA2_SSO_SECRET (see VPS /opt/eva2/.env)',
@@ -57,6 +64,8 @@ export default function Eva2Access() {
   const [loading, setLoading] = useState(true);
   const [opening, setOpening] = useState(false);
   const [error, setError] = useState('');
+  const [gps, setGps] = useState(null);
+  const [gpsBusy, setGpsBusy] = useState(false);
   const fromLogin = searchParams.get('from') === 'login';
   const ssoFailed = searchParams.get('vps') === 'sso-failed';
 
@@ -67,15 +76,40 @@ export default function Eva2Access() {
       .finally(() => setLoading(false));
   }, [t.error]);
 
+  const syncGps = async (force = false) => {
+    setGpsBusy(true);
+    try {
+      const loc = await refreshLocationForChat(force ? 'où suis-je' : '', { force });
+      if (loc) {
+        const saved = await api.setLocation(loc);
+        setGps(saved.location || loc);
+      } else {
+        const { location } = await api.getLocation();
+        setGps(location && typeof location === 'object' ? location : null);
+      }
+    } catch {
+      setGps(null);
+    } finally {
+      setGpsBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    syncGps(false);
+  }, []);
+
   useEffect(() => {
     if (!fromLogin || loading || !access?.sso || !access?.url || autoOpened.current) return;
     autoOpened.current = true;
-    window.open(access.url, '_blank', 'noopener,noreferrer');
+    syncGps(true).finally(() => {
+      window.open(access.url, '_blank', 'noopener,noreferrer');
+    });
   }, [fromLogin, loading, access]);
 
-  const openEva2 = () => {
+  const openEva2 = async () => {
     if (!access?.url || !access?.sso) return;
     setOpening(true);
+    await syncGps(true);
     window.open(access.url, '_blank', 'noopener,noreferrer');
     setTimeout(() => setOpening(false), 1200);
   };
@@ -107,6 +141,22 @@ export default function Eva2Access() {
           <li>{t.chMac}</li>
         </ul>
         <p className="text-sm text-slate-500 dark:text-slate-500">{fromLogin ? t.fromLogin : t.note}</p>
+        <div className="rounded-lg border border-slate-200 dark:border-slate-700/50 px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="text-sm text-slate-600 dark:text-slate-400">
+            <span className="font-medium text-slate-800 dark:text-slate-200">{t.gps}: </span>
+            {gps?.city
+              ? `${gps.city}${gps.timezone ? ` · ${gps.timezone}` : ''}`
+              : t.gpsPending}
+          </div>
+          <button
+            type="button"
+            onClick={() => syncGps(true)}
+            disabled={gpsBusy}
+            className="text-sm px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50"
+          >
+            {gpsBusy ? '…' : t.gpsRefresh}
+          </button>
+        </div>
         {!loading && access && !access.sso && (
           <div className="text-sm text-amber-600 dark:text-amber-400 space-y-1">
             <p>{t.ssoOff}</p>

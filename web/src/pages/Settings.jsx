@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import EvaLoading from '../components/EvaLoading';
 import { useTheme } from '../context/ThemeContext';
 import { api } from '../api';
+import PwaInstallPrompt from '../components/PwaInstallPrompt';
 
 // Reverse geocode via Nominatim (OSM). Requires User-Agent per usage policy.
 async function reverseGeocode(lat, lon) {
@@ -845,6 +846,8 @@ export default function Settings() {
       {/* Notifications */}
       {activeTab === 'notifications' && (
       <div className="space-y-6">
+      <PwaInstallPrompt variant="settings" />
+
       {/* Push notifications (phone & laptop) */}
       <div className="bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 p-6 max-w-2xl">
         <h2 className="text-lg font-medium text-slate-900 dark:text-white mb-2">Push notifications (phone & laptop)</h2>

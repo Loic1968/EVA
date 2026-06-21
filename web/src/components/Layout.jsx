@@ -2,6 +2,7 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import EvaTopBar from './EvaTopBar';
 import EvaLogo from './EvaLogo';
+import PwaInstallPrompt from './PwaInstallPrompt';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
 
@@ -98,6 +99,7 @@ export default function Layout({ children }) {
             </NavLink>
           ))}
         </nav>
+        {!collapsed && <PwaInstallPrompt variant="sidebar" />}
         <div className="p-3 border-t border-slate-200 dark:border-slate-700/40">
           {collapsed && !mobileOpen ? (
             <button onClick={() => setCollapsed(false)} className="hidden lg:block w-full text-slate-500 dark:text-eva-muted hover:text-slate-900 dark:hover:text-white text-xs text-center">››</button>

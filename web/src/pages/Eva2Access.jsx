@@ -21,7 +21,8 @@ const copy = {
     chMac: 'Claude Code / browser — Mac mini',
     note: 'Tu es connecté à EVA 1 — Eva 2 (VPS) s’ouvre dans un nouvel onglet.',
     fromLogin: 'Eva 2 (VPS) ouverte dans un nouvel onglet. Si rien ne s’affiche, clique ci-dessous.',
-    ssoOff: 'SSO non configuré sur Render — ajoute EVA2_SSO_SECRET (même valeur que le VPS).',
+    ssoOff: 'SSO manquant sur Render. Ajoute EVA2_SSO_SECRET puis redéploie — le bouton sera actif ensuite.',
+    ssoSteps: 'Render → service EVA → Environment → EVA2_PUBLIC_URL=https://eva-vps.halisoft.biz + EVA2_SSO_SECRET (voir VPS /opt/eva2/.env)',
     ssoFailed: 'Connexion VPS refusée — vérifie EVA2_SSO_SECRET sur Render (Render → EVA → Environment).',
     error: 'Impossible de préparer l’accès Eva 2.',
   },
@@ -41,7 +42,8 @@ const copy = {
     chMac: 'Claude Code / browser — Mac mini',
     note: 'You are signed in to EVA 1 — Eva 2 (VPS) opens in a new tab.',
     fromLogin: 'Eva 2 (VPS) opened in a new tab. If nothing appeared, click below.',
-    ssoOff: 'SSO not configured on Render — add EVA2_SSO_SECRET (same value as VPS).',
+    ssoOff: 'SSO missing on Render. Add EVA2_SSO_SECRET and redeploy — then the button will work.',
+    ssoSteps: 'Render → EVA service → Environment → EVA2_PUBLIC_URL=https://eva-vps.halisoft.biz + EVA2_SSO_SECRET (see VPS /opt/eva2/.env)',
     ssoFailed: 'VPS connection refused — check EVA2_SSO_SECRET on Render (Render → EVA → Environment).',
     error: 'Could not prepare Eva 2 access.',
   },
@@ -66,13 +68,13 @@ export default function Eva2Access() {
   }, [t.error]);
 
   useEffect(() => {
-    if (!fromLogin || loading || !access?.url || autoOpened.current) return;
+    if (!fromLogin || loading || !access?.sso || !access?.url || autoOpened.current) return;
     autoOpened.current = true;
     window.open(access.url, '_blank', 'noopener,noreferrer');
   }, [fromLogin, loading, access]);
 
   const openEva2 = () => {
-    if (!access?.url) return;
+    if (!access?.url || !access?.sso) return;
     setOpening(true);
     window.open(access.url, '_blank', 'noopener,noreferrer');
     setTimeout(() => setOpening(false), 1200);
@@ -106,7 +108,10 @@ export default function Eva2Access() {
         </ul>
         <p className="text-sm text-slate-500 dark:text-slate-500">{fromLogin ? t.fromLogin : t.note}</p>
         {!loading && access && !access.sso && (
-          <p className="text-sm text-amber-600 dark:text-amber-400">{t.ssoOff}</p>
+          <div className="text-sm text-amber-600 dark:text-amber-400 space-y-1">
+            <p>{t.ssoOff}</p>
+            <p className="text-xs opacity-90">{t.ssoSteps}</p>
+          </div>
         )}
         {ssoFailed && (
           <p className="text-sm text-red-500">{t.ssoFailed}</p>
@@ -116,7 +121,7 @@ export default function Eva2Access() {
           <button
             type="button"
             onClick={openEva2}
-            disabled={loading || opening || !access?.url}
+            disabled={loading || opening || !access?.sso || !access?.url}
             className="px-5 py-2.5 rounded-lg bg-eva-accent text-white font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
           >
             {opening ? t.opening : t.open}

@@ -42,8 +42,8 @@ export function readCurrentPosition(options = {}) {
   });
 }
 
-export async function detectCurrentLocation() {
-  const pos = await readCurrentPosition();
+export async function detectCurrentLocation(options = {}) {
+  const pos = await readCurrentPosition(options);
   const { latitude: lat, longitude: lng, accuracy } = pos.coords;
   const city = await reverseGeocode(lat, lng);
   return {
@@ -54,6 +54,42 @@ export async function detectCurrentLocation() {
     timezone: getBrowserTimezone(),
     source: 'gps',
   };
+}
+
+const LOCATION_PATTERNS = [
+  /où\s+(?:suis|je\s+suis)/i,
+  /where\s+am\s+i/i,
+  /(?:quelle|what)\s+(?:heure|time)\s+(?:est[- ]?il|is\s+it)/i,
+  /(?:ma|my)\s+(?:position|localisation|location)/i,
+  /(?:géo|geo)loc/i,
+  /j['']habite\s+où/i,
+  /where\s+(?:do\s+i\s+)?live/i,
+];
+
+export function isLocationQuestion(text) {
+  const t = (text || '').trim();
+  if (!t) return false;
+  return LOCATION_PATTERNS.some((re) => re.test(t));
+}
+
+/** Fresh GPS before chat — force on "où suis-je", otherwise respect throttle. */
+export async function refreshLocationForChat(message, { force = false } = {}) {
+  if (typeof navigator === 'undefined' || !navigator.geolocation) return null;
+  const needsFresh = force || isLocationQuestion(message);
+  if (!needsFresh && !isAutoLocationEnabled()) return null;
+  if (!needsFresh && !shouldRefreshLocation(5 * 60 * 1000)) return null;
+
+  try {
+    const loc = await detectCurrentLocation({
+      maximumAge: needsFresh ? 0 : 60 * 1000,
+      timeout: needsFresh ? 20000 : 12000,
+    });
+    if (!loc.city && loc.lat == null) return null;
+    markLocationUpdated();
+    return loc;
+  } catch {
+    return null;
+  }
 }
 
 export const AUTO_LOCATION_KEY = 'eva_auto_location';
@@ -68,7 +104,7 @@ export function setAutoLocationEnabled(on) {
   localStorage.setItem(AUTO_LOCATION_KEY, on ? 'true' : 'false');
 }
 
-export function shouldRefreshLocation(minIntervalMs = 30 * 60 * 1000) {
+export function shouldRefreshLocation(minIntervalMs = 5 * 60 * 1000) {
   const raw = localStorage.getItem(LOCATION_STAMP_KEY);
   if (!raw) return true;
   const ts = Number(raw);

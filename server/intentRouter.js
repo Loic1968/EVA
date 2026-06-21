@@ -12,6 +12,7 @@ const INTENTS = Object.freeze({
   FACT_QUERY: 'FACT_QUERY',
   STATUS_QUERY: 'STATUS_QUERY',
   ACTION_QUERY: 'ACTION_QUERY',
+  LOCATION_QUERY: 'LOCATION_QUERY',
   GENERAL_CHAT: 'GENERAL_CHAT',
 });
 
@@ -64,6 +65,16 @@ const FACT_PATTERNS = [
   /(?:ma\s+|my\s+)?(?:pr[eé]f[eé]rence|preference)s?\s+(?:sur|about|for)/i,
 ];
 
+/** Location: GPS / where am I / what time (uses live location, not LLM guess). */
+const LOCATION_PATTERNS = [
+  /où\s+(?:suis|je\s+suis)/i,
+  /where\s+am\s+i/i,
+  /(?:quelle|what)\s+(?:heure|time)\s+(?:est[- ]?il|is\s+it)/i,
+  /(?:ma|my)\s+(?:position|localisation|location)/i,
+  /(?:géo|geo)loc/i,
+  /j['']habite\s+où/i,
+];
+
 /** Status query: "where are we", "status", "update", "on my" */
 const STATUS_PATTERNS = [
   /(?:o[uù]|where)\s+(?:en\s+)?(?:est[- ]?on|are\s+we|on\s+en\s+est)/i,
@@ -92,18 +103,21 @@ function detectIntent(userMessage) {
   // 3. Ambiguous (ok, bonjour seul, euh, etc. → Oui ?) — never LLM
   if (msg.length <= 20 && AMBIGUOUS_PATTERNS.some((re) => re.test(t))) return INTENTS.AMBIGUOUS;
 
-  // 4. Identity
+  // 4. Location (GPS — before identity/LLM)
+  if (LOCATION_PATTERNS.some((re) => re.test(t))) return INTENTS.LOCATION_QUERY;
+
+  // 5. Identity
   for (const { pattern } of IDENTITY_PATTERNS) {
     if (pattern.test(t)) return INTENTS.IDENTITY_QUERY;
   }
 
-  // 5. Status
+  // 6. Status
   if (STATUS_PATTERNS.some((re) => re.test(t))) return INTENTS.STATUS_QUERY;
 
-  // 6. Action
+  // 7. Action
   if (ACTION_PATTERNS.some((re) => re.test(t))) return INTENTS.ACTION_QUERY;
 
-  // 7. Fact
+  // 8. Fact
   if (FACT_PATTERNS.some((re) => re.test(t))) return INTENTS.FACT_QUERY;
 
   return INTENTS.GENERAL_CHAT;
@@ -146,10 +160,32 @@ async function resolveIdentityQuery(ownerId, userMessage) {
   return IDENTITY_FALLBACK;
 }
 
+async function resolveLocationQuery(ownerId, liveLocation = null) {
+  const locationService = require('./services/locationService');
+  let loc = liveLocation;
+  if (!loc && ownerId) {
+    try {
+      loc = await locationService.getLocation(ownerId);
+    } catch (e) {
+      console.warn('[EVA intentRouter] resolveLocationQuery failed:', e.message);
+    }
+  }
+  const base = locationService.formatLocationReply(loc);
+  if (!loc?.timezone) return base;
+  const time = new Date().toLocaleString('fr-FR', {
+    weekday: 'long',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: loc.timezone,
+  });
+  return `${base} · Il est ${time}.`;
+}
+
 module.exports = {
   detectIntent,
   getIdentityFactKey,
   resolveIdentityQuery,
+  resolveLocationQuery,
   INTENTS,
   IDENTITY_FALLBACK,
   CHECK_IN_REPLY,

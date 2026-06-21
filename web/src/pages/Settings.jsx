@@ -595,7 +595,7 @@ export default function Settings() {
             onChange={(e) => toggleAutoLocation(e.target.checked)}
             className="rounded border-slate-400 text-eva-accent focus:ring-eva-accent"
           />
-          <span className="text-sm text-slate-700 dark:text-slate-300">Auto-update location on open (every ~30 min)</span>
+          <span className="text-sm text-slate-700 dark:text-slate-300">Auto-update GPS on open (every ~5 min, instant on « où suis-je »)</span>
         </label>
         <div className="flex flex-wrap items-center gap-2">
           <input

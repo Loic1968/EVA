@@ -42,6 +42,12 @@ function evaDisabled(res) {
   });
 }
 
+async function ingestLiveLocation(req) {
+  if (!req.ownerId) return null;
+  const locationService = require('../services/locationService');
+  return locationService.ingestClientLocation(req.ownerId, req.body?.clientLocation);
+}
+
 // ════════════════════════════════════════════════════════════════
 // EVA CHAT: Pure ChatGPT-like streaming conversation
 // ════════════════════════════════════════════════════════════════
@@ -63,13 +69,19 @@ router.post('/eva/chat', async (req, res, next) => {
       });
     }
 
-    const { messages, origin } = req.body || {};
+    const { messages, origin, clientLocation: _cl } = req.body || {};
     if (!Array.isArray(messages)) {
       return res.status(400).json({ error: 'messages (array) required' });
     }
 
+    const liveLocation = await ingestLiveLocation(req);
+    const locationService = require('../services/locationService');
     const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user')?.content || '';
     let systemContent = origin === 'voice' ? `${EVA_CHAT_SYSTEM}\n\n${EVA_VOICE_EXTRA}` : EVA_CHAT_SYSTEM;
+    if (req.ownerId) {
+      const userLocation = liveLocation || await locationService.getLocation(req.ownerId).catch(() => null);
+      systemContent += locationService.formatDateTimeBlock(userLocation) + locationService.formatLocationBlock(userLocation);
+    }
 
     // Read settings toggles (assistant_mode, smart_context, conversation_learning)
     let isAssistantMode = true, isSmartContext = true, isConversationLearning = true;
@@ -391,6 +403,8 @@ router.post('/chat', async (req, res, next) => {
       return res.status(400).json({ error: 'message required after command' });
     }
 
+    const liveLocation = await ingestLiveLocation(req);
+
     // Intent Router — before context/LLM (no emails, docs, history for identity/fact)
     const intent = intentRouter.detectIntent(msgToSend);
     let result;
@@ -401,6 +415,9 @@ router.post('/chat', async (req, res, next) => {
       result = { reply: intentRouter.VALIDATION_REPLY, model: 'intent-validation', tokens: { input: 0, output: 0 } };
     } else if (intent === intentRouter.INTENTS.AMBIGUOUS) {
       result = { reply: intentRouter.AMBIGUOUS_REPLY, model: 'intent-ambiguous', tokens: { input: 0, output: 0 } };
+    } else if (intent === intentRouter.INTENTS.LOCATION_QUERY && req.ownerId) {
+      const reply = await intentRouter.resolveLocationQuery(req.ownerId, liveLocation);
+      result = { reply, model: 'intent-location', tokens: { input: 0, output: 0 } };
     } else if (intent === intentRouter.INTENTS.IDENTITY_QUERY && req.ownerId) {
       const reply = await intentRouter.resolveIdentityQuery(req.ownerId, msgToSend);
       result = { reply, model: 'intent-identity', tokens: { input: 0, output: 0 } };
@@ -438,6 +455,7 @@ router.post('/chat', async (req, res, next) => {
         disableMemoryWrites: req.disableMemoryWrites,
         forceLocal: command === 'local',
         conversationId: convId,
+        clientLocation: liveLocation,
       });
     }
 
@@ -641,6 +659,8 @@ router.post('/chat/stream', async (req, res, next) => {
       return res.status(400).json({ error: 'message required after command' });
     }
 
+    const liveLocationStream = await ingestLiveLocation(req);
+
     // Intent Router — before context/LLM (no emails, docs, history for identity/fact)
     const intentStream = intentRouter.detectIntent(msgToSend);
     let resultStream = null;
@@ -650,6 +670,9 @@ router.post('/chat/stream', async (req, res, next) => {
       resultStream = { reply: intentRouter.VALIDATION_REPLY, model: 'intent-validation', tokens: { input: 0, output: 0 } };
     } else if (intentStream === intentRouter.INTENTS.AMBIGUOUS) {
       resultStream = { reply: intentRouter.AMBIGUOUS_REPLY, model: 'intent-ambiguous', tokens: { input: 0, output: 0 } };
+    } else if (intentStream === intentRouter.INTENTS.LOCATION_QUERY && req.ownerId) {
+      const reply = await intentRouter.resolveLocationQuery(req.ownerId, liveLocationStream);
+      resultStream = { reply, model: 'intent-location', tokens: { input: 0, output: 0 } };
     } else if (intentStream === intentRouter.INTENTS.IDENTITY_QUERY && req.ownerId) {
       const reply = await intentRouter.resolveIdentityQuery(req.ownerId, msgToSend);
       resultStream = { reply, model: 'intent-identity', tokens: { input: 0, output: 0 } };
@@ -684,6 +707,7 @@ router.post('/chat/stream', async (req, res, next) => {
           disableMemoryWrites: req.disableMemoryWrites,
           forceLocal: command === 'local',
           conversationId: convId,
+          clientLocation: liveLocationStream,
         });
       }
       res.setHeader('Content-Type', 'text/event-stream');

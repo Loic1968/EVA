@@ -1,4 +1,14 @@
 // EVA API client
+import { refreshLocationForChat } from './utils/geolocation.js';
+
+async function withLiveLocation(message, payload) {
+  try {
+    const clientLocation = await refreshLocationForChat(message);
+    if (clientLocation) return { ...payload, clientLocation };
+  } catch (_) {}
+  return payload;
+}
+
 // In production, set VITE_EVA_API_URL (e.g. https://api.eva.halisoft.biz) at build time
 // In dev: use /api (proxied) when on network (iPhone), else localhost:5002 for direct
 function getApiBase() {
@@ -76,16 +86,25 @@ export const api = {
   getEva2Access: () => request('/eva2/access'),
 
   // Chat (non-streaming). opts: { origin: 'voice' } for voice input (disables memory writes).
-  chat: (message, history, conversation_id, document_ids, opts = {}) =>
-    request('/chat', { method: 'POST', body: JSON.stringify({ message, history, conversation_id, document_ids, origin: opts.origin }) }),
+  chat: async (message, history, conversation_id, document_ids, opts = {}) => {
+    const body = await withLiveLocation(message, {
+      message,
+      history,
+      conversation_id,
+      document_ids,
+      origin: opts.origin,
+    });
+    return request('/chat', { method: 'POST', body: JSON.stringify(body) });
+  },
 
   // EVA Chat (pure ChatGPT-like) — streaming, returns Response for stream consumption.
-  // Pass opts.origin: 'voice' when input comes from voice (helps EVA handle transcription errors).
   evaChat: async (messages, opts = {}) => {
+    const lastUser = [...(messages || [])].reverse().find((m) => m.role === 'user')?.content || '';
+    const body = await withLiveLocation(lastUser, { messages, origin: opts.origin });
     const res = await fetch(`${API_BASE.replace(/\/$/, '')}/eva/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-      body: JSON.stringify({ messages, origin: opts.origin }),
+      body: JSON.stringify(body),
       signal: opts.signal,
     });
     if (res.status === 401) {
@@ -99,10 +118,17 @@ export const api = {
   // Pass { signal } to abort, { origin: 'voice' } for voice (disables memory writes).
   chatStream: async function* (message, history, conversation_id, document_ids, opts = {}) {
     const url = `${API_BASE.replace(/\/$/, '')}/chat/stream`;
+    const body = await withLiveLocation(message, {
+      message,
+      history,
+      conversation_id,
+      document_ids,
+      origin: opts.origin,
+    });
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-      body: JSON.stringify({ message, history, conversation_id, document_ids, origin: opts.origin }),
+      body: JSON.stringify(body),
       signal: opts.signal,
     });
     if (res.status === 401) { onAuthFailure(); throw new Error('Session expired'); }

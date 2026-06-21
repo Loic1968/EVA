@@ -7,29 +7,40 @@ import {
   shouldRefreshLocation,
 } from '../utils/geolocation';
 
+async function pushLocation() {
+  const loc = await detectCurrentLocation({ maximumAge: 60 * 1000 });
+  if (!loc.city && loc.lat == null) return;
+  await api.setLocation(loc);
+  markLocationUpdated();
+}
+
 /**
- * Refresh GPS location in the background when the user opens EVA (PWA or browser).
+ * Background GPS refresh when EVA is open (PWA / browser).
  */
 export function useAutoLocation(isAuthenticated) {
   const running = useRef(false);
 
   useEffect(() => {
     if (!isAuthenticated || !isAutoLocationEnabled()) return;
-    if (!shouldRefreshLocation()) return;
-    if (running.current) return;
 
-    running.current = true;
-    (async () => {
+    const tick = async () => {
+      if (running.current || !shouldRefreshLocation()) return;
+      running.current = true;
       try {
-        const loc = await detectCurrentLocation();
-        if (!loc.city && loc.lat == null) return;
-        await api.setLocation(loc);
-        markLocationUpdated();
+        await pushLocation();
       } catch {
-        // Permission denied or timeout — user can use Settings → Use GPS
+        // Permission denied — user can enable in Settings
       } finally {
         running.current = false;
       }
-    })();
+    };
+
+    tick();
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') tick();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
   }, [isAuthenticated]);
 }

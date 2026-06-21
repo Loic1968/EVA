@@ -410,9 +410,8 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
   }
   const basePrompt = getSystemPromptBase(isAliceMode);
   const locationService = require('./services/locationService');
-  const userLocation = ownerId
-    ? await locationService.getLocation(ownerId).catch(() => null)
-    : null;
+  const userLocation = opts.clientLocation
+    || (ownerId ? await locationService.getLocation(ownerId).catch(() => null) : null);
   const dateTimeBlock = locationService.formatDateTimeBlock(userLocation);
   const locationBlock = locationService.formatLocationBlock(userLocation);
 
@@ -1045,9 +1044,8 @@ async function createReplyStream(userMessage, history = [], ownerId = null, mode
   }
   const streamBasePrompt = getSystemPromptBase(isAliceModeStream);
   const locationServiceStream = require('./services/locationService');
-  const userLocationStream = ownerId
-    ? await locationServiceStream.getLocation(ownerId).catch(() => null)
-    : null;
+  const userLocationStream = opts.clientLocation
+    || (ownerId ? await locationServiceStream.getLocation(ownerId).catch(() => null) : null);
   const dateTimeBlockStream = locationServiceStream.formatDateTimeBlock(userLocationStream);
   const locationBlockStream = locationServiceStream.formatLocationBlock(userLocationStream);
   let systemPrompt = streamBasePrompt + dateTimeBlockStream + locationBlockStream + structuredFactsStream + memoryContextStream + emailContext + documentContext + calendarContextStream;

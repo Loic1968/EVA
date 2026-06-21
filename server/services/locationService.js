@@ -111,6 +111,29 @@ function formatDateTimeBlock(loc) {
   return `\n\n## DATE ET HEURE ACTUELLES\nMaintenant${where}: ${dateTimeStr}. Utilise pour "Quelle heure est-il?", "Where am I?", "What time is it?".\n`;
 }
 
+async function ingestClientLocation(ownerId, clientLocation) {
+  if (!ownerId || !clientLocation || typeof clientLocation !== 'object') return null;
+  if (clientLocation.lat == null && !clientLocation.city) return null;
+  return setLocation(ownerId, { ...clientLocation, source: clientLocation.source || 'gps-live' });
+}
+
+function formatLocationReply(loc) {
+  if (!loc?.city && loc?.lat == null) {
+    return "Je n'ai pas ta position GPS. Ouvre EVA sur ton téléphone, autorise la géolocalisation (Réglages → Location → Use GPS), puis redemande.";
+  }
+  const parts = [];
+  if (loc.city) parts.push(`Tu es à ${loc.city}`);
+  if (loc.lat != null && loc.lng != null) {
+    parts.push(`(${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)})`);
+  }
+  if (loc.timezone) parts.push(`Fuseau ${loc.timezone}`);
+  const updated = loc.updatedAt ? new Date(loc.updatedAt).getTime() : 0;
+  if (updated && Date.now() - updated > 60 * 60 * 1000) {
+    parts.push('— position >1h, rafraîchis le GPS si tu as bougé');
+  }
+  return parts.join(' · ');
+}
+
 async function syncToEva2(loc) {
   const base = (process.env.EVA2_PUBLIC_URL || '').replace(/\/$/, '');
   const secret = (process.env.EVA2_SSO_SECRET || '').trim();
@@ -138,7 +161,9 @@ module.exports = {
   serializeLocation,
   getLocation,
   setLocation,
+  ingestClientLocation,
   formatLocationBlock,
   formatDateTimeBlock,
+  formatLocationReply,
   syncToEva2,
 };

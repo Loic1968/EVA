@@ -7,6 +7,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import MicSpeakerTest from '../components/MicSpeakerTest';
 import VoiceAlice from './VoiceAlice';
 import { api } from '../api';
+import { refreshLocationForChat } from '../utils/geolocation';
 
 function getApiBase() {
   if (import.meta.env.VITE_EVA_API_URL)
@@ -146,6 +147,10 @@ export default function ChatRealtime() {
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
         ctx.resume().catch(() => {});
         audioContextRef.current = ctx;
+      } catch (_) {}
+      try {
+        const loc = await refreshLocationForChat('');
+        if (loc) await api.setLocation(loc);
       } catch (_) {}
       const token = localStorage.getItem('eva_token') || sessionStorage.getItem('eva_token');
       const r = await fetch(`${API_BASE}/realtime/token`, {

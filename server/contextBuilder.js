@@ -1,6 +1,7 @@
-// Keywords for query-aware retrieval (match evaChat.js)
-const EMAIL_KEYWORDS = /email|mail|vol[s]?|vole|billet|avion|Shanghai|PVG|voyage|flight|ticket|emirates|etihad|reservation|confirmation|booking/i;
-const DOCUMENT_KEYWORDS = /vol[s]?|vole|billet|avion|train|Shanghai|PVG|voyage|travel|flight|emirates|etihad|ticket|document|passport|horaire|heure|date|contrat|contract|proc[eé]dure|procedure|terme[s]?|terms|policy|politique|cv|r[eé]sum[eé]|resume|facture|invoice|devis|quote|memo|m[eé]moire|memory\s*vault/i;
+// Récupération NON-SPÉCIFIQUE : on ne conditionne plus la recherche mails/docs à une
+// liste de mots-clés (l'ancien biais « voyage/démo », puis « business »). EVA cherche
+// TOUJOURS à partir du message de l'utilisateur, quel que soit le sujet, et ne retombe
+// sur les éléments récents que si la recherche ne renvoie rien.
 
 function isMinimalMessage(msg) {
   const t = (msg || '').trim();
@@ -59,28 +60,26 @@ async function fetchEmails(ownerId, userMessage, isFlightIntent) {
   if (cached !== undefined) return cached;
   try {
     const mcpClient = require('./services/mcpClient');
-    const useSearch = EMAIL_KEYWORDS.test(userMessage);
 
     if (mcpClient.isConnected()) {
-      // MCP path
-      const personalTools = require('./services/personalToolsService');
-      const searchQuery = useSearch && isFlightIntent ? personalTools.buildFlightEmailQuery(userMessage) : userMessage;
-      const result = useSearch
-        ? await mcpClient.callTool('gmail.search', { owner_id: ownerId, query: searchQuery, limit: 8 })
-        : await mcpClient.callTool('gmail.recent', { owner_id: ownerId, limit: 10, preview_chars: 5000 });
-      const emails = result.ok ? (result.data?.emails || []) : [];
+      // MCP path — on cherche toujours sur le message, repli sur les récents si vide.
+      const result = await mcpClient.callTool('gmail.search', { owner_id: ownerId, query: userMessage, limit: 8 });
+      let emails = result.ok ? (result.data?.emails || []) : [];
+      if (emails.length === 0) {
+        const recent = await mcpClient.callTool('gmail.recent', { owner_id: ownerId, limit: 10, preview_chars: 5000 });
+        emails = recent.ok ? (recent.data?.emails || []) : [];
+      }
       cacheSet(cacheKey, emails);
       return emails;
     }
 
-    // Fallback: direct service call
+    // Fallback: direct service call — même logique.
     const gmailSync = require('./services/gmailSync');
     if (!gmailSync) return [];
-    const personalTools = require('./services/personalToolsService');
-    const searchQuery = useSearch && isFlightIntent ? personalTools.buildFlightEmailQuery(userMessage) : userMessage;
-    const emails = useSearch && gmailSync.searchEmails
-      ? await gmailSync.searchEmails(ownerId, searchQuery, 8, null, 'all')
-      : await gmailSync.getRecentEmails(ownerId, 10, 5000);
+    let emails = gmailSync.searchEmails
+      ? await gmailSync.searchEmails(ownerId, userMessage, 8, null, 'all')
+      : [];
+    if (!emails || emails.length === 0) emails = await gmailSync.getRecentEmails(ownerId, 10, 5000);
     cacheSet(cacheKey, emails);
     return emails;
   } catch (e) {
@@ -94,8 +93,8 @@ async function fetchDocuments(ownerId, userMessage, isFlightIntent) {
   const cached = cacheGet(cacheKey);
   if (cached !== undefined) return cached;
   try {
-    const personalTools = require('./services/personalToolsService');
-    const searchQuery = userMessage + (isFlightIntent ? ' ' + (personalTools.buildFlightEmailQuery(userMessage) || 'itinerary flight') : '');
+    // Non-spécifique : recherche docs directement sur le message (sans padding « voyage »).
+    const searchQuery = userMessage;
     const mcpClient = require('./services/mcpClient');
 
     if (mcpClient.isConnected()) {
@@ -243,8 +242,9 @@ function formatEmails(emails) {
 
 function formatDocuments(docs, userMessage) {
   if (!docs.length) return '';
-  const isFlightQuery = /vol[s]?|vole|avion|billet|flight|ticket|Shanghai|emirates|etihad|horaire|heure/i.test(userMessage);
-  const charLimit = isFlightQuery ? 15000 : 3000;
+  // Limite uniforme et généreuse : on retire le biais "vol" (15000) vs "le reste"
+  // (3000) qui tronquait les contrats/factures réels. Réglable via EVA_DOC_CHAR_LIMIT.
+  const charLimit = Math.max(2000, Number(process.env.EVA_DOC_CHAR_LIMIT) || 12000);
   const lines = ['## Documents'];
   docs.forEach((d) => {
     const text = (d.content_text || d.content || d.content_preview || '').slice(0, charLimit);
@@ -307,17 +307,16 @@ async function buildContext({ ownerId, userMessage, history = [], isSmartContext
   const objectsBlock = formatObjects(objects);
   if (objectsBlock) parts.push(objectsBlock);
 
-  // Emails & documents (order: docs first if doc-related)
-  const isDocRelated = DOCUMENT_KEYWORDS.test(userMessage);
+  // Emails & documents — ordre non-spécifique : on met les documents en premier
+  // dès qu'on en a trouvé (contenu le plus riche à citer), sinon les emails d'abord.
   const emailsBlock = formatEmails(emails);
   const docsBlock = formatDocuments(docs, userMessage);
 
-  if (isDocRelated && docsBlock) {
+  if (docsBlock) {
     parts.push(docsBlock.trim());
     if (emailsBlock) parts.push(emailsBlock.trim());
-  } else {
-    if (emailsBlock) parts.push(emailsBlock.trim());
-    if (docsBlock) parts.push(docsBlock.trim());
+  } else if (emailsBlock) {
+    parts.push(emailsBlock.trim());
   }
 
   // Calendar

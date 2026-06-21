@@ -4,6 +4,7 @@
  */
 const Anthropic = require('@anthropic-ai/sdk');
 const OpenAI = require('openai');
+const { resolveClaudeModel, MODELS } = require('./config/modelConfig');
 
 // Lazy-load gmailSync and calendarSync to avoid circular dependency issues at startup
 let gmailSync = null;
@@ -74,6 +75,7 @@ const { getCanonicalPrompt } = require('./prompts/canonicalPrompt');
 const { getAssistantPrompt } = require('./systemPrompt');
 const { getAlicePrompt } = require('./prompts/alicePrompt');
 const { getEva2PromptBlock } = require('./prompts/eva2Persona');
+const { getEvaJarvisPrompt } = require('./prompts/evaJarvisPrompt');
 const { buildAllTools, isOrchestratorTool, executeOrchestratorTool, isMcpTool, executeMcpTool, createTrace, traceToolCall, MAX_TOOL_ROUNDS } = require('./services/toolOrchestrator');
 
 // ── NEW: Clean, natural system prompt (ChatGPT-like fluidity) ──
@@ -118,14 +120,19 @@ When ## Web search has content → use it and cite sources.`;
 // EVA_DIRECT_PROMPT kept for back-compat
 const EVA_DIRECT_PROMPT = `You are EVA — Loic's AI. You have access to his emails, documents, calendar (injected below). Answer naturally, same intelligence as ChatGPT/Claude. Use the context when relevant. Match his language (FR/EN). If data is missing, say so briefly. Don't invent facts.`;
 
-// ── Prompt resolution: natural by default, legacy via env var ──
+// ── Prompt resolution ──
+// Défaut: prompt V2 "Jarvis" (caractère + proactivité + garde-fous).
+// EVA_JARVIS=false  → ancien prompt plat (EVA_SYSTEM_NATURAL).
+// EVA_LEGACY_PROMPT=true → branche legacy historique (inchangée).
 const EVA_SYSTEM_BASE = process.env.EVA_LEGACY_PROMPT === 'true'
   ? (process.env.EVA_ASSISTANT_MODE === 'true'
       ? ANTI_HALLUCINATION + getAssistantPrompt() + SHARED_CAPABILITIES
       : process.env.EVA_OVERHAUL_ENABLED === 'true'
         ? getCanonicalPrompt('chat')
         : ANTI_HALLUCINATION + EVA_SYSTEM_LEGACY + SHARED_CAPABILITIES)
-  : EVA_SYSTEM_NATURAL;
+  : (process.env.EVA_JARVIS === 'false'
+      ? EVA_SYSTEM_NATURAL
+      : getEvaJarvisPrompt() + SHARED_CAPABILITIES);
 
 const ALICE_SYSTEM = getAlicePrompt() + '\n' + SHARED_CAPABILITIES;
 
@@ -151,11 +158,9 @@ function getOpenAIClient() {
   return new OpenAI({ apiKey: key.trim() });
 }
 
-// Keywords that suggest the user is asking about emails (widened for French)
-const EMAIL_KEYWORDS = /email|mail|envoy[eé]|re[çc]u|message|from|sent|wrote|[eé]crit|r[eé]pondu|contact[eé]|inbox|courrier|correspondance|dernier|dit|demand[eé]|r[eé]ponse|qui m'a|pierre|jean|paul|marie|assurance|insurance|statut|demande/i;
-
-// Keywords for travel/documents (vol, billet, Shanghai, Emirates, passport, etc.)
-const DOCUMENT_KEYWORDS = /vol|billet|avion|train|Shanghai|PVG|voyage|travel|flight|emirates|etihad|ticket|document|fichier|upload|upload[eé]|passport|passeport|date\s*de\s*naissance|birth\s*date|naissance|identit[eé]|cni|horaire|heure|contrat|contract|proc[eé]dure|procedure|terme[s]?|terms|policy|politique|cv|r[eé]sum[eé]|resume|facture|invoice|devis|quote|memo|m[eé]moire|memory\s*vault/i;
+// NB: les anciennes listes EMAIL_KEYWORDS / DOCUMENT_KEYWORDS (biais « voyage/démo »)
+// ont été retirées : la recherche mails + docs n'est plus conditionnée à un vocabulaire
+// codé en dur. EVA cherche TOUJOURS à partir du message, quel que soit le sujet.
 
 // Keywords for calendar (agenda, meeting, vol, rendez-vous, schedule)
 const CALENDAR_KEYWORDS = /agenda|calendrier|calendar|meeting|rendez-vous|rdv|r[eé]union|schedule|plann|event|[eé]v[eé]nement|prochain|vol|lundi|mardi|mercredi|jeudi|vendredi|demain|aujourd'hui|this week|add.*(to|au)|ajout(e|er).*(au|to)|priorit[eé]|priority|priorities|priorités/i;
@@ -372,8 +377,8 @@ function filterToolsBySettings(tools, { isAssistantMode, isMemoryLearning, isVoi
 async function reply(userMessage, history = [], ownerId = null, mode = null, opts = {}) {
   const aiProvider = opts.aiProvider === 'gpt' ? 'gpt' : 'claude';
   const model = aiProvider === 'gpt'
-    ? (process.env.EVA_GPT_MODEL || 'gpt-4o')
-    : (process.env.EVA_CHAT_MODEL || 'claude-sonnet-4-6');
+    ? (process.env.EVA_GPT_MODEL || MODELS.GPT_CHAT)
+    : resolveClaudeModel(process.env.EVA_CHAT_MODEL);
 
   let systemPrompt;
   let authErrorBlock = '';
@@ -439,14 +444,14 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
     try {
       const sync = getGmailSync();
       if (sync) {
-        const shouldInject = ALWAYS_INJECT_RECENT || EMAIL_KEYWORDS.test(userMessage) || (flightContext?.emails?.length > 0);
-        const emailResults = flightContext?.emails?.length > 0
-          ? flightContext.emails
-          : shouldInject
-            ? (EMAIL_KEYWORDS.test(userMessage)
-              ? await sync.searchEmails(ownerId, isFlightIntent ? personalTools.buildFlightEmailQuery(userMessage) : userMessage, 8, null, 'all')
-              : await sync.getRecentEmails(ownerId, 5))
-            : [];
+        // Non-spécifique : on CHERCHE toujours dans les mails à partir du message
+        // (aucune liste de mots-clés ne décide « voyage » vs « le reste »), et on
+        // ne retombe sur les mails récents que si la recherche ne renvoie rien.
+        let emailResults = flightContext?.emails?.length > 0 ? flightContext.emails : [];
+        if (emailResults.length === 0) {
+          emailResults = await sync.searchEmails(ownerId, userMessage, 8, null, 'all');
+          if (emailResults.length === 0) emailResults = await sync.getRecentEmails(ownerId, 5);
+        }
         if (emailResults.length > 0) {
           emailContext = '\n\n## Emails (Memory Vault — inbox, sent, drafts)\n';
           emailContext += 'Use these emails to answer questions about flights, confirmations, who said what. Extract date, departure time, flight number if present. If multiple flights, ask: "Is it the one on <date> at <time>?"\n\n';
@@ -487,16 +492,17 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
   if (isSmartContext && ownerId && !isMinimalMessage(userMessage)) {
     try {
       const docProcessor = require('./services/documentProcessor');
-      const shouldInject = ALWAYS_INJECT_RECENT || DOCUMENT_KEYWORDS.test(userMessage);
+      const shouldInject = ALWAYS_INJECT_RECENT;
       let resolvedDocs = flightContext?.docs?.length > 0 ? flightContext.docs : [];
       if (resolvedDocs.length === 0 && shouldInject) {
-        const searchQuery = userMessage + (isFlightIntent ? ' ' + (personalTools.buildFlightEmailQuery(userMessage) || '') : '');
-        resolvedDocs = await docProcessor.searchDocumentsWithCitations(ownerId, searchQuery, 8);
+        // Non-spécifique : on cherche les documents directement sur le message,
+        // sans padding « voyage » qui orientait la recherche vers les billets.
+        resolvedDocs = await docProcessor.searchDocumentsWithCitations(ownerId, userMessage, 8);
         if (resolvedDocs.length === 0) {
           const recent = await docProcessor.getRecentDocuments(ownerId, 5);
           resolvedDocs = recent.map((d) => ({ ...d, citation: { doc_id: d.id, filename: d.filename, chunk_index: 0, chunk_id: null } }));
         }
-        const filenameMatch = userMessage.match(/(?:emirates|etihad|flydubai)\s*(?:ticket|billet)?\s*(?:\.pdf)?|ticket\s*emirates|billet\s*emirates|\S+\.pdf/gi);
+        const filenameMatch = userMessage.match(/\S+\.(?:pdf|docx?|xlsx?|pptx?|csv|txt|png|jpe?g)/gi);
         if (filenameMatch) {
           const byName = await docProcessor.searchDocumentsByFilename(ownerId, filenameMatch[0].trim(), 3);
           const seen = new Set(resolvedDocs.map((d) => d.id));
@@ -662,6 +668,9 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
     { role: 'user', content: userMessage },
   ];
 
+  // Extended thinking is ON by default now that @anthropic-ai/sdk is on 0.105.x,
+  // which parses the thinking response stream correctly for current models
+  // (claude-sonnet-4-x). Set EVA_USE_THINKING=false to disable if needed.
   const useThinking = process.env.EVA_USE_THINKING !== 'false';
   const createOptions = {
     model,
@@ -862,7 +871,7 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
  */
 async function createReplyStream(userMessage, history = [], ownerId = null, mode = null) {
   const client = getClient();
-  const model = process.env.EVA_CHAT_MODEL || 'claude-sonnet-4-6';
+  const model = resolveClaudeModel(process.env.EVA_CHAT_MODEL);
 
   // ── Read settings toggles for stream ──
   const settings = require('./services/settingsService');
@@ -877,11 +886,10 @@ async function createReplyStream(userMessage, history = [], ownerId = null, mode
     try {
       const sync = getGmailSync();
       if (sync) {
-        const shouldInject = ALWAYS_INJECT_RECENT || EMAIL_KEYWORDS.test(userMessage);
-        if (shouldInject) {
-          const emailResults = EMAIL_KEYWORDS.test(userMessage)
-            ? await sync.searchEmails(ownerId, userMessage, 5, null, 'all')
-            : await sync.getRecentEmails(ownerId, 5);
+        {
+          // Non-spécifique : on cherche toujours, repli sur les récents si 0 résultat.
+          let emailResults = await sync.searchEmails(ownerId, userMessage, 8, null, 'all');
+          if (emailResults.length === 0) emailResults = await sync.getRecentEmails(ownerId, 5);
           if (emailResults.length > 0) {
             emailContext = '\n\n## Emails (Memory Vault — inbox, sent, drafts)\n';
             emailContext += 'Use these emails to answer. Cite sender, date, subject when relevant. For create_draft replies, use thread_id when available.\n\n';
@@ -909,7 +917,7 @@ async function createReplyStream(userMessage, history = [], ownerId = null, mode
   if (isSmartCtx && ownerId && !isMinimalMessage(userMessage)) {
     try {
       const docProcessor = require('./services/documentProcessor');
-      const shouldInject = ALWAYS_INJECT_RECENT || DOCUMENT_KEYWORDS.test(userMessage);
+      const shouldInject = ALWAYS_INJECT_RECENT;
       if (shouldInject) {
         let docResults = docProcessor.searchDocumentsWithCitations
           ? await docProcessor.searchDocumentsWithCitations(ownerId, userMessage, 8)
@@ -918,7 +926,7 @@ async function createReplyStream(userMessage, history = [], ownerId = null, mode
           const recent = await docProcessor.getRecentDocuments(ownerId, 5);
           docResults = recent.map((d) => ({ ...d, citation: { doc_id: d.id, filename: d.filename, chunk_index: 0 } }));
         }
-        const filenameMatch = userMessage.match(/(?:emirates|etihad|flydubai)\s*(?:ticket|billet)?\s*(?:\.pdf)?|ticket\s*emirates|billet\s*emirates|\S+\.pdf/gi);
+        const filenameMatch = userMessage.match(/\S+\.(?:pdf|docx?|xlsx?|pptx?|csv|txt|png|jpe?g)/gi);
         if (filenameMatch) {
           const byName = await docProcessor.searchDocumentsByFilename(ownerId, filenameMatch[0].trim(), 3);
           const seen = new Set(docResults.map((d) => d.id));

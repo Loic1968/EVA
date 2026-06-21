@@ -1,13 +1,15 @@
 /**
  * EVA structured facts — eva.facts table.
  * Used when EVA_STRUCTURED_MEMORY=true.
- * Priority: 100 = user correction, 50 = remembered fact, 10 = extracted document.
+ * Priority: 100 = user correction, 50 = remembered fact, 10 = extracted document,
+ *           5 = auto-learned from conversation (never overrides the above).
  */
 const db = require('../db');
 
 const PRIORITY_CORRECTION = 100;
 const PRIORITY_REMEMBER = 50;
 const PRIORITY_DOCUMENT = 10;
+const PRIORITY_CONVERSATION = 5;
 
 async function upsertFact(ownerId, key, value, sourceType, sourceId, priority) {
   const k = (key || '').trim().toLowerCase().replace(/\s+/g, '_');
@@ -30,6 +32,40 @@ async function upsertFact(ownerId, key, value, sourceType, sourceId, priority) {
 async function upsertFactSafe(ownerId, key, value, sourceType, sourceId, priority) {
   try {
     return await upsertFact(ownerId, key, value, sourceType, sourceId, priority);
+  } catch (e) {
+    if (/relation "eva\.facts" does not exist/i.test(String(e.message))) return null;
+    throw e;
+  }
+}
+
+/**
+ * Priority-guarded upsert: only writes when no existing fact has a HIGHER priority
+ * for this key. Used by auto-learning so a conversation-extracted fact (priority 5)
+ * never clobbers an explicit /remember (50) or /correct (100). Returns the row id
+ * when written, or null when skipped (existing fact outranks the new one).
+ */
+async function upsertFactSoft(ownerId, key, value, sourceType, sourceId, priority) {
+  const k = (key || '').trim().toLowerCase().replace(/\s+/g, '_');
+  if (!k) return null;
+  const r = await db.query(
+    `INSERT INTO eva.facts (owner_id, key, value, source_type, source_id, priority, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, now())
+     ON CONFLICT (owner_id, key) DO UPDATE SET
+       value = EXCLUDED.value,
+       source_type = EXCLUDED.source_type,
+       source_id = EXCLUDED.source_id,
+       priority = EXCLUDED.priority,
+       updated_at = now()
+     WHERE eva.facts.priority <= EXCLUDED.priority
+     RETURNING id`,
+    [ownerId, k, (value || '').trim().slice(0, 10000), sourceType || null, sourceId || null, priority ?? PRIORITY_CONVERSATION]
+  );
+  return r.rows[0]?.id ?? null;
+}
+
+async function upsertFactSoftSafe(ownerId, key, value, sourceType, sourceId, priority) {
+  try {
+    return await upsertFactSoft(ownerId, key, value, sourceType, sourceId, priority);
   } catch (e) {
     if (/relation "eva\.facts" does not exist/i.test(String(e.message))) return null;
     throw e;
@@ -124,5 +160,7 @@ module.exports = {
   getFacts,
   getFactByKey,
   upsertFactSafe,
+  upsertFactSoftSafe,
   extractAndUpsertFromDocument,
+  PRIORITY_CONVERSATION,
 };

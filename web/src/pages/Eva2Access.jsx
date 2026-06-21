@@ -21,7 +21,8 @@ const copy = {
     chMac: 'Claude Code / browser — Mac mini',
     note: 'Tu es connecté à EVA 1 — Eva 2 (VPS) s’ouvre dans un nouvel onglet.',
     fromLogin: 'Eva 2 (VPS) ouverte dans un nouvel onglet. Si rien ne s’affiche, clique ci-dessous.',
-    ssoOff: 'SSO non configuré sur le serveur — Eva 2 s’ouvrira avec son écran de login.',
+    ssoOff: 'SSO non configuré sur Render — ajoute EVA2_SSO_SECRET (même valeur que le VPS).',
+    ssoFailed: 'Connexion VPS refusée — vérifie EVA2_SSO_SECRET sur Render (Render → EVA → Environment).',
     error: 'Impossible de préparer l’accès Eva 2.',
   },
   en: {
@@ -40,7 +41,8 @@ const copy = {
     chMac: 'Claude Code / browser — Mac mini',
     note: 'You are signed in to EVA 1 — Eva 2 (VPS) opens in a new tab.',
     fromLogin: 'Eva 2 (VPS) opened in a new tab. If nothing appeared, click below.',
-    ssoOff: 'SSO not configured on server — Eva 2 will show its login screen.',
+    ssoOff: 'SSO not configured on Render — add EVA2_SSO_SECRET (same value as VPS).',
+    ssoFailed: 'VPS connection refused — check EVA2_SSO_SECRET on Render (Render → EVA → Environment).',
     error: 'Could not prepare Eva 2 access.',
   },
 };
@@ -54,6 +56,7 @@ export default function Eva2Access() {
   const [opening, setOpening] = useState(false);
   const [error, setError] = useState('');
   const fromLogin = searchParams.get('from') === 'login';
+  const ssoFailed = searchParams.get('vps') === 'sso-failed';
 
   useEffect(() => {
     api.getEva2Access()
@@ -104,6 +107,9 @@ export default function Eva2Access() {
         <p className="text-sm text-slate-500 dark:text-slate-500">{fromLogin ? t.fromLogin : t.note}</p>
         {!loading && access && !access.sso && (
           <p className="text-sm text-amber-600 dark:text-amber-400">{t.ssoOff}</p>
+        )}
+        {ssoFailed && (
+          <p className="text-sm text-red-500">{t.ssoFailed}</p>
         )}
         {error && <p className="text-sm text-red-500">{error}</p>}
         <div className="flex flex-wrap gap-3 pt-2">

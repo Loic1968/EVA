@@ -409,6 +409,12 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
     } catch (_) { /* settingsService may not export getAliceMode yet */ }
   }
   const basePrompt = getSystemPromptBase(isAliceMode);
+  const locationService = require('./services/locationService');
+  const userLocation = ownerId
+    ? await locationService.getLocation(ownerId).catch(() => null)
+    : null;
+  const dateTimeBlock = locationService.formatDateTimeBlock(userLocation);
+  const locationBlock = locationService.formatLocationBlock(userLocation);
 
   if (process.env.EVA_SMART_CONTEXT === 'true' && ownerId) {
     if ((personalTools.isPersonalToolsEnabled() || isFlightIntent) && isFlightIntent) {
@@ -419,9 +425,6 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
     const { context } = await contextBuilder.buildContext({ ownerId, userMessage, history, isSmartContext, isConversationLearning });
     const attached = (opts.attachedDocuments || []).map((d) => `**${d.filename}:**\n${(d.content_text || '').slice(0, 80000) || '(no text)'}`).join('\n\n');
     const attachedBlock = attached ? `\n\n## Attached by user (analyse first)\n${attached}\n` : '';
-    const now = new Date();
-    const dateTimeStr = now.toLocaleString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-    const dateTimeBlock = `\n\n## DATE ET HEURE ACTUELLES\nMaintenant: ${dateTimeStr}. Utilise pour "Quelle heure est-il?", "What time is it?".\n`;
     systemPrompt = basePrompt + authErrorBlock + dateTimeBlock + attachedBlock + (context || '');
   } else {
   // Tools-first for flight/calendar: fetch calendar + gmail + docs with expanded queries
@@ -637,10 +640,7 @@ async function reply(userMessage, history = [], ownerId = null, mode = null, opt
   // No more regex-based pre-injection — the model calls web_search proactively.
   let webContext = '';
 
-  const now = new Date();
-  const dateTimeStr = now.toLocaleString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-  const dateTimeBlock = `\n\n## DATE ET HEURE ACTUELLES\nMaintenant: ${dateTimeStr}. Utilise pour "Quelle heure est-il?", "On est quel jour?", "What time is it?".\n`;
-  systemPrompt = basePrompt + authErrorBlock + dateTimeBlock + attachedDocContext + structuredFactsContext + memoryContext + emailContext + documentContext + calendarContext + webContext;
+  systemPrompt = basePrompt + authErrorBlock + dateTimeBlock + locationBlock + attachedDocContext + structuredFactsContext + memoryContext + emailContext + documentContext + calendarContext + webContext;
   }
   // P4: Style / voice profile injection
   if (ownerId) {
@@ -1044,7 +1044,13 @@ async function createReplyStream(userMessage, history = [], ownerId = null, mode
     } catch (_) { /* settingsService may not export getAliceMode yet */ }
   }
   const streamBasePrompt = getSystemPromptBase(isAliceModeStream);
-  let systemPrompt = streamBasePrompt + structuredFactsStream + memoryContextStream + emailContext + documentContext + calendarContextStream;
+  const locationServiceStream = require('./services/locationService');
+  const userLocationStream = ownerId
+    ? await locationServiceStream.getLocation(ownerId).catch(() => null)
+    : null;
+  const dateTimeBlockStream = locationServiceStream.formatDateTimeBlock(userLocationStream);
+  const locationBlockStream = locationServiceStream.formatLocationBlock(userLocationStream);
+  let systemPrompt = streamBasePrompt + dateTimeBlockStream + locationBlockStream + structuredFactsStream + memoryContextStream + emailContext + documentContext + calendarContextStream;
   // P4: Style / voice profile injection
   if (ownerId) {
     try {

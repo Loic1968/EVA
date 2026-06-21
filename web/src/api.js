@@ -170,7 +170,10 @@ export const api = {
 
   // Location (for EVA: "where am I")
   getLocation: () => request('/me/location'),
-  setLocation: (city) => request('/me/location', { method: 'PUT', body: JSON.stringify({ city }) }),
+  setLocation: (payload) => {
+    const body = typeof payload === 'string' ? { city: payload } : payload;
+    return request('/me/location', { method: 'PUT', body: JSON.stringify(body) });
+  },
 
   // Data sources
   getDataSources: () => request('/data-sources'),

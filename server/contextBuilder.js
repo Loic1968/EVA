@@ -24,6 +24,21 @@ function cacheSet(key, value) {
 
 // ── Parallel fetchers (each returns its own block or '') ──
 
+async function fetchLocation(ownerId) {
+  const cacheKey = `location:${ownerId}`;
+  const cached = cacheGet(cacheKey);
+  if (cached !== undefined) return cached;
+  try {
+    const locationService = require('./services/locationService');
+    const loc = await locationService.getLocation(ownerId);
+    cacheSet(cacheKey, loc);
+    return loc;
+  } catch (e) {
+    console.warn('[EVA contextBuilder] Location failed:', e.message);
+    return null;
+  }
+}
+
 async function fetchFacts(ownerId) {
   const cacheKey = `facts:${ownerId}`;
   const cached = cacheGet(cacheKey);
@@ -280,10 +295,11 @@ async function buildContext({ ownerId, userMessage, history = [], isSmartContext
   const isFlightIntent = personalTools.classifyIntent(userMessage) === personalTools.INTENTS.FLIGHT_QUESTION;
 
   // ── Launch ALL fetches in parallel ──
-  const [factsResult, objectsResult, emailsResult, docsResult, calendarResult, webResult] =
+  const [factsResult, objectsResult, locationResult, emailsResult, docsResult, calendarResult, webResult] =
     await Promise.allSettled([
       fetchFacts(ownerId),
       fetchObjects(ownerId),
+      fetchLocation(ownerId),
       skipHeavyContext ? [] : fetchEmails(ownerId, userMessage, isFlightIntent),
       skipHeavyContext ? [] : fetchDocuments(ownerId, userMessage, isFlightIntent),
       skipHeavyContext ? [] : fetchCalendar(ownerId, userMessage, isFlightIntent),
@@ -293,6 +309,7 @@ async function buildContext({ ownerId, userMessage, history = [], isSmartContext
   // ── Collect results (fulfilled or empty fallback) ──
   const facts = factsResult.status === 'fulfilled' ? factsResult.value : [];
   const objects = objectsResult.status === 'fulfilled' ? objectsResult.value : [];
+  const location = locationResult.status === 'fulfilled' ? locationResult.value : null;
   const emails = emailsResult.status === 'fulfilled' ? emailsResult.value : [];
   const docs = docsResult.status === 'fulfilled' ? docsResult.value : [];
   const events = calendarResult.status === 'fulfilled' ? calendarResult.value : [];
@@ -300,6 +317,9 @@ async function buildContext({ ownerId, userMessage, history = [], isSmartContext
 
   // ── Assemble context ──
   const parts = [];
+  const locationService = require('./services/locationService');
+  const locationBlock = locationService.formatLocationBlock(location);
+  if (locationBlock) parts.push(locationBlock.trim());
 
   // Facts & objects (fast, always included)
   const factsBlock = formatFacts(facts);

@@ -173,8 +173,21 @@ async function buildInstructionsWithContext(ownerId) {
     }
 
     const now = new Date();
-    const dateTimeStr = now.toLocaleString(chatLang === 'en' ? 'en-GB' : 'fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-    instructions += `\n---\n## DATE ET HEURE ACTUELLES / CURRENT DATE & TIME\nMaintenant: ${dateTimeStr}.\n`;
+    const locationService = require('../services/locationService');
+    const userLocation = await locationService.getLocation(owner.id).catch(() => null);
+    const dateTimeStr = now.toLocaleString(chatLang === 'en' ? 'en-GB' : 'fr-FR', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      ...(userLocation?.timezone ? { timeZone: userLocation.timezone } : {}),
+    });
+    const where = userLocation?.city ? ` (${userLocation.city})` : '';
+    instructions += `\n---\n## DATE ET HEURE ACTUELLES / CURRENT DATE & TIME\nMaintenant${where}: ${dateTimeStr}.\n`;
+    const locationBlock = locationService.formatLocationBlock(userLocation);
+    if (locationBlock) instructions += `\n---${locationBlock}`;
 
     // ── USER PROFILE — inject name/email so EVA knows who the user is ──
     if (owner.display_name || owner.email) {

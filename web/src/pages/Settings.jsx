@@ -3,17 +3,12 @@ import EvaLoading from '../components/EvaLoading';
 import { useTheme } from '../context/ThemeContext';
 import { api } from '../api';
 import PwaInstallPrompt from '../components/PwaInstallPrompt';
-
-// Reverse geocode via Nominatim (OSM). Requires User-Agent per usage policy.
-async function reverseGeocode(lat, lon) {
-  const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`;
-  const res = await fetch(url, {
-    headers: { 'User-Agent': 'EVA-Halisoft/1.0 (location-settings)' },
-  });
-  const data = await res.json();
-  const addr = data?.address || {};
-  return addr.city || addr.town || addr.village || addr.municipality || addr.county || data?.display_name || null;
-}
+import {
+  detectCurrentLocation,
+  isAutoLocationEnabled,
+  markLocationUpdated,
+  setAutoLocationEnabled,
+} from '../utils/geolocation';
 
 export default function Settings() {
   const { accentColor, setAccentColor } = useTheme();
@@ -23,6 +18,8 @@ export default function Settings() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [location, setLocationState] = useState('');
+  const [locationMeta, setLocationMeta] = useState(null);
+  const [autoLocation, setAutoLocationState] = useState(() => isAutoLocationEnabled());
   const [locationLoading, setLocationLoading] = useState(false);
   const [locationError, setLocationError] = useState(null);
   const [pushStatus, setPushStatus] = useState({ subscribed: false, configured: false });
@@ -73,8 +70,19 @@ export default function Settings() {
 
   useEffect(() => {
     api.getLocation()
-      .then(({ location }) => setLocationState(location || ''))
-      .catch(() => setLocationState(''));
+      .then(({ location: loc }) => {
+        if (loc && typeof loc === 'object') {
+          setLocationState(loc.city || '');
+          setLocationMeta(loc);
+        } else {
+          setLocationState(loc || '');
+          setLocationMeta(null);
+        }
+      })
+      .catch(() => {
+        setLocationState('');
+        setLocationMeta(null);
+      });
   }, []);
 
   useEffect(() => {
@@ -134,7 +142,6 @@ export default function Settings() {
         setPushLoading(false);
         return;
       }
-      await navigator.serviceWorker.register('/sw.js', { scope: '/' });
       const reg = await navigator.serviceWorker.ready;
       if (!reg?.pushManager) {
         throw new Error('Push not supported in this browser. Use HTTPS and a supported browser.');
@@ -163,7 +170,9 @@ export default function Settings() {
     setLocationLoading(true);
     setLocationError(null);
     try {
-      await api.setLocation(city);
+      const saved = await api.setLocation({ city, source: 'manual' });
+      setLocationMeta(saved.location || null);
+      markLocationUpdated();
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {
@@ -173,38 +182,31 @@ export default function Settings() {
     }
   };
 
-  const useGpsLocation = () => {
+  const useGpsLocation = async () => {
     setLocationLoading(true);
     setLocationError(null);
-    if (!navigator.geolocation) {
-      setLocationError('Geolocation not supported');
+    try {
+      const loc = await detectCurrentLocation();
+      if (!loc.city) {
+        setLocationError('Could not determine city from coordinates');
+        return;
+      }
+      setLocationState(loc.city);
+      const saved = await api.setLocation(loc);
+      setLocationMeta(saved.location || loc);
+      markLocationUpdated();
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err) {
+      setLocationError(err.message || 'Location access denied');
+    } finally {
       setLocationLoading(false);
-      return;
     }
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        try {
-          const city = await reverseGeocode(pos.coords.latitude, pos.coords.longitude);
-          if (city) {
-            setLocationState(city);
-            await api.setLocation(city);
-            setSaved(true);
-            setTimeout(() => setSaved(false), 2000);
-          } else {
-            setLocationError('Could not determine city from coordinates');
-          }
-        } catch (e) {
-          setLocationError(e.message || 'Reverse geocoding failed');
-        } finally {
-          setLocationLoading(false);
-        }
-      },
-      (err) => {
-        setLocationError(err.message || 'Location access denied');
-        setLocationLoading(false);
-      },
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
+  };
+
+  const toggleAutoLocation = (on) => {
+    setAutoLocationState(on);
+    setAutoLocationEnabled(on);
   };
 
   const setShadowMode = async (enabled) => {
@@ -584,8 +586,17 @@ export default function Settings() {
       <div className="bg-white dark:bg-eva-panel rounded-xl border border-slate-200 dark:border-slate-700/40 p-6 max-w-2xl">
         <h2 className="text-lg font-medium text-slate-900 dark:text-white mb-2">Location</h2>
         <p className="text-slate-500 dark:text-eva-muted text-sm mb-4">
-          Your city or area helps EVA answer questions like &quot;Where am I?&quot; or &quot;What time is it there?&quot;
+          GPS helps EVA answer &quot;Where am I?&quot;, local time, weather, and nearby places. Synced to Eva 2 on VPS when configured.
         </p>
+        <label className="flex items-center gap-3 mb-4 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={autoLocation}
+            onChange={(e) => toggleAutoLocation(e.target.checked)}
+            className="rounded border-slate-400 text-eva-accent focus:ring-eva-accent"
+          />
+          <span className="text-sm text-slate-700 dark:text-slate-300">Auto-update location on open (every ~30 min)</span>
+        </label>
         <div className="flex flex-wrap items-center gap-2">
           <input
             type="text"
@@ -614,6 +625,15 @@ export default function Settings() {
         </div>
         {locationError && <p className="text-red-600 dark:text-red-400 text-sm mt-2">{locationError}</p>}
         {locationLoading && <span className="text-slate-500 dark:text-eva-muted text-sm mt-2">Getting location...</span>}
+        {locationMeta?.timezone && (
+          <p className="text-slate-500 dark:text-eva-muted text-xs mt-2">
+            {locationMeta.lat != null && locationMeta.lng != null
+              ? `${locationMeta.lat.toFixed(4)}, ${locationMeta.lng.toFixed(4)} · `
+              : ''}
+            {locationMeta.timezone}
+            {locationMeta.updatedAt ? ` · updated ${new Date(locationMeta.updatedAt).toLocaleString()}` : ''}
+          </p>
+        )}
         {saved && <span className="text-emerald-600 dark:text-emerald-400 text-sm mt-2">Saved</span>}
       </div>
 

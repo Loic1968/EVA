@@ -4,6 +4,7 @@ import EvaTopBar from './EvaTopBar';
 import EvaLogo from './EvaLogo';
 import PwaInstallPrompt from './PwaInstallPrompt';
 import { useAuth } from '../context/AuthContext';
+import { useAutoLocation } from '../hooks/useAutoLocation';
 import { api } from '../api';
 
 const nav = [
@@ -29,8 +30,9 @@ export default function Layout({ children }) {
   const { pathname } = useLocation();
   const fullBleed = pathname === '/emails' || pathname === '/calendar';
   const [evaStatus, setEvaStatus] = useState(null); // null=loading, true=active, false=offline
-  const { user, logout, requireAuth } = useAuth();
+  const { user, logout, requireAuth, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  useAutoLocation(isAuthenticated);
 
   useEffect(() => {
     api.status().then((r) => setEvaStatus(r.eva_enabled !== false)).catch(() => setEvaStatus(false));

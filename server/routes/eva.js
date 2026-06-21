@@ -1121,9 +1121,9 @@ router.get('/push/status', async (req, res) => {
 // Current location (so EVA knows "where am I")
 router.get('/me/location', async (req, res, next) => {
   try {
-    const memoryItems = require('../services/memoryItemsService');
-    const item = await memoryItems.getByKey(req.ownerId, 'current_location');
-    res.json({ location: item?.value || null });
+    const locationService = require('../services/locationService');
+    const location = await locationService.getLocation(req.ownerId);
+    res.json({ location });
   } catch (e) {
     next(e);
   }
@@ -1131,19 +1131,21 @@ router.get('/me/location', async (req, res, next) => {
 
 router.put('/me/location', async (req, res, next) => {
   try {
-    const { city } = req.body || {};
-    const value = (typeof city === 'string' ? city : req.body?.value || '').trim();
-    if (!value) return res.status(400).json({ error: 'city or value required' });
-    const memoryItems = require('../services/memoryItemsService');
-    await memoryItems.addMemoryItem(req.ownerId, 'preference', 'current_location', value);
-    if (process.env.EVA_STRUCTURED_MEMORY === 'true') {
-      try {
-        const factsService = require('../services/factsService');
-        await factsService.addRemember(req.ownerId, 'current_location', value);
-      } catch (_) {}
-    }
-    res.json({ location: value });
+    const body = req.body || {};
+    const locationService = require('../services/locationService');
+    const location = await locationService.setLocation(req.ownerId, {
+      city: body.city ?? body.label ?? body.value,
+      lat: body.lat,
+      lng: body.lng,
+      accuracy: body.accuracy,
+      timezone: body.timezone,
+      source: body.source,
+    });
+    res.json({ location });
   } catch (e) {
+    if (e.message === 'city or coordinates required') {
+      return res.status(400).json({ error: e.message });
+    }
     next(e);
   }
 });

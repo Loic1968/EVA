@@ -161,6 +161,7 @@ app.get('/api/status', (req, res) => {
 });
 
 // Main API (chat, documents, settings, etc.)
+app.use('/api/eva2', require('./routes/eva2Access'));
 app.use('/api', evaRoutes);
 
 // Serve frontend (web/dist) when built (e.g. on Render: single service for eva.halisoft.biz)

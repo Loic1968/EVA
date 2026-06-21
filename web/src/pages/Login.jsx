@@ -30,7 +30,9 @@ export default function Login() {
     setLoading(true);
     try {
       await login(email.trim(), password, stayConnected);
-      navigate('/voice', { replace: true });
+      const next = searchParams.get('next');
+      const safeNext = next && next.startsWith('/') && !next.startsWith('//') ? next : '/eva2';
+      navigate(`${safeNext}${safeNext === '/eva2' ? '?from=login' : ''}`, { replace: true });
     } catch (err) {
       setError(err.body?.error || err.message || 'Login failed');
     } finally {

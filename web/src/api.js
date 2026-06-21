@@ -73,6 +73,8 @@ export const api = {
       headers: { Authorization: `Bearer ${token}` },
     }).then((r) => (r.ok ? r.json() : Promise.reject(new Error('Unauthorized')))),
 
+  getEva2Access: () => request('/eva2/access'),
+
   // Chat (non-streaming). opts: { origin: 'voice' } for voice input (disables memory writes).
   chat: (message, history, conversation_id, document_ids, opts = {}) =>
     request('/chat', { method: 'POST', body: JSON.stringify({ message, history, conversation_id, document_ids, origin: opts.origin }) }),

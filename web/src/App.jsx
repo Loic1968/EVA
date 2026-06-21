@@ -18,6 +18,7 @@ import ResetPassword from './pages/ResetPassword';
 import Emails from './pages/Emails';
 import Calendar from './pages/Calendar';
 import About from './pages/About';
+import Eva2Access from './pages/Eva2Access';
 import { useAuth } from './context/AuthContext';
 
 function LoadingScreen() {
@@ -45,8 +46,8 @@ function AppRoutes() {
   return (
     <Layout>
       <Routes>
-        <Route path="/" element={<Navigate to="/chat" replace />} />
-        <Route path="/login" element={<Login />} />
+        <Route path="/" element={<Navigate to="/eva2" replace />} />
+        <Route path="/login" element={<Navigate to="/eva2?from=login" replace />} />
         <Route path="/signup" element={<SignUp />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
@@ -65,6 +66,7 @@ function AppRoutes() {
         <Route path="/settings" element={<Settings />} />
         <Route path="/sources" element={<DataSources />} />
         <Route path="/about" element={<About />} />
+        <Route path="/eva2" element={<Eva2Access />} />
       </Routes>
     </Layout>
   );

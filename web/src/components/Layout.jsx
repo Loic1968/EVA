@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
 
 const nav = [
+  { to: '/eva2', label: 'Eva 2 — VPS OpenClaw', icon: '⚡', highlight: true },
   { to: '/chat', label: 'Chat (type ChatGPT)', icon: '◈', highlight: true },
   { to: '/eva/chat', label: 'EVA Chat', icon: '💬', highlight: true },
   { to: '/voice', label: 'Alice Voice (nouveau)', icon: '🎙️', highlight: true },

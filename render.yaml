@@ -19,3 +19,7 @@ services:
         sync: false
       - key: EVA_API_KEY
         sync: false
+      - key: EVA2_PUBLIC_URL
+        value: https://eva-vps.halisoft.biz
+      - key: EVA2_SSO_SECRET
+        sync: false

@@ -11,7 +11,7 @@ router.use(verifyAuth);
 function createSsoToken(email) {
   const secret = (process.env.EVA2_SSO_SECRET || '').trim();
   if (!secret) return null;
-  const exp = Date.now() + 5 * 60 * 1000;
+  const exp = Date.now() + 10 * 60 * 1000;
   const payload = Buffer.from(JSON.stringify({ email, exp })).toString('base64url');
   const sig = crypto.createHmac('sha256', secret).update(payload).digest('base64url');
   return `${payload}.${sig}`;

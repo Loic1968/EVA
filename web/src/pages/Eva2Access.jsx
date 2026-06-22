@@ -97,7 +97,7 @@ export default function Eva2Access() {
   const [gps, setGps] = useState(null);
   const [gpsBusy, setGpsBusy] = useState(false);
   const fromLogin = searchParams.get('from') === 'login';
-  const ssoFailed = searchParams.get('vps') === 'sso-failed';
+  const ssoFailed = searchParams.get('vps') === 'sso-failed' || searchParams.get('vps') === 'sso-expired';
   const skipRedirect = searchParams.get('skip') === '1';
   const [mobileRedirecting, setMobileRedirecting] = useState(false);
 

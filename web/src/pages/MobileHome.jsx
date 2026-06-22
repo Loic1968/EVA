@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { refreshLocationForChat } from '../utils/geolocation';
 import { openUrl, prefersSameWindowNav } from '../utils/mobileNav';
@@ -26,6 +26,7 @@ const copy = {
     eva2PwaTip: 'Pour Eva 2 seul : ajoute eva-vps.halisoft.biz à l’écran d’accueil après connexion.',
     lockTip: 'Si l’écran se verrouille pendant le chat ou la voix : déverrouille et appuie sur « Reprendre ».',
     error: 'Impossible d’ouvrir Eva 2 — réessaie ou utilise la connexion directe.',
+    ssoFailed: 'Lien Eva 2 expiré — retouche « Eva 2 — Chat OpenClaw » (nouveau lien à chaque fois).',
     directLogin: 'Connexion directe Eva 2',
   },
   en: {
@@ -45,6 +46,7 @@ const copy = {
     eva2PwaTip: 'For Eva 2 on iPhone: open eva.halisoft.biz/eva2 (one EVA login → SSO), then Share → Add to Home Screen from the Eva 2 chat — not the password page.',
     lockTip: 'If the screen locks during chat or voice: unlock and tap Tap to resume.',
     error: 'Could not open Eva 2 — try again or use direct login.',
+    ssoFailed: 'Eva 2 link expired — tap Eva 2 chat again (fresh link each time).',
     directLogin: 'Emergency Eva 2 password (fallback)',
   },
 };
@@ -103,6 +105,8 @@ function ShortcutLink({ to, icon, title, desc }) {
 
 export default function MobileHome() {
   const t = copy[lang];
+  const [searchParams] = useSearchParams();
+  const ssoFailed = searchParams.get('vps') === 'sso-failed' || searchParams.get('vps') === 'sso-expired';
   const [opening, setOpening] = useState(false);
   const [error, setError] = useState('');
 
@@ -146,6 +150,10 @@ export default function MobileHome() {
         <ShortcutLink to="/voice/realtime" icon="📞" title={t.call} desc={t.callDesc} />
         <ShortcutLink to="/eva2" icon="⚙️" title={t.eva2Hub} desc="GPS, SSO, canaux" />
       </div>
+
+      {ssoFailed && (
+        <p className="text-sm text-amber-600 dark:text-amber-400">{t.ssoFailed}</p>
+      )}
 
       {error && (
         <p className="text-sm text-red-500">

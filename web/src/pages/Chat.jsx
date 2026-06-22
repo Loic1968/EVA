@@ -2,8 +2,10 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import EvaLogo from '../components/EvaLogo';
 import EvaLoading from '../components/EvaLoading';
+import ConnectionBanner from '../components/ConnectionBanner';
 import { api } from '../api';
 import { useVoiceInput, useVoiceOutput } from '../hooks/useVoice';
+import { useWakeLock } from '../hooks/useWakeLock';
 
 function nextSentence(text, fromIndex) {
   const rest = text.slice(fromIndex).trimStart();
@@ -23,6 +25,7 @@ export default function Chat() {
   const [streamingContent, setStreamingContent] = useState('');
   const [autoPlayVoice, setAutoPlayVoice] = useState(true);
   const [attachedFiles, setAttachedFiles] = useState([]);
+  const [connectionBanner, setConnectionBanner] = useState(null);
   const lang = navigator.language?.startsWith('fr') ? 'fr' : 'en';
   const bottomRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -32,11 +35,13 @@ export default function Chat() {
   const streamDoneRef = useRef(false);
   const streamingTextRef = useRef('');
   const abortControllerRef = useRef(null);
+  const hiddenDuringLoadRef = useRef(false);
 
   const STOP_COMMAND = /^(stop|tais[- ]?toi|arr[eê]te|silence)$/i;
 
   const voiceInput = useVoiceInput(lang);
   const voiceOutput = useVoiceOutput(lang);
+  useWakeLock(loading || voiceInput.isListening || voiceOutput.isSpeaking);
 
   // Load EVA status and conversations list
   const loadConversations = useCallback(async () => {
@@ -88,6 +93,46 @@ export default function Chat() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streamingContent]);
+
+  // iOS PWA: abort stale streams when screen locks mid-response
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        if (loading || voiceInput.isListening) hiddenDuringLoadRef.current = true;
+      } else {
+        if (!navigator.onLine) {
+          setConnectionBanner(lang === 'fr' ? 'Hors ligne…' : 'Offline…');
+        } else {
+          setConnectionBanner(null);
+        }
+        if (hiddenDuringLoadRef.current && (loading || voiceInput.isListening)) {
+          hiddenDuringLoadRef.current = false;
+          abortControllerRef.current?.abort();
+          if (voiceInput.isListening) voiceInput.stopListening(() => {});
+          setLoading(false);
+          setStreamingContent('');
+          setError(
+            lang === 'fr'
+              ? 'Conversation interrompue (écran éteint). Renvoie ton message.'
+              : 'Conversation interrupted (screen off). Send your message again.',
+          );
+        }
+      }
+    };
+    const onOffline = () => {
+      setConnectionBanner(lang === 'fr' ? 'Hors ligne…' : 'Offline…');
+    };
+    const onOnline = () => setConnectionBanner(null);
+
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('offline', onOffline);
+    window.addEventListener('online', onOnline);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('offline', onOffline);
+      window.removeEventListener('online', onOnline);
+    };
+  }, [loading, voiceInput.isListening, lang]);
 
   const newConversation = async () => {
     try {
@@ -324,6 +369,7 @@ export default function Chat() {
 
   return (
     <div className="flex h-[calc(100vh-5rem)] min-h-[300px] gap-0 -mx-4 -mt-4 sm:-mx-6 sm:-mt-6 overflow-hidden">
+      <ConnectionBanner message={connectionBanner} />
       {/* Sidebar — slide-over like ChatGPT (z-[60] below topbar z-[100]) */}
       {showSidebar && (
         <>

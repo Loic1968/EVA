@@ -27,7 +27,10 @@ const copy = {
     fromLogin: 'Eva 2 (VPS) ouverte dans un nouvel onglet. Si rien ne s’affiche, clique ci-dessous.',
     ssoOff: 'SSO manquant sur Render. Ajoute EVA2_SSO_SECRET puis redéploie — le bouton sera actif ensuite.',
     ssoSteps: 'Render → service EVA → Environment → EVA2_PUBLIC_URL=https://eva-vps.halisoft.biz + EVA2_SSO_SECRET (voir VPS /opt/eva2/.env)',
-    ssoFailed: 'Connexion VPS refusée — vérifie EVA2_SSO_SECRET sur Render (Render → EVA → Environment).',
+    ssoFailed: 'Lien Eva 2 expiré ou refusé — réessaie le bouton (un nouveau lien est généré à chaque clic).',
+    popupBlocked: 'Safari a bloqué le nouvel onglet — autorise les popups pour eva.halisoft.biz, ou utilise « Connexion directe ».',
+    directLogin: 'Connexion directe Eva 2 (mot de passe)',
+    ssoFix: 'Pour réparer le bouton depuis EVA 1 : Render → EVA → Environment → EVA2_SSO_SECRET doit être identique au VPS (/opt/eva2/.env).',
     error: 'Impossible de préparer l’accès Eva 2.',
   },
   en: {
@@ -51,7 +54,10 @@ const copy = {
     fromLogin: 'Eva 2 (VPS) opened in a new tab. If nothing appeared, click below.',
     ssoOff: 'SSO missing on Render. Add EVA2_SSO_SECRET and redeploy — then the button will work.',
     ssoSteps: 'Render → EVA service → Environment → EVA2_PUBLIC_URL=https://eva-vps.halisoft.biz + EVA2_SSO_SECRET (see VPS /opt/eva2/.env)',
-    ssoFailed: 'VPS connection refused — check EVA2_SSO_SECRET on Render (Render → EVA → Environment).',
+    ssoFailed: 'Eva 2 link expired or refused — try again (a fresh link is generated on each click).',
+    popupBlocked: 'Safari blocked the new tab — allow popups for eva.halisoft.biz, or use Direct login.',
+    directLogin: 'Direct Eva 2 login (password)',
+    ssoFix: 'To fix the button from EVA 1: Render → EVA → Environment → EVA2_SSO_SECRET must match VPS (/opt/eva2/.env).',
     error: 'Could not prepare Eva 2 access.',
   },
 };
@@ -71,10 +77,23 @@ export default function Eva2Access() {
 
   useEffect(() => {
     api.getEva2Access()
-      .then(setAccess)
+      .then((data) => setAccess(data))
       .catch(() => setError(t.error))
       .finally(() => setLoading(false));
   }, [t.error]);
+
+  const openFreshEva2 = async (tab) => {
+    const fresh = await api.getEva2Access();
+    if (!fresh?.sso || !fresh?.url) {
+      throw new Error('sso');
+    }
+    if (tab) {
+      tab.location.href = fresh.url;
+      return;
+    }
+    const opened = window.open(fresh.url, '_blank', 'noopener,noreferrer');
+    if (!opened) throw new Error('popup');
+  };
 
   const syncGps = async (force = false) => {
     setGpsBusy(true);
@@ -99,19 +118,35 @@ export default function Eva2Access() {
   }, []);
 
   useEffect(() => {
-    if (!fromLogin || loading || !access?.sso || !access?.url || autoOpened.current) return;
+    if (!fromLogin || loading || !access?.sso || autoOpened.current) return;
     autoOpened.current = true;
-    syncGps(true).finally(() => {
-      window.open(access.url, '_blank', 'noopener,noreferrer');
-    });
-  }, [fromLogin, loading, access]);
+    // Pas d’auto-open : Safari bloque sans clic utilisateur — message fromLogin suffit.
+  }, [fromLogin, loading, access?.sso]);
 
   const openEva2 = async () => {
-    if (!access?.url || !access?.sso) return;
+    if (!access?.sso) return;
     setOpening(true);
-    await syncGps(true);
-    window.open(access.url, '_blank', 'noopener,noreferrer');
-    setTimeout(() => setOpening(false), 1200);
+    setError('');
+    const tab = window.open('about:blank', '_blank');
+    if (!tab) {
+      setError(t.popupBlocked);
+      setOpening(false);
+      return;
+    }
+    try {
+      const gpsTask = syncGps(true);
+      await openFreshEva2(tab);
+      await gpsTask;
+    } catch (e) {
+      try {
+        tab.close();
+      } catch {
+        /* ignore */
+      }
+      setError(e?.message === 'popup' ? t.popupBlocked : t.ssoFailed);
+    } finally {
+      setTimeout(() => setOpening(false), 1200);
+    }
   };
 
   return (
@@ -164,18 +199,29 @@ export default function Eva2Access() {
           </div>
         )}
         {ssoFailed && (
-          <p className="text-sm text-red-500">{t.ssoFailed}</p>
+          <div className="text-sm text-red-500 space-y-2">
+            <p>{t.ssoFailed}</p>
+            <p className="text-slate-600 dark:text-slate-400">{t.ssoFix}</p>
+          </div>
         )}
         {error && <p className="text-sm text-red-500">{error}</p>}
         <div className="flex flex-wrap gap-3 pt-2">
           <button
             type="button"
             onClick={openEva2}
-            disabled={loading || opening || !access?.sso || !access?.url}
+            disabled={loading || opening || !access?.sso}
             className="px-5 py-2.5 rounded-lg bg-eva-accent text-white font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
           >
             {opening ? t.opening : t.open}
           </button>
+          <a
+            href="https://eva-vps.halisoft.biz/auth/login"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-5 py-2.5 rounded-lg border border-eva-accent/50 text-eva-accent hover:bg-[var(--eva-accent-bg)]/40 transition-colors"
+          >
+            {t.directLogin}
+          </a>
           <a
             href="https://t.me/Halisoft2bot"
             target="_blank"

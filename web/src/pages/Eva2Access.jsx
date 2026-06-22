@@ -11,6 +11,10 @@ function isIOS() {
   return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
 }
 
+function isMobilePhone() {
+  return isIOS() || /Android/i.test(navigator.userAgent);
+}
+
 function isStandalonePwa() {
   return (
     window.matchMedia('(display-mode: standalone)').matches ||
@@ -46,6 +50,7 @@ const copy = {
     eva2Desc: 'VPS Singapour — Telegram @Halisoft2bot, dashboard OpenClaw, gog, GitHub, crons.',
     open: 'Ouvrir Eva 2',
     opening: 'Connexion…',
+    redirecting: 'Ouverture Eva 2…',
     telegram: 'Telegram (sans login web)',
     channels: 'Canaux Eva 2',
     chTelegram: 'Telegram @Halisoft2bot — 24/7',
@@ -75,6 +80,7 @@ const copy = {
     eva2Desc: 'Singapore VPS — Telegram @Halisoft2bot, OpenClaw dashboard, gog, GitHub, crons.',
     open: 'Open Eva 2',
     opening: 'Connecting…',
+    redirecting: 'Opening Eva 2…',
     telegram: 'Telegram (no web login)',
     channels: 'Eva 2 channels',
     chTelegram: 'Telegram @Halisoft2bot — 24/7',
@@ -109,6 +115,8 @@ export default function Eva2Access() {
   const [gpsBusy, setGpsBusy] = useState(false);
   const fromLogin = searchParams.get('from') === 'login';
   const ssoFailed = searchParams.get('vps') === 'sso-failed';
+  const skipRedirect = searchParams.get('skip') === '1';
+  const [mobileRedirecting, setMobileRedirecting] = useState(false);
 
   useEffect(() => {
     api.getEva2Access()
@@ -140,10 +148,24 @@ export default function Eva2Access() {
   }, []);
 
   useEffect(() => {
-    if (!fromLogin || loading || !access?.sso || autoOpened.current) return;
+    if (loading || !access?.sso || skipRedirect || ssoFailed || autoOpened.current) return;
+    if (!isMobilePhone()) return;
     autoOpened.current = true;
-    // Pas d’auto-open : Safari bloque sans clic utilisateur — message fromLogin suffit.
-  }, [fromLogin, loading, access?.sso]);
+    setMobileRedirecting(true);
+    void syncGps(true);
+    fetchEva2AccessWithTimeout()
+      .then((fresh) => {
+        if (fresh?.sso && fresh?.url) {
+          window.location.href = fresh.url;
+          return;
+        }
+        throw new Error('sso');
+      })
+      .catch(() => {
+        autoOpened.current = false;
+        setMobileRedirecting(false);
+      });
+  }, [loading, access?.sso, skipRedirect, ssoFailed]);
 
   const navigateToEva2 = (url, tab) => {
     if (prefersSameWindowNav()) {
@@ -212,6 +234,16 @@ export default function Eva2Access() {
 
   return (
     <div className="max-w-3xl space-y-8">
+      {mobileRedirecting && (
+        <div className="rounded-xl border border-eva-accent/30 bg-[var(--eva-accent-bg)]/40 p-6 text-center">
+          <p className="text-slate-700 dark:text-slate-200 font-medium">{t.redirecting}</p>
+          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+            {lang === 'fr'
+              ? 'Redirection SSO vers eva-vps.halisoft.biz…'
+              : 'SSO redirect to eva-vps.halisoft.biz…'}
+          </p>
+        </div>
+      )}
       <header>
         <p className="text-sm font-medium text-eva-accent mb-1">HaliSoft · Digital Twin</p>
         <h1 className="text-2xl sm:text-3xl font-semibold text-slate-900 dark:text-white">{t.title}</h1>

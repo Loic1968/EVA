@@ -77,7 +77,7 @@ export async function refreshLocationForChat(message, { force = false } = {}) {
   if (typeof navigator === 'undefined' || !navigator.geolocation) return null;
   const needsFresh = force || isLocationQuestion(message);
   if (!needsFresh && !isAutoLocationEnabled()) return null;
-  if (!needsFresh && !shouldRefreshLocation(5 * 60 * 1000)) return null;
+  if (!needsFresh && !shouldRefreshLocation(90 * 1000)) return null;
 
   try {
     const loc = await detectCurrentLocation({

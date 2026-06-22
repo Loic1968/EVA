@@ -161,6 +161,8 @@ app.get('/api/status', (req, res) => {
 });
 
 // Main API (chat, documents, settings, etc.)
+// Eva 2 VPS — export GPS (token signé, pas de session utilisateur)
+app.use('/api/eva2', require('./routes/eva2LocationExport'));
 app.use('/api/eva2', require('./routes/eva2Access'));
 app.use('/api', evaRoutes);
 

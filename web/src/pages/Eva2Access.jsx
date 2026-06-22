@@ -4,6 +4,33 @@ import { api } from '../api';
 import { refreshLocationForChat } from '../utils/geolocation';
 
 const lang = navigator.language?.startsWith('fr') ? 'fr' : 'en';
+const EVA2_LOGIN_URL = 'https://eva-vps.halisoft.biz/auth/login';
+const FETCH_TIMEOUT_MS = 15000;
+
+function isIOS() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+}
+
+function isStandalonePwa() {
+  return (
+    window.matchMedia('(display-mode: standalone)').matches ||
+    window.navigator.standalone === true
+  );
+}
+
+/** iOS Safari / installed PWA: popups are unreliable — navigate same window after SSO fetch. */
+function prefersSameWindowNav() {
+  return isIOS() || isStandalonePwa();
+}
+
+async function fetchEva2AccessWithTimeout() {
+  return Promise.race([
+    api.getEva2Access(),
+    new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('timeout')), FETCH_TIMEOUT_MS);
+    }),
+  ]);
+}
 
 const copy = {
   fr: {
@@ -32,6 +59,7 @@ const copy = {
     directLogin: 'Connexion directe Eva 2 (mot de passe)',
     ssoFix: 'Pour réparer le bouton depuis EVA 1 : Render → EVA → Environment → EVA2_SSO_SECRET doit être identique au VPS (/opt/eva2/.env).',
     error: 'Impossible de préparer l’accès Eva 2.',
+    timeout: 'Connexion Eva 2 trop lente — réessaie ou utilise « Connexion directe ».',
   },
   en: {
     title: 'Eva 2 — OpenClaw',
@@ -59,6 +87,7 @@ const copy = {
     directLogin: 'Direct Eva 2 login (password)',
     ssoFix: 'To fix the button from EVA 1: Render → EVA → Environment → EVA2_SSO_SECRET must match VPS (/opt/eva2/.env).',
     error: 'Could not prepare Eva 2 access.',
+    timeout: 'Eva 2 connection timed out — try again or use Direct login.',
   },
 };
 
@@ -81,19 +110,6 @@ export default function Eva2Access() {
       .catch(() => setError(t.error))
       .finally(() => setLoading(false));
   }, [t.error]);
-
-  const openFreshEva2 = async (tab) => {
-    const fresh = await api.getEva2Access();
-    if (!fresh?.sso || !fresh?.url) {
-      throw new Error('sso');
-    }
-    if (tab) {
-      tab.location.href = fresh.url;
-      return;
-    }
-    const opened = window.open(fresh.url, '_blank', 'noopener,noreferrer');
-    if (!opened) throw new Error('popup');
-  };
 
   const syncGps = async (force = false) => {
     setGpsBusy(true);
@@ -123,29 +139,68 @@ export default function Eva2Access() {
     // Pas d’auto-open : Safari bloque sans clic utilisateur — message fromLogin suffit.
   }, [fromLogin, loading, access?.sso]);
 
+  const navigateToEva2 = (url, tab) => {
+    if (prefersSameWindowNav()) {
+      window.location.href = url;
+      return;
+    }
+    if (tab) {
+      try {
+        tab.location.href = url;
+        return;
+      } catch {
+        try {
+          tab.close();
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+    const opened = window.open(url, '_blank', 'noopener,noreferrer');
+    if (!opened) {
+      window.location.href = url;
+    }
+  };
+
   const openEva2 = async () => {
     if (!access?.sso) return;
     setOpening(true);
     setError('');
-    const tab = window.open('about:blank', '_blank');
-    if (!tab) {
-      setError(t.popupBlocked);
-      setOpening(false);
-      return;
+
+    // GPS sync must not block SSO navigation (geolocation can hang 20s+ on mobile).
+    void syncGps(true);
+
+    const useSameWindow = prefersSameWindowNav();
+    let tab = null;
+    if (!useSameWindow) {
+      tab = window.open('about:blank', '_blank');
     }
+
     try {
-      const gpsTask = syncGps(true);
-      await openFreshEva2(tab);
-      await gpsTask;
-    } catch (e) {
-      try {
-        tab.close();
-      } catch {
-        /* ignore */
+      const fresh = await fetchEva2AccessWithTimeout();
+      if (!fresh?.sso || !fresh?.url) {
+        throw new Error('sso');
       }
-      setError(e?.message === 'popup' ? t.popupBlocked : t.ssoFailed);
+      navigateToEva2(fresh.url, tab);
+    } catch (e) {
+      if (tab) {
+        try {
+          tab.close();
+        } catch {
+          /* ignore */
+        }
+      }
+      if (e?.message === 'timeout') {
+        setError(t.timeout);
+      } else if (e?.message === 'sso') {
+        setError(t.ssoFailed);
+      } else if (!useSameWindow && !tab) {
+        setError(t.popupBlocked);
+      } else {
+        setError(t.error);
+      }
     } finally {
-      setTimeout(() => setOpening(false), 1200);
+      setOpening(false);
     }
   };
 
@@ -215,7 +270,7 @@ export default function Eva2Access() {
             {opening ? t.opening : t.open}
           </button>
           <a
-            href="https://eva-vps.halisoft.biz/auth/login"
+            href={EVA2_LOGIN_URL}
             target="_blank"
             rel="noopener noreferrer"
             className="px-5 py-2.5 rounded-lg border border-eva-accent/50 text-eva-accent hover:bg-[var(--eva-accent-bg)]/40 transition-colors"

@@ -16,6 +16,7 @@
     "verify-schema": "node scripts/verify-schema.js",
     "test:smoke": "node scripts/smoke-test.js",
     "test:prod": "node scripts/prod-test.js",
+    "verify:deploy": "bash scripts/verify-eva-deploy.sh",
     "diagnose:documents": "node scripts/diagnose-documents.js",
     "test:documents": "node scripts/test-document-processor.js",
     "test:structured-memory": "EVA_STRUCTURED_MEMORY=true node server/scripts/testStructuredMemory.js",

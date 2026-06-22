@@ -6,7 +6,7 @@ import { openUrl, prefersSameWindowNav } from '../utils/mobileNav';
 
 const lang = navigator.language?.startsWith('fr') ? 'fr' : 'en';
 const FETCH_TIMEOUT_MS = 15000;
-const EVA2_LOGIN_URL = 'https://eva-vps.halisoft.biz/auth/login';
+const EVA2_LOGIN_URL = 'https://eva-vps.halisoft.biz/auth/login?local=1';
 
 const copy = {
   fr: {
@@ -42,10 +42,10 @@ const copy = {
     callDesc: 'Live voice conversation',
     eva2Hub: 'Eva 2 settings / GPS',
     pwaTip: 'Add EVA to your home screen (Share → Add to Home Screen) for a full-screen app.',
-    eva2PwaTip: 'For Eva 2 only: add eva-vps.halisoft.biz to home screen after login.',
-    lockTip: 'If the screen locks during chat or voice: unlock and tap « Resume ».',
+    eva2PwaTip: 'For Eva 2 on iPhone: open eva.halisoft.biz/eva2 (one EVA login → SSO), then Share → Add to Home Screen from the Eva 2 chat — not the password page.',
+    lockTip: 'If the screen locks during chat or voice: unlock and tap Tap to resume.',
     error: 'Could not open Eva 2 — try again or use direct login.',
-    directLogin: 'Direct Eva 2 login',
+    directLogin: 'Emergency Eva 2 password (fallback)',
   },
 };
 

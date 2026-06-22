@@ -24,7 +24,7 @@ export default function VoiceAlice() {
   const [aliceLvl, setAliceLvl] = useState(0);
   const [history, setHistory] = useState([]);
   const [convId, setConvId] = useState(null);
-  const [lang, setLang] = useState('fr');
+  const [lang, setLang] = useState(() => (navigator.language?.startsWith('fr') ? 'fr' : 'en'));
   const [mode, setMode] = useState('vad');            // vad = hands-free (default) | ptt = push-to-talk
   const [listeningStarted, setListeningStarted] = useState(false); // VAD: true after user clicked to start (unlocks AudioContext)
   const [debug, setDebug] = useState('');
@@ -86,7 +86,7 @@ export default function VoiceAlice() {
         setShowResume(false);
         if (!ok) {
           setShowResume(true);
-          setConnectionBanner('Micro coupé — appuie pour reprendre');
+          setConnectionBanner(lang === 'fr' ? 'Micro coupé — appuie pour reprendre' : 'Mic stopped — tap to resume');
         }
         return;
       }
@@ -98,7 +98,9 @@ export default function VoiceAlice() {
 
     const onVisibility = () => {
       if (document.visibilityState === 'hidden') {
-        if (sessionActive) setConnectionBanner('Écran verrouillé — le micro peut être coupé');
+        if (sessionActive) {
+          setConnectionBanner(lang === 'fr' ? 'Écran verrouillé — le micro peut être coupé' : 'Screen locked — mic may be paused');
+        }
       } else {
         setTimeout(() => {
           recover().then(() => {
@@ -602,8 +604,10 @@ export default function VoiceAlice() {
       <ResumeOverlay
         visible={showResume}
         onResume={() => recoverRef.current?.()}
-        title="Appuyez pour reprendre"
-        subtitle="Le micro a été coupé (écran verrouillé). Un appui réactive Alice."
+        title={lang === 'fr' ? 'Appuyez pour reprendre' : 'Tap to resume'}
+        subtitle={lang === 'fr'
+          ? 'Le micro a été coupé (écran verrouillé). Un appui réactive Alice.'
+          : 'Mic was paused (screen locked). One tap reactivates Alice.'}
       />
       <VoiceKeepAwakeHint active={sessionActive} lang={lang} />
 

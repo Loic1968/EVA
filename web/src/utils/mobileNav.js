@@ -8,6 +8,11 @@ export function isAndroid() {
   return /Android/i.test(navigator.userAgent);
 }
 
+/** Phone (not tablet/desktop) — used for Eva 2 SSO auto-redirect. */
+export function isMobilePhone() {
+  return isIOS() || isAndroid();
+}
+
 export function isMobileDevice() {
   if (typeof window === 'undefined') return false;
   return (

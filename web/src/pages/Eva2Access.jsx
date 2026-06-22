@@ -2,10 +2,10 @@ import { useEffect, useState, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { refreshLocationForChat } from '../utils/geolocation';
-import { openUrl, prefersSameWindowNav } from '../utils/mobileNav';
+import { isMobilePhone, openUrl, prefersSameWindowNav } from '../utils/mobileNav';
 
 const lang = navigator.language?.startsWith('fr') ? 'fr' : 'en';
-const EVA2_LOGIN_URL = 'https://eva-vps.halisoft.biz/auth/login';
+const EVA2_LOGIN_URL = 'https://eva-vps.halisoft.biz/auth/login?local=1';
 const FETCH_TIMEOUT_MS = 15000;
 
 async function fetchEva2AccessWithTimeout(next) {
@@ -79,7 +79,7 @@ const copy = {
     ssoSteps: 'Render → EVA service → Environment → EVA2_PUBLIC_URL=https://eva-vps.halisoft.biz + EVA2_SSO_SECRET (see VPS /opt/eva2/.env)',
     ssoFailed: 'Eva 2 link expired or refused — try again (a fresh link is generated on each click).',
     popupBlocked: 'Safari blocked the new tab — allow popups for eva.halisoft.biz, or use Direct login.',
-    directLogin: 'Direct Eva 2 login (password)',
+    directLogin: 'Emergency password login (fallback)',
     ssoFix: 'To fix the button from EVA 1: Render → EVA → Environment → EVA2_SSO_SECRET must match VPS (/opt/eva2/.env).',
     error: 'Could not prepare Eva 2 access.',
     timeout: 'Eva 2 connection timed out — try again or use Direct login.',

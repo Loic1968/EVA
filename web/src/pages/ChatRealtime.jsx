@@ -14,6 +14,18 @@ import { refreshLocationForChat } from '../utils/geolocation';
 import { useWakeLock } from '../hooks/useWakeLock';
 import { isMobileDevice } from '../utils/mobileNav';
 
+const uiLang = navigator.language?.startsWith('fr') ? 'fr' : 'en';
+const ui = {
+  reconnecting: uiLang === 'fr' ? 'Reconnexion…' : 'Reconnecting…',
+  callPaused: uiLang === 'fr' ? 'Appel en pause — appuie pour reprendre' : 'Call paused — tap to resume',
+  connLost: uiLang === 'fr' ? 'Connexion perdue — appuie pour reprendre' : 'Connection lost — tap to resume',
+  connLostErr: uiLang === 'fr' ? 'Connexion perdue' : 'Connection lost',
+  resumeTitle: uiLang === 'fr' ? 'Appuyez pour reprendre' : 'Tap to resume',
+  resumeSub: uiLang === 'fr'
+    ? "L'appel a été interrompu (écran verrouillé). Un appui reconnecte EVA."
+    : 'The call was interrupted (screen locked). One tap reconnects EVA.',
+};
+
 function getApiBase() {
   if (import.meta.env.VITE_EVA_API_URL)
     return `${import.meta.env.VITE_EVA_API_URL.replace(/\/$/, '')}/api`;
@@ -467,12 +479,12 @@ export default function ChatRealtime() {
       }
       if (isMobileDevice() && wasHiddenRef.current) {
         setShowResume(true);
-        setConnectionBanner('Appel en pause — appuie pour reprendre');
+        setConnectionBanner(ui.callPaused);
         wasHiddenRef.current = false;
         return;
       }
       reconnectingRef.current = true;
-      setConnectionBanner('Reconnexion…');
+      setConnectionBanner(ui.reconnecting);
       stopSession();
       try {
         await startSession();
@@ -480,8 +492,8 @@ export default function ChatRealtime() {
         setShowResume(false);
       } catch (err) {
         setShowResume(true);
-        setConnectionBanner('Connexion perdue — appuie pour reprendre');
-        setError(err.message || 'Connexion perdue');
+        setConnectionBanner(ui.connLost);
+        setError(err.message || ui.connLostErr);
       } finally {
         reconnectingRef.current = false;
         wasHiddenRef.current = false;
@@ -491,15 +503,15 @@ export default function ChatRealtime() {
     const resumeCall = async () => {
       setShowResume(false);
       reconnectingRef.current = true;
-      setConnectionBanner('Reconnexion…');
+      setConnectionBanner(ui.reconnecting);
       stopSession();
       try {
         await startSession();
         setConnectionBanner(null);
       } catch (err) {
         setShowResume(true);
-        setConnectionBanner('Connexion perdue — appuie pour reprendre');
-        setError(err.message || 'Connexion perdue');
+        setConnectionBanner(ui.connLost);
+        setError(err.message || ui.connLostErr);
       } finally {
         reconnectingRef.current = false;
       }
@@ -529,8 +541,8 @@ export default function ChatRealtime() {
       <ResumeOverlay
         visible={showResume}
         onResume={() => recoverRef.current?.()}
-        title="Appuyez pour reprendre"
-        subtitle="L'appel a été interrompu (écran verrouillé). Un appui reconnecte EVA."
+        title={ui.resumeTitle}
+        subtitle={ui.resumeSub}
       />
       <VoiceKeepAwakeHint active={status === 'connected'} lang="fr" />
       {status === 'idle' || status === 'error' ? (

@@ -6,6 +6,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { api } from '../api';
 import ConnectionBanner from '../components/ConnectionBanner';
+import ResumeOverlay from '../components/ResumeOverlay';
+import VoiceKeepAwakeHint from '../components/VoiceKeepAwakeHint';
 import { useWakeLock } from '../hooks/useWakeLock';
 
 const NOISE_RE = [
@@ -27,6 +29,8 @@ export default function VoiceAlice() {
   const [listeningStarted, setListeningStarted] = useState(false); // VAD: true after user clicked to start (unlocks AudioContext)
   const [debug, setDebug] = useState('');
   const [connectionBanner, setConnectionBanner] = useState(null);
+  const [showResume, setShowResume] = useState(false);
+  const recoverRef = useRef(null);
 
   // refs
   const stream = useRef(null);
@@ -79,21 +83,30 @@ export default function VoiceAlice() {
         micReady.current = ok;
         if (ok && mode === 'vad' && listeningStarted) vadOn.current = true;
         setConnectionBanner(null);
+        setShowResume(false);
         if (!ok) {
-          setConnectionBanner('Micro coupé — autorise le micro et réessaie');
-          setError('Micro inaccessible après verrouillage écran.');
+          setShowResume(true);
+          setConnectionBanner('Micro coupé — appuie pour reprendre');
         }
         return;
       }
       tracks.forEach((t) => { if (!t.enabled) t.enabled = true; });
       setConnectionBanner(null);
+      setShowResume(false);
     };
+    recoverRef.current = recover;
 
     const onVisibility = () => {
       if (document.visibilityState === 'hidden') {
         if (sessionActive) setConnectionBanner('Écran verrouillé — le micro peut être coupé');
       } else {
-        setTimeout(recover, 350);
+        setTimeout(() => {
+          recover().then(() => {
+            if (sessionActive && stream.current?.getTracks?.().some((t) => t.readyState === 'ended')) {
+              setShowResume(true);
+            }
+          });
+        }, 350);
       }
     };
 
@@ -586,6 +599,13 @@ export default function VoiceAlice() {
     <div className="min-h-screen bg-gray-50 dark:bg-gradient-to-b dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 flex flex-col text-gray-900 dark:text-white select-none"
       style={{ touchAction: 'manipulation' }}>
       <ConnectionBanner message={connectionBanner} />
+      <ResumeOverlay
+        visible={showResume}
+        onResume={() => recoverRef.current?.()}
+        title="Appuyez pour reprendre"
+        subtitle="Le micro a été coupé (écran verrouillé). Un appui réactive Alice."
+      />
+      <VoiceKeepAwakeHint active={sessionActive} lang={lang} />
 
       {/* Header */}
       <div className="flex items-center justify-between px-5 pt-4 pb-2">

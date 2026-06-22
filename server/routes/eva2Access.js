@@ -28,8 +28,11 @@ router.get('/access', (req, res) => {
       telegram: '@Halisoft2bot',
     });
   }
+  const next = String(req.query.next || '').trim();
+  const safeNext = next.startsWith('/app/') && !next.includes('..') ? next : '';
+  const nextParam = safeNext ? `&next=${encodeURIComponent(safeNext)}` : '';
   res.json({
-    url: `${base}/auth/sso?token=${encodeURIComponent(token)}`,
+    url: `${base}/auth/sso?token=${encodeURIComponent(token)}${nextParam}`,
     sso: true,
     telegram: '@Halisoft2bot',
   });

@@ -83,7 +83,11 @@ export const api = {
       headers: { Authorization: `Bearer ${token}` },
     }).then((r) => (r.ok ? r.json() : Promise.reject(new Error('Unauthorized')))),
 
-  getEva2Access: (opts = {}) => request('/eva2/access', opts),
+  getEva2Access: (opts = {}) => {
+    const { next, ...rest } = opts;
+    const q = next ? `?next=${encodeURIComponent(next)}` : '';
+    return request(`/eva2/access${q}`, rest);
+  },
 
   // Chat (non-streaming). opts: { origin: 'voice' } for voice input (disables memory writes).
   chat: async (message, history, conversation_id, document_ids, opts = {}) => {

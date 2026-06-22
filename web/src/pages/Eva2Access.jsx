@@ -2,36 +2,17 @@ import { useEffect, useState, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { refreshLocationForChat } from '../utils/geolocation';
+import { openUrl, prefersSameWindowNav } from '../utils/mobileNav';
 
 const lang = navigator.language?.startsWith('fr') ? 'fr' : 'en';
 const EVA2_LOGIN_URL = 'https://eva-vps.halisoft.biz/auth/login';
 const FETCH_TIMEOUT_MS = 15000;
 
-function isIOS() {
-  return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-}
-
-function isMobilePhone() {
-  return isIOS() || /Android/i.test(navigator.userAgent);
-}
-
-function isStandalonePwa() {
-  return (
-    window.matchMedia('(display-mode: standalone)').matches ||
-    window.navigator.standalone === true
-  );
-}
-
-/** iOS Safari / installed PWA: popups are unreliable — navigate same window after SSO fetch. */
-function prefersSameWindowNav() {
-  return isIOS() || isStandalonePwa();
-}
-
-async function fetchEva2AccessWithTimeout() {
+async function fetchEva2AccessWithTimeout(next) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    return await api.getEva2Access({ signal: controller.signal });
+    return await api.getEva2Access({ signal: controller.signal, next });
   } catch (e) {
     if (controller.signal.aborted) throw new Error('timeout');
     throw e;
@@ -49,6 +30,7 @@ const copy = {
     eva2: 'Eva 2 (OpenClaw)',
     eva2Desc: 'VPS Singapour — Telegram @Halisoft2bot, dashboard OpenClaw, gog, GitHub, crons.',
     open: 'Ouvrir Eva 2',
+    openChat: 'Chat Eva 2 (direct)',
     opening: 'Connexion…',
     redirecting: 'Ouverture Eva 2…',
     telegram: 'Telegram (sans login web)',
@@ -79,6 +61,7 @@ const copy = {
     eva2: 'Eva 2 (OpenClaw)',
     eva2Desc: 'Singapore VPS — Telegram @Halisoft2bot, OpenClaw dashboard, gog, GitHub, crons.',
     open: 'Open Eva 2',
+    openChat: 'Eva 2 chat (direct)',
     opening: 'Connecting…',
     redirecting: 'Opening Eva 2…',
     telegram: 'Telegram (no web login)',
@@ -168,29 +151,10 @@ export default function Eva2Access() {
   }, [loading, access?.sso, skipRedirect, ssoFailed]);
 
   const navigateToEva2 = (url, tab) => {
-    if (prefersSameWindowNav()) {
-      window.location.href = url;
-      return;
-    }
-    if (tab) {
-      try {
-        tab.location.href = url;
-        return;
-      } catch {
-        try {
-          tab.close();
-        } catch {
-          /* ignore */
-        }
-      }
-    }
-    const opened = window.open(url, '_blank', 'noopener,noreferrer');
-    if (!opened) {
-      window.location.href = url;
-    }
+    openUrl(url, tab);
   };
 
-  const openEva2 = async () => {
+  const openEva2 = async (next) => {
     if (!access?.sso) return;
     setOpening(true);
     setError('');
@@ -205,7 +169,7 @@ export default function Eva2Access() {
     }
 
     try {
-      const fresh = await fetchEva2AccessWithTimeout();
+      const fresh = await fetchEva2AccessWithTimeout(next);
       if (!fresh?.sso || !fresh?.url) {
         throw new Error('sso');
       }
@@ -316,11 +280,19 @@ export default function Eva2Access() {
         <div className="flex flex-wrap gap-3 pt-2">
           <button
             type="button"
-            onClick={openEva2}
+            onClick={() => openEva2('/app/')}
             disabled={loading || opening || !access?.sso}
             className="px-5 py-2.5 rounded-lg bg-eva-accent text-white font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
           >
-            {opening ? t.opening : t.open}
+            {opening ? t.opening : t.openChat}
+          </button>
+          <button
+            type="button"
+            onClick={() => openEva2()}
+            disabled={loading || opening || !access?.sso}
+            className="px-5 py-2.5 rounded-lg border border-eva-accent/50 text-eva-accent hover:bg-[var(--eva-accent-bg)]/40 disabled:opacity-50 transition-colors"
+          >
+            {t.open}
           </button>
           <a
             href={EVA2_LOGIN_URL}

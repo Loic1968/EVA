@@ -5,9 +5,11 @@ import EvaLogo from './EvaLogo';
 import PwaInstallPrompt from './PwaInstallPrompt';
 import { useAuth } from '../context/AuthContext';
 import { useAutoLocation } from '../hooks/useAutoLocation';
+import { isMobileDevice } from '../utils/mobileNav';
 import { api } from '../api';
 
 const nav = [
+  { to: '/mobile', label: 'Accueil téléphone', icon: '📱', highlight: true, mobileOnly: true },
   { to: '/eva2', label: 'Eva 2 — VPS OpenClaw', icon: '⚡', highlight: true },
   { to: '/chat', label: 'Chat (type ChatGPT)', icon: '◈', highlight: true },
   { to: '/eva/chat', label: 'EVA Chat', icon: '💬', highlight: true },
@@ -82,7 +84,7 @@ export default function Layout({ children }) {
           )}
         </div>
         <nav className="p-2 flex-1 space-y-0.5">
-          {        nav.map(({ to, label, icon, highlight }) => (
+          {nav.filter(({ mobileOnly }) => !mobileOnly || isMobileDevice()).map(({ to, label, icon, highlight }) => (
             <NavLink
               key={to}
               to={to}

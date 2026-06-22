@@ -6,13 +6,14 @@ import { Link } from 'react-router-dom';
 import EvaLogo from './EvaLogo';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { isMobileDevice, prefersSameWindowNav } from '../utils/mobileNav';
 
 function ExternalLink({ href, children, className = '' }) {
+  const sameWindow = prefersSameWindowNav();
   return (
     <a
       href={href}
-      target="_blank"
-      rel="noopener noreferrer"
+      {...(sameWindow ? {} : { target: '_blank', rel: 'noopener noreferrer' })}
       className={`cursor-pointer touch-manipulation inline-flex items-center py-1.5 px-2 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors ${className}`}
     >
       {children}
@@ -57,7 +58,7 @@ export default function EvaTopBar({ onMenuClick }) {
             </button>
           )}
         <Link
-          to="/voice"
+          to={isMobileDevice() ? '/mobile' : '/voice'}
           className="flex items-center gap-2 sm:gap-3 hover:opacity-90 transition-opacity -my-1.5 -mx-2 px-2 py-1.5 rounded-lg min-w-[44px] min-h-[44px] touch-manipulation"
         >
           <EvaLogo size="sm" variant="icon" className="shrink-0" />
@@ -120,6 +121,14 @@ export default function EvaTopBar({ onMenuClick }) {
               Eva 2
             </Link>
           </span>
+          {isMobileDevice() && (
+            <Link
+              to="/eva2"
+              className="md:hidden text-xs text-eva-accent hover:opacity-80 whitespace-nowrap py-1.5 px-2 rounded touch-manipulation"
+            >
+              Eva 2
+            </Link>
+          )}
         </div>
       </nav>
     </div>

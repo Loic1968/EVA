@@ -19,7 +19,13 @@ import Emails from './pages/Emails';
 import Calendar from './pages/Calendar';
 import About from './pages/About';
 import Eva2Access from './pages/Eva2Access';
+import MobileHome from './pages/MobileHome';
+import { isMobileDevice } from './utils/mobileNav';
 import { useAuth } from './context/AuthContext';
+
+function HomeRedirect() {
+  return <Navigate to={isMobileDevice() ? '/mobile' : '/eva2'} replace />;
+}
 
 function LoadingScreen() {
   return (
@@ -46,8 +52,9 @@ function AppRoutes() {
   return (
     <Layout>
       <Routes>
-        <Route path="/" element={<Navigate to="/eva2" replace />} />
-        <Route path="/login" element={<Navigate to="/eva2?from=login" replace />} />
+        <Route path="/" element={<HomeRedirect />} />
+        <Route path="/login" element={<Navigate to={isMobileDevice() ? '/mobile?from=login' : '/eva2?from=login'} replace />} />
+        <Route path="/mobile" element={<MobileHome />} />
         <Route path="/signup" element={<SignUp />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />

@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import EvaLogo from '../components/EvaLogo';
 import EvaLoading from '../components/EvaLoading';
 import ConnectionBanner from '../components/ConnectionBanner';
+import ResumeOverlay from '../components/ResumeOverlay';
+import VoiceKeepAwakeHint from '../components/VoiceKeepAwakeHint';
 import { api } from '../api';
 import { useVoiceInput, useVoiceOutput } from '../hooks/useVoice';
 import { useWakeLock } from '../hooks/useWakeLock';
@@ -26,6 +28,7 @@ export default function Chat() {
   const [autoPlayVoice, setAutoPlayVoice] = useState(true);
   const [attachedFiles, setAttachedFiles] = useState([]);
   const [connectionBanner, setConnectionBanner] = useState(null);
+  const [showResume, setShowResume] = useState(false);
   const lang = navigator.language?.startsWith('fr') ? 'fr' : 'en';
   const bottomRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -111,11 +114,9 @@ export default function Chat() {
           if (voiceInput.isListening) voiceInput.stopListening(() => {});
           setLoading(false);
           setStreamingContent('');
-          setError(
-            lang === 'fr'
-              ? 'Conversation interrompue (écran éteint). Renvoie ton message.'
-              : 'Conversation interrupted (screen off). Send your message again.',
-          );
+          setError(null);
+          setShowResume(true);
+          setConnectionBanner(lang === 'fr' ? 'Conversation en pause — appuie pour reprendre' : 'Conversation paused — tap to resume');
         }
       }
     };
@@ -370,6 +371,17 @@ export default function Chat() {
   return (
     <div className="flex h-[calc(100vh-5rem)] min-h-[300px] gap-0 -mx-4 -mt-4 sm:-mx-6 sm:-mt-6 overflow-hidden">
       <ConnectionBanner message={connectionBanner} />
+      <ResumeOverlay
+        visible={showResume}
+        onResume={() => {
+          setShowResume(false);
+          setConnectionBanner(null);
+          inputRef.current?.focus();
+        }}
+        title={lang === 'fr' ? 'Appuyez pour reprendre' : 'Tap to resume'}
+        subtitle={lang === 'fr' ? 'La conversation a été interrompue (écran verrouillé). Renvoie ton message.' : 'Conversation was interrupted (screen locked). Send your message again.'}
+      />
+      <VoiceKeepAwakeHint active={loading || voiceInput.isListening || voiceOutput.isSpeaking} lang={lang} />
       {/* Sidebar — slide-over like ChatGPT (z-[60] below topbar z-[100]) */}
       {showSidebar && (
         <>

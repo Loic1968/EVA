@@ -3,12 +3,15 @@
   "short_name": "EVA",
   "description": "EVA, your HaliSoft AI assistant — email, calendar and documents in one digital twin.",
   "id": "/",
-  "start_url": "/",
+  "start_url": "/mobile",
   "scope": "/",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
   "orientation": "portrait-primary",
   "background_color": "#0f172a",
   "theme_color": "#DC2626",
+  "lang": "fr",
+  "categories": ["productivity", "utilities"],
   "icons": [
     { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
@@ -16,24 +19,31 @@
   ],
   "shortcuts": [
     {
-      "name": "Eva 2 — OpenClaw",
+      "name": "Eva 2 — Chat",
       "short_name": "Eva 2",
-      "description": "Open Eva 2 VPS gateway",
-      "url": "/eva2",
+      "description": "Ouvrir le chat OpenClaw (SSO direct)",
+      "url": "/mobile",
       "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
     },
     {
-      "name": "Chat",
+      "name": "Chat EVA",
       "short_name": "Chat",
-      "description": "Talk to EVA",
+      "description": "Parler à EVA en texte",
       "url": "/chat",
       "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
     },
     {
-      "name": "Emails",
-      "short_name": "Emails",
-      "description": "Inbox and important mail",
-      "url": "/emails",
+      "name": "Alice — Voix",
+      "short_name": "Voix",
+      "description": "Mode vocal Alice",
+      "url": "/voice",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Appel EVA",
+      "short_name": "Appel",
+      "description": "Conversation vocale temps réel",
+      "url": "/voice/realtime",
       "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
     }
   ]

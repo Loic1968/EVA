@@ -6,10 +6,13 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import MicSpeakerTest from '../components/MicSpeakerTest';
 import ConnectionBanner from '../components/ConnectionBanner';
+import ResumeOverlay from '../components/ResumeOverlay';
+import VoiceKeepAwakeHint from '../components/VoiceKeepAwakeHint';
 import VoiceAlice from './VoiceAlice';
 import { api } from '../api';
 import { refreshLocationForChat } from '../utils/geolocation';
 import { useWakeLock } from '../hooks/useWakeLock';
+import { isMobileDevice } from '../utils/mobileNav';
 
 function getApiBase() {
   if (import.meta.env.VITE_EVA_API_URL)
@@ -52,9 +55,11 @@ export default function ChatRealtime() {
   const [isAwaitingEva, setIsAwaitingEva] = useState(false); // from user speaks until EVA responds
   const [isSearching, setIsSearching] = useState(false); // web-assist / recherche en cours
   const [connectionBanner, setConnectionBanner] = useState(null);
+  const [showResume, setShowResume] = useState(false);
   const outputDeviceRef = useRef(outputDeviceId);
   const reconnectingRef = useRef(false);
   const wasHiddenRef = useRef(false);
+  const recoverRef = useRef(null);
   const stopEvaRef = useRef(null);
   const baseInstructionsRef = useRef(null);
   const audioContextRef = useRef(null);
@@ -445,16 +450,25 @@ export default function ChatRealtime() {
       resumeMedia();
       if (!wasHiddenRef.current && !isRealtimeDead()) {
         setConnectionBanner(null);
+        setShowResume(false);
         return;
       }
       if (claudeSessionRef.current) {
         wasHiddenRef.current = false;
         setConnectionBanner(null);
+        setShowResume(false);
         return;
       }
       if (!isRealtimeDead()) {
         wasHiddenRef.current = false;
         setConnectionBanner(null);
+        setShowResume(false);
+        return;
+      }
+      if (isMobileDevice() && wasHiddenRef.current) {
+        setShowResume(true);
+        setConnectionBanner('Appel en pause — appuie pour reprendre');
+        wasHiddenRef.current = false;
         return;
       }
       reconnectingRef.current = true;
@@ -463,14 +477,34 @@ export default function ChatRealtime() {
       try {
         await startSession();
         setConnectionBanner(null);
+        setShowResume(false);
       } catch (err) {
-        setConnectionBanner('Connexion perdue — rappelle EVA');
+        setShowResume(true);
+        setConnectionBanner('Connexion perdue — appuie pour reprendre');
         setError(err.message || 'Connexion perdue');
       } finally {
         reconnectingRef.current = false;
         wasHiddenRef.current = false;
       }
     };
+
+    const resumeCall = async () => {
+      setShowResume(false);
+      reconnectingRef.current = true;
+      setConnectionBanner('Reconnexion…');
+      stopSession();
+      try {
+        await startSession();
+        setConnectionBanner(null);
+      } catch (err) {
+        setShowResume(true);
+        setConnectionBanner('Connexion perdue — appuie pour reprendre');
+        setError(err.message || 'Connexion perdue');
+      } finally {
+        reconnectingRef.current = false;
+      }
+    };
+    recoverRef.current = resumeCall;
 
     const onVisibility = () => {
       if (document.visibilityState === 'hidden') {
@@ -492,6 +526,13 @@ export default function ChatRealtime() {
   return (
     <div className="flex flex-col items-center justify-center min-h-[calc(100dvh-8rem)] sm:min-h-[calc(100vh-8rem)] py-6">
       <ConnectionBanner message={connectionBanner} />
+      <ResumeOverlay
+        visible={showResume}
+        onResume={() => recoverRef.current?.()}
+        title="Appuyez pour reprendre"
+        subtitle="L'appel a été interrompu (écran verrouillé). Un appui reconnecte EVA."
+      />
+      <VoiceKeepAwakeHint active={status === 'connected'} lang="fr" />
       {status === 'idle' || status === 'error' ? (
         <div className="flex flex-col items-center gap-6">
           <div className="w-24 h-24 rounded-full bg-slate-700/60 flex items-center justify-center">
@@ -576,7 +617,7 @@ export default function ChatRealtime() {
             </div>
             <p className="text-emerald-400 font-medium">Connected</p>
             <p className="text-slate-500 text-sm font-mono">{formatDuration(callDuration)}</p>
-            {wakeLockUnsupported && (
+            {wakeLockUnsupported && status === 'connected' && (
               <p className="text-slate-500 text-[11px] text-center max-w-xs px-4">
                 Sur iPhone : garde l&apos;écran allumé pendant l&apos;appel (Safari coupe le micro si l&apos;écran s&apos;éteint).
               </p>

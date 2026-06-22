@@ -24,12 +24,16 @@ function prefersSameWindowNav() {
 }
 
 async function fetchEva2AccessWithTimeout() {
-  return Promise.race([
-    api.getEva2Access(),
-    new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('timeout')), FETCH_TIMEOUT_MS);
-    }),
-  ]);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    return await api.getEva2Access({ signal: controller.signal });
+  } catch (e) {
+    if (controller.signal.aborted) throw new Error('timeout');
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 const copy = {
@@ -48,6 +52,7 @@ const copy = {
     chWechat: 'WeChat — Mac mini Dubai (gateway local)',
     chMac: 'Claude Code / browser — Mac mini',
     note: 'Tu es connecté à EVA 1 — Eva 2 s’ouvre dans un nouvel onglet (GPS synchronisé automatiquement).',
+    notePwa: 'Tu es connecté à EVA 1 — Eva 2 s’ouvre ici (GPS synchronisé en arrière-plan).',
     gps: 'Position GPS',
     gpsPending: 'Autorise la géolocalisation dans le navigateur pour qu’Eva sache où tu es.',
     gpsRefresh: 'Actualiser GPS',
@@ -76,6 +81,7 @@ const copy = {
     chWechat: 'WeChat — Dubai Mac mini (local gateway)',
     chMac: 'Claude Code / browser — Mac mini',
     note: 'You are signed in to EVA 1 — Eva 2 opens in a new tab (GPS synced automatically).',
+    notePwa: 'You are signed in to EVA 1 — Eva 2 opens here (GPS syncs in the background).',
     gps: 'GPS location',
     gpsPending: 'Allow browser geolocation so Eva knows where you are.',
     gpsRefresh: 'Refresh GPS',
@@ -230,7 +236,9 @@ export default function Eva2Access() {
           <li>{t.chWechat}</li>
           <li>{t.chMac}</li>
         </ul>
-        <p className="text-sm text-slate-500 dark:text-slate-500">{fromLogin ? t.fromLogin : t.note}</p>
+        <p className="text-sm text-slate-500 dark:text-slate-500">
+          {fromLogin ? t.fromLogin : prefersSameWindowNav() ? t.notePwa : t.note}
+        </p>
         <div className="rounded-lg border border-slate-200 dark:border-slate-700/50 px-4 py-3 flex flex-wrap items-center justify-between gap-2">
           <div className="text-sm text-slate-600 dark:text-slate-400">
             <span className="font-medium text-slate-800 dark:text-slate-200">{t.gps}: </span>
@@ -259,7 +267,20 @@ export default function Eva2Access() {
             <p className="text-slate-600 dark:text-slate-400">{t.ssoFix}</p>
           </div>
         )}
-        {error && <p className="text-sm text-red-500">{error}</p>}
+        {error && (
+          <div className="text-sm text-red-500 space-y-2">
+            <p>{error}</p>
+            <p>
+              <a
+                href={EVA2_LOGIN_URL}
+                {...(prefersSameWindowNav() ? {} : { target: '_blank', rel: 'noopener noreferrer' })}
+                className="font-medium text-eva-accent underline underline-offset-2"
+              >
+                {t.directLogin}
+              </a>
+            </p>
+          </div>
+        )}
         <div className="flex flex-wrap gap-3 pt-2">
           <button
             type="button"
@@ -271,8 +292,7 @@ export default function Eva2Access() {
           </button>
           <a
             href={EVA2_LOGIN_URL}
-            target="_blank"
-            rel="noopener noreferrer"
+            {...(prefersSameWindowNav() ? {} : { target: '_blank', rel: 'noopener noreferrer' })}
             className="px-5 py-2.5 rounded-lg border border-eva-accent/50 text-eva-accent hover:bg-[var(--eva-accent-bg)]/40 transition-colors"
           >
             {t.directLogin}

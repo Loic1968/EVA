@@ -114,12 +114,14 @@ export default function EvaTopBar({ onMenuClick, hideEva2Link = false }) {
             >
               HaliTrade
             </ExternalLink>
-            <Link
-              to="/eva2"
-              className="text-xs text-eva-accent hover:opacity-80 whitespace-nowrap py-1.5 px-2 rounded touch-manipulation"
-            >
-              Eva 2
-            </Link>
+            {!hideEva2Link && (
+              <Link
+                to="/eva2"
+                className="text-xs text-eva-accent hover:opacity-80 whitespace-nowrap py-1.5 px-2 rounded touch-manipulation"
+              >
+                Eva 2
+              </Link>
+            )}
           </span>
         </div>
       </nav>

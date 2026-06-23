@@ -10,11 +10,11 @@ import { api } from '../api';
 
 const nav = [
   { to: '/mobile', label: 'Accueil téléphone', icon: '📱', highlight: true, mobileOnly: true },
-  { to: '/eva2', label: 'Eva 2 — VPS OpenClaw', icon: '⚡', highlight: true },
+  { to: '/eva2', label: 'Eva 2 — VPS OpenClaw', icon: '⚡', highlight: true, desktopOnly: true },
   { to: '/chat', label: 'Chat (type ChatGPT)', icon: '◈', highlight: true },
   { to: '/eva/chat', label: 'EVA Chat', icon: '💬', highlight: true },
   { to: '/voice', label: 'Alice Voice (nouveau)', icon: '🎙️', highlight: true },
-  { to: '/voice/realtime', label: 'EVA Voice (comparer)', icon: '📞', highlight: true },
+  { to: '/voice/realtime', label: 'EVA Voice (comparer)', icon: '📞', highlight: true, desktopOnly: true },
   { to: '/dashboard', label: 'Dashboard', icon: '◉' },
   { to: '/calendar', label: 'Calendar', icon: '📅' },
   { to: '/emails', label: 'Emails', icon: '✉' },
@@ -31,6 +31,7 @@ export default function Layout({ children }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const { pathname } = useLocation();
   const fullBleed = pathname === '/emails' || pathname === '/calendar';
+  const phoneHome = pathname === '/mobile' && isMobileDevice();
   const [evaStatus, setEvaStatus] = useState(null); // null=loading, true=active, false=offline
   const { user, logout, requireAuth, isAuthenticated } = useAuth();
   const navigate = useNavigate();
@@ -44,7 +45,7 @@ export default function Layout({ children }) {
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-eva-dark overflow-x-hidden">
-      <EvaTopBar onMenuClick={() => setMobileOpen(true)} />
+      <EvaTopBar onMenuClick={phoneHome ? null : () => setMobileOpen(true)} hideEva2Link={phoneHome} />
       <div className="flex flex-1 min-h-0">
       {/* Mobile overlay */}
       {mobileOpen && (
@@ -52,7 +53,7 @@ export default function Layout({ children }) {
           <div className="absolute inset-0 bg-black/60" />
         </div>
       )}
-      <aside className={`
+      {!phoneHome && <aside className={`
         fixed lg:static inset-y-0 left-0 z-50 transform transition-transform duration-200 ease-out
         lg:transform-none
         ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
@@ -84,7 +85,11 @@ export default function Layout({ children }) {
           )}
         </div>
         <nav className="p-2 flex-1 space-y-0.5">
-          {nav.filter(({ mobileOnly }) => !mobileOnly || isMobileDevice()).map(({ to, label, icon, highlight }) => (
+          {nav.filter(({ mobileOnly, desktopOnly }) => {
+            if (mobileOnly && !isMobileDevice()) return false;
+            if (desktopOnly && isMobileDevice()) return false;
+            return true;
+          }).map(({ to, label, icon, highlight }) => (
             <NavLink
               key={to}
               to={to}
@@ -121,7 +126,7 @@ export default function Layout({ children }) {
             </div>
           )}
         </div>
-      </aside>
+      </aside>}
       <main className="flex-1 overflow-auto min-w-0">
         <div className={fullBleed ? 'w-full min-h-[calc(100vh-3rem)] pb-[max(1rem,env(safe-area-inset-bottom))]' : 'max-w-7xl mx-auto p-4 sm:p-6 pb-[max(1rem,env(safe-area-inset-bottom))]'}>{children}</div>
       </main>

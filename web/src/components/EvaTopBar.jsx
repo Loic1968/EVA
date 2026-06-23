@@ -37,7 +37,7 @@ function MoonIcon() {
   );
 }
 
-export default function EvaTopBar({ onMenuClick }) {
+export default function EvaTopBar({ onMenuClick, hideEva2Link = false }) {
   const { user, isAuthenticated, logout, requireAuth } = useAuth();
   const { darkMode, toggleTheme } = useTheme();
 
@@ -121,14 +121,6 @@ export default function EvaTopBar({ onMenuClick }) {
               Eva 2
             </Link>
           </span>
-          {isMobileDevice() && (
-            <Link
-              to="/eva2"
-              className="md:hidden text-xs text-eva-accent hover:opacity-80 whitespace-nowrap py-1.5 px-2 rounded touch-manipulation"
-            >
-              Eva 2
-            </Link>
-          )}
         </div>
       </nav>
     </div>

@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Layout from './components/Layout';
 import EvaLoading from './components/EvaLoading';
 import Dashboard from './pages/Dashboard';
@@ -25,6 +25,14 @@ import { useAuth } from './context/AuthContext';
 
 function HomeRedirect() {
   return <Navigate to={isMobileDevice() ? '/mobile' : '/eva2'} replace />;
+}
+
+function Eva2Route() {
+  const { search } = useLocation();
+  if (isMobileDevice()) {
+    return <Navigate to={`/mobile${search}`} replace />;
+  }
+  return <Eva2Access />;
 }
 
 function LoadingScreen() {
@@ -73,7 +81,7 @@ function AppRoutes() {
         <Route path="/settings" element={<Settings />} />
         <Route path="/sources" element={<DataSources />} />
         <Route path="/about" element={<About />} />
-        <Route path="/eva2" element={<Eva2Access />} />
+        <Route path="/eva2" element={<Eva2Route />} />
       </Routes>
     </Layout>
   );

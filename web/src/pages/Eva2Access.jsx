@@ -136,7 +136,7 @@ export default function Eva2Access() {
     autoOpened.current = true;
     setMobileRedirecting(true);
     void syncGps(true);
-    fetchEva2AccessWithTimeout()
+    fetchEva2AccessWithTimeout('/app/')
       .then((fresh) => {
         if (fresh?.sso && fresh?.url) {
           window.location.href = fresh.url;

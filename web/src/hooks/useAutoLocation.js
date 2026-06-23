@@ -28,18 +28,28 @@ async function pushLocation(force = false, cachedPos = null) {
   let loc = null;
   if (cachedPos?.coords) {
     const { latitude: lat, longitude: lng, accuracy } = cachedPos.coords;
-    let city = null;
+    let geo = { area: null, street: null, neighborhood: null, city: null };
     try {
-      city = await reverseGeocode(lat, lng);
+      geo = await reverseGeocode(lat, lng);
     } catch (_) {}
-    loc = { city, lat, lng, accuracy, timezone: getBrowserTimezone(), source: 'gps-auto' };
+    loc = {
+      area: geo.area,
+      street: geo.street,
+      neighborhood: geo.neighborhood,
+      city: geo.city,
+      lat,
+      lng,
+      accuracy,
+      timezone: getBrowserTimezone(),
+      source: 'gps-auto',
+    };
   } else {
     loc = await detectCurrentLocation({
       maximumAge: force ? 0 : 60 * 1000,
       timeout: force ? 15000 : 10000,
     });
   }
-  if (!loc?.city && loc?.lat == null) return null;
+  if (!loc?.area && !loc?.city && loc?.lat == null) return null;
   await api.setLocation(loc);
   markLocationUpdated();
   return loc;

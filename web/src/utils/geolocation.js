@@ -1,5 +1,16 @@
 const NOMINATIM_UA = 'EVA-Halisoft/1.0 (location-settings)';
 
+export function formatAddressFromNominatim(data) {
+  const addr = data?.address || {};
+  const streetParts = [addr.house_number, addr.road || addr.pedestrian || addr.footway].filter(Boolean);
+  const street = streetParts.length ? streetParts.join(' ') : null;
+  const neighborhood = addr.neighbourhood || addr.suburb || addr.quarter || addr.district || null;
+  const city = addr.city || addr.town || addr.village || addr.municipality || addr.county || null;
+  const labelParts = [street, neighborhood, city].filter(Boolean);
+  const area = labelParts.length ? labelParts.join(', ') : data?.display_name || null;
+  return { area, street, neighborhood, city, country: addr.country || null, display_name: data?.display_name || null };
+}
+
 export async function reverseGeocode(lat, lon) {
   const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`;
   const res = await fetch(url, {
@@ -7,16 +18,7 @@ export async function reverseGeocode(lat, lon) {
   });
   if (!res.ok) throw new Error('Reverse geocoding failed');
   const data = await res.json();
-  const addr = data?.address || {};
-  return (
-    addr.city ||
-    addr.town ||
-    addr.village ||
-    addr.municipality ||
-    addr.county ||
-    data?.display_name ||
-    null
-  );
+  return formatAddressFromNominatim(data);
 }
 
 export function getBrowserTimezone() {
@@ -45,9 +47,12 @@ export function readCurrentPosition(options = {}) {
 export async function detectCurrentLocation(options = {}) {
   const pos = await readCurrentPosition(options);
   const { latitude: lat, longitude: lng, accuracy } = pos.coords;
-  const city = await reverseGeocode(lat, lng);
+  const geo = await reverseGeocode(lat, lng);
   return {
-    city,
+    area: geo.area,
+    street: geo.street,
+    neighborhood: geo.neighborhood,
+    city: geo.city,
     lat,
     lng,
     accuracy,
@@ -84,7 +89,7 @@ export async function refreshLocationForChat(message, { force = false } = {}) {
       maximumAge: needsFresh ? 0 : 60 * 1000,
       timeout: needsFresh ? 20000 : 12000,
     });
-    if (!loc.city && loc.lat == null) return null;
+    if (!loc.area && !loc.city && loc.lat == null) return null;
     markLocationUpdated();
     return loc;
   } catch {

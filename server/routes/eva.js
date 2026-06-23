@@ -1158,7 +1158,10 @@ router.put('/me/location', async (req, res, next) => {
     const body = req.body || {};
     const locationService = require('../services/locationService');
     const location = await locationService.setLocation(req.ownerId, {
+      area: body.area ?? body.label,
       city: body.city ?? body.label ?? body.value,
+      street: body.street,
+      neighborhood: body.neighborhood,
       lat: body.lat,
       lng: body.lng,
       accuracy: body.accuracy,

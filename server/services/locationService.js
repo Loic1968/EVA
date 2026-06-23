@@ -12,7 +12,10 @@ function parseLocation(raw) {
       const o = JSON.parse(text);
       if (o && typeof o === 'object') {
         return {
-          city: (o.city || o.label || '').trim() || null,
+          area: (o.area || o.label || '').trim() || null,
+          city: (o.city || '').trim() || null,
+          street: (o.street || '').trim() || null,
+          neighborhood: (o.neighborhood || '').trim() || null,
           lat: typeof o.lat === 'number' ? o.lat : null,
           lng: typeof o.lng === 'number' ? o.lng : null,
           accuracy: typeof o.accuracy === 'number' ? o.accuracy : null,
@@ -23,12 +26,15 @@ function parseLocation(raw) {
       }
     } catch (_) {}
   }
-  return { city: text, lat: null, lng: null, accuracy: null, timezone: null, source: 'manual', updatedAt: null };
+  return { area: text, city: text, lat: null, lng: null, accuracy: null, timezone: null, source: 'manual', updatedAt: null };
 }
 
 function serializeLocation(loc) {
   return JSON.stringify({
+    area: loc.area || loc.city || null,
     city: loc.city || null,
+    street: loc.street || null,
+    neighborhood: loc.neighborhood || null,
     lat: loc.lat ?? null,
     lng: loc.lng ?? null,
     accuracy: loc.accuracy ?? null,
@@ -46,12 +52,16 @@ async function getLocation(ownerId) {
 }
 
 async function setLocation(ownerId, input) {
-  const city = (input.city || input.label || '').trim();
-  if (!city && input.lat == null) {
+  const area = (input.area || input.label || '').trim();
+  const city = (input.city || '').trim();
+  if (!area && !city && input.lat == null) {
     throw new Error('city or coordinates required');
   }
   const loc = {
-    city: city || null,
+    area: area || city || null,
+    city: city || area || null,
+    street: (input.street || '').trim() || null,
+    neighborhood: (input.neighborhood || '').trim() || null,
     lat: typeof input.lat === 'number' ? input.lat : null,
     lng: typeof input.lng === 'number' ? input.lng : null,
     accuracy: typeof input.accuracy === 'number' ? input.accuracy : null,
@@ -73,13 +83,16 @@ async function setLocation(ownerId, input) {
 }
 
 function formatLocationBlock(loc) {
-  if (!loc?.city && loc?.lat == null) return '';
-  const parts = ['## User location (GPS / settings — use for "where am I", local time, weather, nearby)'];
-  if (loc.city) parts.push(`- City/area: ${loc.city}`);
+  if (!loc?.area && !loc?.city && loc?.lat == null) return '';
+  const parts = ['## User location (live GPS — current position, not home address)'];
+  if (loc.area) parts.push(`- Area: ${loc.area}`);
+  else if (loc.city) parts.push(`- City/area: ${loc.city}`);
   if (loc.lat != null && loc.lng != null) parts.push(`- Coordinates: ${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}`);
+  if (loc.accuracy != null) parts.push(`- GPS accuracy: ±${Math.round(loc.accuracy)} m`);
   if (loc.timezone) parts.push(`- Timezone: ${loc.timezone}`);
   if (loc.updatedAt) parts.push(`- Last updated: ${loc.updatedAt}`);
-  parts.push('- Do NOT invent a different city unless the user says they moved.');
+  parts.push('- Phone GPS ~10–20 m: street/neighborhood OK, building number often missing — normal.');
+  parts.push('- Do NOT ask for static home address for "where am I". Home base (if any) is in MEMORY.md for "where do I live".');
   return `\n\n${parts.join('\n')}\n`;
 }
 
@@ -118,18 +131,22 @@ async function ingestClientLocation(ownerId, clientLocation) {
 }
 
 function formatLocationReply(loc) {
-  if (!loc?.city && loc?.lat == null) {
-    return "Je n'ai pas ta position GPS. Ouvre EVA sur ton téléphone, autorise la géolocalisation (Réglages → Location → Use GPS), puis redemande.";
+  if (!loc?.area && !loc?.city && loc?.lat == null) {
+    return "Je n'ai pas ta position GPS live. Ouvre EVA sur ton téléphone, autorise la géolocalisation, puis redemande.";
   }
   const parts = [];
-  if (loc.city) parts.push(`Tu es à ${loc.city}`);
+  const place = loc.area || loc.city;
+  if (place) parts.push(`Tu es vers ${place}`);
   if (loc.lat != null && loc.lng != null) {
-    parts.push(`(${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)})`);
+    parts.push(`(${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)})`);
   }
+  if (loc.accuracy != null) parts.push(`précision ±${Math.round(loc.accuracy)} m`);
   if (loc.timezone) parts.push(`Fuseau ${loc.timezone}`);
   const updated = loc.updatedAt ? new Date(loc.updatedAt).getTime() : 0;
   if (updated && Date.now() - updated > 60 * 60 * 1000) {
     parts.push('— position >1h, rafraîchis le GPS si tu as bougé');
+  } else if (!loc.street) {
+    parts.push('pas de numéro de bâtiment — normal avec GPS téléphone');
   }
   return parts.join(' · ');
 }
@@ -137,7 +154,7 @@ function formatLocationReply(loc) {
 async function syncToEva2(loc) {
   const base = (process.env.EVA2_PUBLIC_URL || '').replace(/\/$/, '');
   const secret = (process.env.EVA2_SSO_SECRET || '').trim();
-  if (!base || !secret || (!loc.city && loc.lat == null)) return;
+  if (!base || !secret || (!loc.area && !loc.city && loc.lat == null)) return;
 
   const exp = Date.now() + 60 * 1000;
   const payload = Buffer.from(JSON.stringify({ location: loc, exp })).toString('base64url');

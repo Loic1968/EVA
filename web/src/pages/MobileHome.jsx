@@ -35,8 +35,12 @@ const copy = {
     pwaTip: 'Astuce : ajoute EVA à l’écran d’accueil pour une app plein écran.',
     lockTip: 'Écran verrouillé pendant le chat ? Déverrouille et appuie sur « Reprendre ».',
     error: 'Impossible d’ouvrir Eva 2 — réessaie.',
+    ssoOff: 'SSO Eva 2 non configuré sur le serveur — contacte l’admin ou utilise la connexion directe.',
     ssoFailed: 'Lien Eva 2 expiré — retouche le bouton Eva 2.',
+    sessionExpired: 'Session EVA expirée — reconnecte-toi puis réessaie Eva 2.',
+    timeout: 'Connexion Eva 2 trop lente — réessaie.',
     directLogin: 'Connexion directe Eva 2',
+    gatewayFailed: 'Eva 2 n’a pas pu ouvrir le chat — retouche le bouton Eva 2.',
   },
   en: {
     greeting: (name) => (name ? `Hi ${name}` : 'Hi'),
@@ -57,8 +61,12 @@ const copy = {
     pwaTip: 'Tip: add EVA to your home screen for a full-screen app.',
     lockTip: 'Screen locked during chat? Unlock and tap Tap to resume.',
     error: 'Could not open Eva 2 — try again.',
+    ssoOff: 'Eva 2 SSO not configured on the server — use direct login or contact admin.',
     ssoFailed: 'Eva 2 link expired — tap Eva 2 again.',
+    sessionExpired: 'EVA session expired — sign in again, then retry Eva 2.',
+    timeout: 'Eva 2 connection timed out — try again.',
     directLogin: 'Direct Eva 2 login',
+    gatewayFailed: 'Eva 2 could not open chat — tap Eva 2 again.',
   },
 };
 
@@ -67,8 +75,19 @@ async function fetchEva2ChatUrl() {
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
     const data = await api.getEva2Access({ signal: controller.signal, next: '/app/' });
-    if (!data?.sso || !data?.url) throw new Error('sso');
+    if (!data?.sso) {
+      const err = new Error('sso-off');
+      err.ssoOff = true;
+      throw err;
+    }
+    if (!data?.url) throw new Error('sso');
     return data.url;
+  } catch (e) {
+    if (controller.signal.aborted) {
+      const err = new Error('timeout');
+      throw err;
+    }
+    throw e;
   } finally {
     clearTimeout(timer);
   }
@@ -92,6 +111,7 @@ export default function MobileHome() {
   const name = greetingName(user);
   const [searchParams, setSearchParams] = useSearchParams();
   const ssoFailed = searchParams.get('vps') === 'sso-failed' || searchParams.get('vps') === 'sso-expired';
+  const gatewayFailed = searchParams.get('vps') === 'gateway-failed';
   const fromLogin = searchParams.get('from') === 'login';
   const autoOpened = useRef(false);
   const [opening, setOpening] = useState(false);
@@ -112,8 +132,16 @@ export default function MobileHome() {
     try {
       const url = await fetchEva2ChatUrl();
       navigateToEva2Sso(url);
-    } catch {
-      setError(t.error);
+    } catch (e) {
+      if (e?.message === 'timeout') {
+        setError(t.timeout);
+      } else if (e?.ssoOff || e?.message === 'sso-off') {
+        setError(t.ssoOff);
+      } else if (e?.status === 401) {
+        setError(t.sessionExpired);
+      } else {
+        setError(t.error);
+      }
       setRedirecting(false);
       autoOpened.current = false;
     } finally {
@@ -165,6 +193,10 @@ export default function MobileHome() {
 
       {ssoFailed && (
         <p className="text-sm text-amber-600 dark:text-amber-400">{t.ssoFailed}</p>
+      )}
+
+      {gatewayFailed && (
+        <p className="text-sm text-amber-600 dark:text-amber-400">{t.gatewayFailed}</p>
       )}
 
       {error && (

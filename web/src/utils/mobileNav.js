@@ -31,9 +31,10 @@ export function isStandalonePwa() {
 
 /** Popups are unreliable on iOS Safari / installed PWA — navigate same window. */
 export function prefersSameWindowNav() {
-  return isIOS() || isStandalonePwa() || isMobileDevice();
+  return isMobilePhone() || isStandalonePwa() || isMobileDevice();
 }
 
+/** Mobile/PWA: always same-window. Desktop: new tab only when popup succeeds. */
 export function openUrl(url, tab = null) {
   if (prefersSameWindowNav()) {
     window.location.href = url;
@@ -53,4 +54,9 @@ export function openUrl(url, tab = null) {
   }
   const opened = window.open(url, '_blank', 'noopener,noreferrer');
   if (!opened) window.location.href = url;
+}
+
+/** Eva 2 SSO — never use window.open on phone/PWA. */
+export function navigateToEva2Sso(url) {
+  window.location.href = url;
 }

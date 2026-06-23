@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { refreshLocationForChat } from '../utils/geolocation';
-import { isMobilePhone, openUrl, prefersSameWindowNav } from '../utils/mobileNav';
+import { isMobilePhone, navigateToEva2Sso, openUrl, prefersSameWindowNav } from '../utils/mobileNav';
 
 const lang = navigator.language?.startsWith('fr') ? 'fr' : 'en';
 const EVA2_LOGIN_URL = 'https://eva-vps.halisoft.biz/auth/login?local=1';
@@ -139,7 +139,7 @@ export default function Eva2Access() {
     fetchEva2AccessWithTimeout('/app/')
       .then((fresh) => {
         if (fresh?.sso && fresh?.url) {
-          window.location.href = fresh.url;
+          navigateToEva2Sso(fresh.url);
           return;
         }
         throw new Error('sso');
@@ -149,10 +149,6 @@ export default function Eva2Access() {
         setMobileRedirecting(false);
       });
   }, [loading, access?.sso, skipRedirect, ssoFailed]);
-
-  const navigateToEva2 = (url, tab) => {
-    openUrl(url, tab);
-  };
 
   const openEva2 = async (next) => {
     if (!access?.sso) return;
@@ -173,7 +169,11 @@ export default function Eva2Access() {
       if (!fresh?.sso || !fresh?.url) {
         throw new Error('sso');
       }
-      navigateToEva2(fresh.url, tab);
+      if (useSameWindow) {
+        navigateToEva2Sso(fresh.url);
+      } else {
+        openUrl(fresh.url, tab);
+      }
     } catch (e) {
       if (tab) {
         try {

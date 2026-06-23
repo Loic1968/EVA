@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import EvaLogo from '../components/EvaLogo';
 import { useAuth } from '../context/AuthContext';
+import { isMobileDevice } from '../utils/mobileNav';
 
 export default function Login() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -31,8 +32,10 @@ export default function Login() {
     try {
       await login(email.trim(), password, stayConnected);
       const next = searchParams.get('next');
-      const safeNext = next && next.startsWith('/') && !next.startsWith('//') ? next : '/eva2';
-      navigate(`${safeNext}${safeNext === '/eva2' ? '?from=login' : ''}`, { replace: true });
+      const defaultNext = isMobileDevice() ? '/mobile' : '/eva2';
+      const safeNext = next && next.startsWith('/') && !next.startsWith('//') ? next : defaultNext;
+      const withLoginFlag = safeNext === '/eva2' || safeNext === '/mobile';
+      navigate(`${safeNext}${withLoginFlag ? '?from=login' : ''}`, { replace: true });
     } catch (err) {
       setError(err.body?.error || err.message || 'Login failed');
     } finally {

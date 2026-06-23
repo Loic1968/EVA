@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { refreshLocationForChat } from '../utils/geolocation';
-import { openUrl, prefersSameWindowNav } from '../utils/mobileNav';
+import { navigateToEva2Sso, prefersSameWindowNav } from '../utils/mobileNav';
 
 const lang = navigator.language?.startsWith('fr') ? 'fr' : 'en';
 const FETCH_TIMEOUT_MS = 15000;
@@ -21,7 +21,9 @@ const copy = {
     tagline: 'Ton assistant 24/7 — un bouton pour Eva 2.',
     eva2Title: 'Eva 2',
     eva2Subtitle: 'WhatsApp · Gmail · 24/7',
+    eva2Hint: 'Ouvre Eva 2 ici (pas de nouvel onglet).',
     eva2Opening: 'Connexion Eva 2…',
+    eva2Redirecting: 'Ouverture Eva 2 dans cette fenêtre…',
     more: 'Plus',
     moreHint: 'EVA 1 sur ce site — pas Eva 2',
     chat: 'EVA 1 — Chat texte',
@@ -41,7 +43,9 @@ const copy = {
     tagline: 'Your 24/7 assistant — one tap for Eva 2.',
     eva2Title: 'Eva 2',
     eva2Subtitle: 'WhatsApp · Gmail · 24/7',
+    eva2Hint: 'Opens Eva 2 here (no new tab).',
     eva2Opening: 'Connecting to Eva 2…',
+    eva2Redirecting: 'Opening Eva 2 in this window…',
     more: 'More',
     moreHint: 'EVA 1 on this site — not Eva 2',
     chat: 'EVA 1 — Text chat',
@@ -86,9 +90,12 @@ export default function MobileHome() {
   const { user } = useAuth();
   const t = copy[lang];
   const name = greetingName(user);
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const ssoFailed = searchParams.get('vps') === 'sso-failed' || searchParams.get('vps') === 'sso-expired';
+  const fromLogin = searchParams.get('from') === 'login';
+  const autoOpened = useRef(false);
   const [opening, setOpening] = useState(false);
+  const [redirecting, setRedirecting] = useState(false);
   const [error, setError] = useState('');
   const [moreOpen, setMoreOpen] = useState(false);
 
@@ -96,19 +103,35 @@ export default function MobileHome() {
     void refreshLocationForChat('', { force: false }).catch(() => {});
   }, []);
 
-  const openEva2Chat = async () => {
+  const openEva2Chat = async ({ auto = false } = {}) => {
+    if (opening || redirecting) return;
     setOpening(true);
     setError('');
+    if (auto) setRedirecting(true);
     void refreshLocationForChat('où suis-je', { force: true }).catch(() => {});
     try {
       const url = await fetchEva2ChatUrl();
-      openUrl(url);
+      navigateToEva2Sso(url);
     } catch {
       setError(t.error);
+      setRedirecting(false);
+      autoOpened.current = false;
     } finally {
       setOpening(false);
     }
   };
+
+  useEffect(() => {
+    if (!fromLogin || ssoFailed || autoOpened.current) return;
+    autoOpened.current = true;
+    if (searchParams.get('from')) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('from');
+      const q = next.toString();
+      setSearchParams(next, { replace: true });
+    }
+    void openEva2Chat({ auto: true });
+  }, [fromLogin, ssoFailed]);
 
   return (
     <div className="max-w-lg mx-auto space-y-8 pb-8 pt-2">
@@ -117,17 +140,26 @@ export default function MobileHome() {
         <p className="mt-1.5 text-slate-600 dark:text-slate-400 text-sm leading-relaxed">{t.tagline}</p>
       </header>
 
+      {redirecting && (
+        <div className="rounded-xl border border-eva-accent/30 bg-[var(--eva-accent-bg)]/40 p-4 text-center text-sm text-slate-600 dark:text-slate-300">
+          {t.eva2Redirecting}
+        </div>
+      )}
+
       <button
         type="button"
-        onClick={openEva2Chat}
-        disabled={opening}
+        onClick={() => openEva2Chat()}
+        disabled={opening || redirecting}
         className="w-full text-center rounded-3xl border-2 border-eva-accent/50 bg-gradient-to-br from-[var(--eva-accent-bg)]/80 to-eva-accent/5 p-8 min-h-[148px] touch-manipulation transition-opacity disabled:opacity-60 shadow-sm"
       >
         <div className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
-          {opening ? t.eva2Opening : t.eva2Title}
+          {opening || redirecting ? t.eva2Opening : t.eva2Title}
         </div>
         <div className="text-base text-slate-600 dark:text-slate-300 mt-2 font-medium">
           {t.eva2Subtitle}
+        </div>
+        <div className="text-xs text-slate-500 dark:text-slate-400 mt-3">
+          {t.eva2Hint}
         </div>
       </button>
 

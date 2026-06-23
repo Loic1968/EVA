@@ -12,15 +12,17 @@ function parseLocation(raw) {
       const o = JSON.parse(text);
       if (o && typeof o === 'object') {
         return {
-          area: (o.area || o.label || '').trim() || null,
+          area: (o.area || o.label || o.formatted_address || '').trim() || null,
           city: (o.city || '').trim() || null,
           street: (o.street || '').trim() || null,
           neighborhood: (o.neighborhood || '').trim() || null,
+          formatted_address: (o.formatted_address || '').trim() || null,
           lat: typeof o.lat === 'number' ? o.lat : null,
           lng: typeof o.lng === 'number' ? o.lng : null,
           accuracy: typeof o.accuracy === 'number' ? o.accuracy : null,
           timezone: (o.timezone || '').trim() || null,
           source: (o.source || 'manual').trim(),
+          geocoder: (o.geocoder || '').trim() || null,
           updatedAt: o.updatedAt || o.updated_at || null,
         };
       }
@@ -31,15 +33,17 @@ function parseLocation(raw) {
 
 function serializeLocation(loc) {
   return JSON.stringify({
-    area: loc.area || loc.city || null,
+    area: loc.area || loc.formatted_address || loc.city || null,
     city: loc.city || null,
     street: loc.street || null,
     neighborhood: loc.neighborhood || null,
+    formatted_address: loc.formatted_address || null,
     lat: loc.lat ?? null,
     lng: loc.lng ?? null,
     accuracy: loc.accuracy ?? null,
     timezone: loc.timezone || null,
     source: loc.source || 'manual',
+    geocoder: loc.geocoder || null,
     updatedAt: loc.updatedAt || new Date().toISOString(),
   });
 }
@@ -57,16 +61,19 @@ async function setLocation(ownerId, input) {
   if (!area && !city && input.lat == null) {
     throw new Error('city or coordinates required');
   }
+  const formattedAddress = (input.formatted_address || '').trim() || null;
   const loc = {
-    area: area || city || null,
+    area: area || formattedAddress || city || null,
     city: city || area || null,
     street: (input.street || '').trim() || null,
     neighborhood: (input.neighborhood || '').trim() || null,
+    formatted_address: formattedAddress,
     lat: typeof input.lat === 'number' ? input.lat : null,
     lng: typeof input.lng === 'number' ? input.lng : null,
     accuracy: typeof input.accuracy === 'number' ? input.accuracy : null,
     timezone: (input.timezone || '').trim() || null,
     source: (input.source || 'manual').trim(),
+    geocoder: (input.geocoder || '').trim() || null,
     updatedAt: new Date().toISOString(),
   };
   const memoryItems = require('./memoryItemsService');
@@ -85,13 +92,18 @@ async function setLocation(ownerId, input) {
 function formatLocationBlock(loc) {
   if (!loc?.area && !loc?.city && loc?.lat == null) return '';
   const parts = ['## User location (live GPS — current position, not home address)'];
-  if (loc.area) parts.push(`- Area: ${loc.area}`);
+  if (loc.formatted_address) parts.push(`- Address: ${loc.formatted_address}`);
+  else if (loc.area) parts.push(`- Area: ${loc.area}`);
   else if (loc.city) parts.push(`- City/area: ${loc.city}`);
   if (loc.lat != null && loc.lng != null) parts.push(`- Coordinates: ${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}`);
   if (loc.accuracy != null) parts.push(`- GPS accuracy: ±${Math.round(loc.accuracy)} m`);
   if (loc.timezone) parts.push(`- Timezone: ${loc.timezone}`);
   if (loc.updatedAt) parts.push(`- Last updated: ${loc.updatedAt}`);
-  parts.push('- Phone GPS ~10–20 m: street/neighborhood OK, building number often missing — normal.');
+  if (loc.geocoder === 'google') {
+    parts.push('- Address from Google Geocoding (building-level when available).');
+  } else {
+    parts.push('- Phone GPS ~10–20 m: street/neighborhood OK, building number often missing — normal.');
+  }
   parts.push('- Do NOT ask for static home address for "where am I". Home base (if any) is in MEMORY.md for "where do I live".');
   return `\n\n${parts.join('\n')}\n`;
 }
@@ -135,7 +147,7 @@ function formatLocationReply(loc) {
     return "Je n'ai pas ta position GPS live. Ouvre EVA sur ton téléphone, autorise la géolocalisation, puis redemande.";
   }
   const parts = [];
-  const place = loc.area || loc.city;
+  const place = loc.formatted_address || loc.area || loc.city;
   if (place) parts.push(`Tu es vers ${place}`);
   if (loc.lat != null && loc.lng != null) {
     parts.push(`(${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)})`);
@@ -145,7 +157,7 @@ function formatLocationReply(loc) {
   const updated = loc.updatedAt ? new Date(loc.updatedAt).getTime() : 0;
   if (updated && Date.now() - updated > 60 * 60 * 1000) {
     parts.push('— position >1h, rafraîchis le GPS si tu as bougé');
-  } else if (!loc.street) {
+  } else if (!loc.street && loc.geocoder !== 'google') {
     parts.push('pas de numéro de bâtiment — normal avec GPS téléphone');
   }
   return parts.join(' · ');
@@ -173,12 +185,33 @@ async function syncToEva2(loc) {
   }
 }
 
+async function enrichWithReverseGeocode(loc) {
+  if (!loc || loc.lat == null || loc.lng == null) return loc;
+  if (loc.formatted_address || (loc.area && loc.geocoder === 'google')) return loc;
+  try {
+    const { reverseGeocode } = require('./reverseGeocodeService');
+    const geo = await reverseGeocode(loc.lat, loc.lng);
+    return {
+      ...loc,
+      area: geo.area || loc.area,
+      street: geo.street || loc.street,
+      neighborhood: geo.neighborhood || loc.neighborhood,
+      city: geo.city || loc.city,
+      formatted_address: geo.formatted_address || loc.formatted_address || null,
+      geocoder: geo.geocoder || loc.geocoder || null,
+    };
+  } catch (_) {
+    return loc;
+  }
+}
+
 module.exports = {
   parseLocation,
   serializeLocation,
   getLocation,
   setLocation,
   ingestClientLocation,
+  enrichWithReverseGeocode,
   formatLocationBlock,
   formatDateTimeBlock,
   formatLocationReply,

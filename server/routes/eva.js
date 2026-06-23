@@ -1143,6 +1143,21 @@ router.get('/push/status', async (req, res) => {
 });
 
 // Current location (so EVA knows "where am I")
+router.get('/geocode/reverse', async (req, res, next) => {
+  try {
+    const lat = Number(req.query.lat);
+    const lng = Number(req.query.lng ?? req.query.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      return res.status(400).json({ error: 'lat and lng required' });
+    }
+    const { reverseGeocode } = require('../services/reverseGeocodeService');
+    const geo = await reverseGeocode(lat, lng);
+    res.json(geo);
+  } catch (e) {
+    next(e);
+  }
+});
+
 router.get('/me/location', async (req, res, next) => {
   try {
     const locationService = require('../services/locationService');
@@ -1162,6 +1177,8 @@ router.put('/me/location', async (req, res, next) => {
       city: body.city ?? body.label ?? body.value,
       street: body.street,
       neighborhood: body.neighborhood,
+      formatted_address: body.formatted_address,
+      geocoder: body.geocoder,
       lat: body.lat,
       lng: body.lng,
       accuracy: body.accuracy,

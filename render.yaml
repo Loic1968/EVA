@@ -17,6 +17,10 @@ services:
         sync: false
       - key: EVA_GOOGLE_CLIENT_SECRET
         sync: false
+      - key: GOOGLE_GEOCODING_API_KEY
+        sync: false
+      - key: GOOGLE_MAPS_API_KEY
+        sync: false
       - key: EVA_API_KEY
         sync: false
       - key: EVA2_PUBLIC_URL

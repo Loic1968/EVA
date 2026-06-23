@@ -37,6 +37,8 @@ async function pushLocation(force = false, cachedPos = null) {
       street: geo.street,
       neighborhood: geo.neighborhood,
       city: geo.city,
+      formatted_address: geo.formatted_address || null,
+      geocoder: geo.geocoder || null,
       lat,
       lng,
       accuracy,

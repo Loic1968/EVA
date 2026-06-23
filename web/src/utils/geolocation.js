@@ -8,10 +8,19 @@ export function formatAddressFromNominatim(data) {
   const city = addr.city || addr.town || addr.village || addr.municipality || addr.county || null;
   const labelParts = [street, neighborhood, city].filter(Boolean);
   const area = labelParts.length ? labelParts.join(', ') : data?.display_name || null;
-  return { area, street, neighborhood, city, country: addr.country || null, display_name: data?.display_name || null };
+  return {
+    area,
+    street,
+    neighborhood,
+    city,
+    country: addr.country || null,
+    display_name: data?.display_name || null,
+    formatted_address: null,
+    geocoder: 'nominatim',
+  };
 }
 
-export async function reverseGeocode(lat, lon) {
+async function reverseGeocodeNominatim(lat, lon) {
   const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`;
   const res = await fetch(url, {
     headers: { 'User-Agent': NOMINATIM_UA },
@@ -19,6 +28,21 @@ export async function reverseGeocode(lat, lon) {
   if (!res.ok) throw new Error('Reverse geocoding failed');
   const data = await res.json();
   return formatAddressFromNominatim(data);
+}
+
+/** Google Geocoding API via EVA server (primary), Nominatim direct (fallback). */
+export async function reverseGeocode(lat, lon) {
+  try {
+    const res = await fetch(`/api/geocode/reverse?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lon)}`, {
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.area || data?.formatted_address) return data;
+    }
+  } catch (_) {}
+  return reverseGeocodeNominatim(lat, lon);
 }
 
 export function getBrowserTimezone() {
@@ -53,6 +77,8 @@ export async function detectCurrentLocation(options = {}) {
     street: geo.street,
     neighborhood: geo.neighborhood,
     city: geo.city,
+    formatted_address: geo.formatted_address || null,
+    geocoder: geo.geocoder || null,
     lat,
     lng,
     accuracy,

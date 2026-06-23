@@ -36,7 +36,8 @@ const copy = {
     lockTip: 'Écran verrouillé pendant le chat ? Déverrouille et appuie sur « Reprendre ».',
     error: 'Impossible d’ouvrir Eva 2 — réessaie.',
     ssoOff: 'SSO Eva 2 non configuré sur le serveur — contacte l’admin ou utilise la connexion directe.',
-    ssoFailed: 'Lien Eva 2 expiré — retouche le bouton Eva 2.',
+    ssoExpired: 'Lien Eva 2 expiré — retouche le bouton Eva 2.',
+    ssoMismatch: 'Connexion Eva 2 refusée — réessaie dans 2 min (sync serveur en cours) ou utilise la connexion directe.',
     sessionExpired: 'Session EVA expirée — reconnecte-toi puis réessaie Eva 2.',
     timeout: 'Connexion Eva 2 trop lente — réessaie.',
     directLogin: 'Connexion directe Eva 2',
@@ -62,7 +63,8 @@ const copy = {
     lockTip: 'Screen locked during chat? Unlock and tap Tap to resume.',
     error: 'Could not open Eva 2 — try again.',
     ssoOff: 'Eva 2 SSO not configured on the server — use direct login or contact admin.',
-    ssoFailed: 'Eva 2 link expired — tap Eva 2 again.',
+    ssoExpired: 'Eva 2 link expired — tap Eva 2 again.',
+    ssoMismatch: 'Eva 2 sign-in refused — retry in 2 min (server sync in progress) or use direct login.',
     sessionExpired: 'EVA session expired — sign in again, then retry Eva 2.',
     timeout: 'Eva 2 connection timed out — try again.',
     directLogin: 'Direct Eva 2 login',
@@ -110,7 +112,9 @@ export default function MobileHome() {
   const t = copy[lang];
   const name = greetingName(user);
   const [searchParams, setSearchParams] = useSearchParams();
-  const ssoFailed = searchParams.get('vps') === 'sso-failed' || searchParams.get('vps') === 'sso-expired';
+  const ssoExpired = searchParams.get('vps') === 'sso-expired';
+  const ssoMismatch = searchParams.get('vps') === 'sso-failed';
+  const ssoFailed = ssoExpired || ssoMismatch;
   const gatewayFailed = searchParams.get('vps') === 'gateway-failed';
   const fromLogin = searchParams.get('from') === 'login';
   const autoOpened = useRef(false);
@@ -191,8 +195,11 @@ export default function MobileHome() {
         </div>
       </button>
 
-      {ssoFailed && (
-        <p className="text-sm text-amber-600 dark:text-amber-400">{t.ssoFailed}</p>
+      {ssoExpired && (
+        <p className="text-sm text-amber-600 dark:text-amber-400">{t.ssoExpired}</p>
+      )}
+      {ssoMismatch && (
+        <p className="text-sm text-amber-600 dark:text-amber-400">{t.ssoMismatch}</p>
       )}
 
       {gatewayFailed && (

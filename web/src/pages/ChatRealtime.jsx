@@ -172,10 +172,10 @@ export default function ChatRealtime() {
         ctx.resume().catch(() => {});
         audioContextRef.current = ctx;
       } catch (_) {}
-      try {
-        const loc = await refreshLocationForChat('');
-        if (loc) await api.setLocation(loc);
-      } catch (_) {}
+      // GPS en arrière-plan — ne pas bloquer la connexion voix (latence + micro)
+      refreshLocationForChat('').then((loc) => {
+        if (loc) api.setLocation(loc).catch(() => {});
+      }).catch(() => {});
       const token = localStorage.getItem('eva_token') || sessionStorage.getItem('eva_token');
       const r = await fetch(`${API_BASE}/realtime/token`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -445,42 +445,43 @@ export default function ChatRealtime() {
       });
     };
 
+    // 'disconnected' ICE est souvent transitoire — ne pas couper l'appel en plein barge-in
     const isRealtimeDead = () => {
       if (claudeSessionRef.current) return false;
       const pc = peerRef.current;
       const dc = dataChannelRef.current;
       if (!pc) return false;
       return (
-        ['failed', 'disconnected', 'closed'].includes(pc.connectionState)
-        || ['failed', 'disconnected', 'closed'].includes(pc.iceConnectionState)
-        || (dc && dc.readyState !== 'open')
+        ['failed', 'closed'].includes(pc.connectionState)
+        || ['failed', 'closed'].includes(pc.iceConnectionState)
+        || (dc && dc.readyState === 'closed')
       );
     };
 
     const recover = async () => {
       if (document.visibilityState !== 'visible' || reconnectingRef.current) return;
       resumeMedia();
-      if (!wasHiddenRef.current && !isRealtimeDead()) {
+      // Ne pas toucher la session si l'écran n'a pas été verrouillé (évite focus/spurious reconnect)
+      if (!wasHiddenRef.current) {
         setConnectionBanner(null);
         setShowResume(false);
         return;
       }
+      const hadHidden = wasHiddenRef.current;
+      wasHiddenRef.current = false;
       if (claudeSessionRef.current) {
-        wasHiddenRef.current = false;
         setConnectionBanner(null);
         setShowResume(false);
         return;
       }
       if (!isRealtimeDead()) {
-        wasHiddenRef.current = false;
         setConnectionBanner(null);
         setShowResume(false);
         return;
       }
-      if (isMobileDevice() && wasHiddenRef.current) {
+      if (isMobileDevice() && hadHidden) {
         setShowResume(true);
         setConnectionBanner(ui.callPaused);
-        wasHiddenRef.current = false;
         return;
       }
       reconnectingRef.current = true;
@@ -496,7 +497,6 @@ export default function ChatRealtime() {
         setError(err.message || ui.connLostErr);
       } finally {
         reconnectingRef.current = false;
-        wasHiddenRef.current = false;
       }
     };
 
@@ -521,17 +521,23 @@ export default function ChatRealtime() {
     const onVisibility = () => {
       if (document.visibilityState === 'hidden') {
         wasHiddenRef.current = true;
-      } else {
+      } else if (wasHiddenRef.current) {
         setTimeout(recover, 350);
+      } else {
+        resumeMedia();
       }
     };
 
+    const onPageShow = (e) => {
+      if (e.persisted && wasHiddenRef.current) setTimeout(recover, 350);
+    };
+
     document.addEventListener('visibilitychange', onVisibility);
-    window.addEventListener('pageshow', (e) => { if (e.persisted) recover(); });
-    window.addEventListener('focus', () => setTimeout(recover, 350));
+    window.addEventListener('pageshow', onPageShow);
 
     return () => {
       document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pageshow', onPageShow);
     };
   }, [status, stopSession, startSession]);
 

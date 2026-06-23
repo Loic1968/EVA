@@ -31,6 +31,8 @@ export default function VoiceAlice() {
   const [connectionBanner, setConnectionBanner] = useState(null);
   const [showResume, setShowResume] = useState(false);
   const recoverRef = useRef(null);
+  const wasHiddenRef = useRef(false);
+  const sessionActiveRef = useRef(false);
 
   // refs
   const stream = useRef(null);
@@ -64,12 +66,20 @@ export default function VoiceAlice() {
   useEffect(() => () => cleanup(), []);
 
   const sessionActive = listeningStarted || phase === 'recording' || phase === 'processing' || phase === 'speaking';
+  sessionActiveRef.current = sessionActive;
   useWakeLock(sessionActive);
 
-  // iOS PWA: resume mic + AudioContext after screen unlock
+  // iOS PWA: resume mic + AudioContext after screen unlock only (not on every focus)
   useEffect(() => {
     const recover = async () => {
       if (document.visibilityState !== 'visible') return;
+      // Ne pas toucher le micro pendant qu'Alice parle — préserve le barge-in
+      if (phaseRef.current === 'speaking' || phaseRef.current === 'processing') {
+        if (actx.current?.state === 'suspended') {
+          try { await actx.current.resume(); } catch (_) {}
+        }
+        return;
+      }
       if (actx.current?.state === 'suspended') {
         try { await actx.current.resume(); } catch (_) {}
       }
@@ -98,25 +108,38 @@ export default function VoiceAlice() {
 
     const onVisibility = () => {
       if (document.visibilityState === 'hidden') {
-        if (sessionActive) {
+        wasHiddenRef.current = true;
+        if (sessionActiveRef.current) {
           setConnectionBanner(lang === 'fr' ? 'Écran verrouillé — le micro peut être coupé' : 'Screen locked — mic may be paused');
         }
-      } else {
+      } else if (wasHiddenRef.current) {
+        wasHiddenRef.current = false;
         setTimeout(() => {
           recover().then(() => {
-            if (sessionActive && stream.current?.getTracks?.().some((t) => t.readyState === 'ended')) {
+            if (sessionActiveRef.current && stream.current?.getTracks?.().some((t) => t.readyState === 'ended')) {
               setShowResume(true);
             }
           });
         }, 350);
+      } else if (actx.current?.state === 'suspended') {
+        actx.current.resume().catch(() => {});
+      }
+    };
+
+    const onPageShow = (e) => {
+      if (e.persisted && wasHiddenRef.current) {
+        wasHiddenRef.current = false;
+        setTimeout(recover, 350);
       }
     };
 
     document.addEventListener('visibilitychange', onVisibility);
-    window.addEventListener('pageshow', (e) => { if (e.persisted) recover(); });
-    window.addEventListener('focus', () => setTimeout(recover, 350));
-    return () => document.removeEventListener('visibilitychange', onVisibility);
-  }, [mode, listeningStarted, sessionActive]);
+    window.addEventListener('pageshow', onPageShow);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pageshow', onPageShow);
+    };
+  }, [mode, listeningStarted, lang]);
 
   // Open mic on mount only for PTT; VAD needs one click first (unlocks AudioContext so Alice "hears")
   useEffect(() => {

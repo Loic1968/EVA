@@ -14,10 +14,22 @@ async function gmailCallback(req, res, next) {
     const { code, state } = req.query;
     if (!code) return res.status(400).json({ error: 'Authorization code missing' });
 
-    const ownerId = state ? parseInt(state, 10) : null;
-    if (!ownerId || isNaN(ownerId)) {
+    // SECURITY: resolve the owner from the single-use server-side nonce, never
+    // from the state value itself (which used to be the raw, guessable ownerId).
+    // Consume it atomically so a state can't be replayed; reject if missing/expired.
+    if (!state) {
       return res.redirect(base + '/login?error=' + encodeURIComponent('Invalid OAuth state. Please log in and try again.'));
     }
+    const stateRes = await db.query(
+      `DELETE FROM eva.oauth_states
+        WHERE state = $1 AND purpose = 'gmail' AND expires_at > now()
+        RETURNING owner_id`,
+      [state]
+    );
+    if (stateRes.rows.length === 0) {
+      return res.redirect(base + '/sources?error=' + encodeURIComponent('OAuth session expired or invalid. Please connect Gmail again.'));
+    }
+    const ownerId = stateRes.rows[0].owner_id;
 
     const tokens = await googleOAuth.exchangeCode(code);
     if (!tokens || !tokens.access_token) {

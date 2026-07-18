@@ -6,6 +6,7 @@ const router = express.Router();
 const db = require('../db');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 
 // Gmail & Calendar services
 const googleOAuth = require('../services/googleOAuth');
@@ -1533,7 +1534,17 @@ router.get('/oauth/gmail/start', async (req, res, next) => {
         message: 'Gmail OAuth not configured. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to eva/.env — see eva/.env.example',
       });
     }
-    const authUrl = googleOAuth.getAuthUrl(String(req.ownerId));
+    // SECURITY: use an unguessable, single-use, short-lived nonce as the OAuth
+    // `state` — bound to this owner server-side — instead of the raw ownerId.
+    // Passing ownerId as state let anyone craft a consent link that links a
+    // Gmail account to an arbitrary owner (mailbox hijack).
+    const state = crypto.randomBytes(32).toString('hex');
+    await db.query(
+      `INSERT INTO eva.oauth_states (state, owner_id, purpose, expires_at)
+       VALUES ($1, $2, 'gmail', now() + interval '10 minutes')`,
+      [state, req.ownerId]
+    );
+    const authUrl = googleOAuth.getAuthUrl(state);
     res.json({ auth_url: authUrl });
   } catch (e) {
     next(e);
